@@ -6,12 +6,12 @@ import { Renderer, setPerspective } from './render/renderer.js';
 import { UI } from './ui/ui.js';
 import { NetClient, serverUrls, inviteCode } from './net/client.js';
 import { createMirror } from './net/mirror.js';
-import { applySnapshot } from './net/snapshot.js';
+import { applySnapshot, SNAP_HZ } from './net/snapshot.js';
 
 // Fluxo: carregando → menu (time → arena | multiplayer → sala) → batalha → pausa/fim.
 // Batalha LOCAL: passo fixo de 1/60 s (a simulação roda no navegador, contra a IA).
 // Batalha ONLINE: o servidor simula (autoritativo); o navegador só envia entradas e desenha o "mundo espelho"
-// atualizado pelos snapshots a 20 Hz, interpolando posições entre eles.
+// atualizado pelos snapshots a 30 Hz, interpolando posições entre eles.
 
 const canvas = document.getElementById('game');
 const params = new URLSearchParams(location.search);
@@ -172,7 +172,7 @@ function sendInput(now, neutral = false) {
     : { t: 'input', mx: inp.move.x, my: inp.move.y, ax: Math.round(inp.aim.x), ay: Math.round(inp.aim.y), hp: !!inp.held.primary, hm: !!inp.held.melee, presses: netPresses.splice(0, 6) };
   const key = JSON.stringify([msg.mx, msg.my, msg.hp, msg.hm, msg.ax >> 3, msg.ay >> 3]);
   if (!msg.presses.length && key === lastSentKey && now - lastSent < 250) return;
-  if (!msg.presses.length && now - lastSent < 33) return;
+  if (!msg.presses.length && now - lastSent < 16) return;
   lastSent = now; lastSentKey = key;
   net.send(msg);
 }
@@ -328,6 +328,40 @@ function readInput() {
   }
 }
 
+// Compensação de latência do PRÓPRIO monstro: o servidor é quem manda, mas o desenho do seu monstro "adianta" a
+// direção que você está segurando (até ~0,12 s), então o movimento responde na hora. O adiantamento nunca entra
+// em parede (checa o terreno) e encolhe sozinho quando você para ou o monstro está em golpe/atordoado.
+const lead = { x: 0, y: 0 };
+function updateLead(dt) {
+  const m = world.active;
+  if (!m || overlay) { lead.x = lead.y = 0; if (m) m.lead = null; return; }
+  const inp = world.input, l = Math.hypot(inp.move.x, inp.move.y);
+  const free = m.alive && !m.action && !m.switchState && !(m.evolveT > 0) && !(m.status.stun > 0) && !(m.status.root > 0) && !(m.lift > 0) && l > 0;
+  const L = Math.min(0.12, (net?.rtt || 0) / 2000 + 0.05);
+  const spd = m.def.speed * (m.speedMult ? m.speedMult(world) : 1);
+  let tx = 0, ty = 0;
+  if (free) {
+    tx = (inp.move.x / l) * spd * L; ty = (inp.move.y / l) * spd * L;
+    // não adianta para dentro de obstáculo/água funda/penhasco
+    if (!world.standable(m, m.x + tx, m.y + ty)) { tx *= 0.4; ty *= 0.4; if (!world.standable(m, m.x + tx, m.y + ty)) { tx = ty = 0; } }
+  }
+  const step = spd * dt * 1.5; // cresce/encolhe no máximo a 1,5× a velocidade: sem "teletransporte"
+  const dx = tx - lead.x, dy = ty - lead.y, d = Math.hypot(dx, dy);
+  if (d <= step) { lead.x = tx; lead.y = ty; } else { lead.x += (dx / d) * step; lead.y += (dy / d) * step; }
+  m.lead = lead;
+}
+
+function drawPing(c) {
+  if (!net || !net.rtt) return;
+  const ms = Math.round(net.rtt), u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
+  c.save();
+  c.font = `${6 * u}px "Press Start 2P", monospace`;
+  c.textAlign = 'right';
+  c.fillStyle = ms < 80 ? '#7ae07a' : ms < 160 ? '#ffe066' : '#ff6a6a';
+  c.fillText(`${ms} ms`, canvas.width - 8 * u, canvas.height - 6 * u);
+  c.restore();
+}
+
 function drawNotice(c, dt) {
   if (!notice) return;
   notice.t -= dt;
@@ -365,8 +399,10 @@ function frame(now) {
     while (pendingSnaps.length) { applySnapshot(world, pendingSnaps.shift(), mirror.ctx); lastSnapAt = now; }
     if (!overlay) { readInput(); sendInput(now); }
     if (world.over) { overT += dt; if (overT > 1.5 && overlay !== 'end') { overlay = 'end'; ui.focus = 0; } }
-    renderer.render(world, Math.min(1, (now - lastSnapAt) / 50), dt, hud);
+    updateLead(dt);
+    renderer.render(world, Math.min(1, (now - lastSnapAt) / (1000 / SNAP_HZ)), dt, hud);
     drawNotice(c, dt);
+    drawPing(c);
     if (overlay) {
       const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
       ui.time += dt;

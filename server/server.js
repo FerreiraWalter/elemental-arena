@@ -119,7 +119,7 @@ export function createServer({
       let msg;
       try { msg = JSON.parse(raw.toString()); } catch { return fail('bad_json', 'Mensagem inválida.'); }
       if (!msg || typeof msg.t !== 'string') return fail('bad_msg', 'Mensagem inválida.');
-      if (msg.t === 'ping') return send({ t: 'pong' });
+      if (msg.t === 'ping') return send({ t: 'pong', ts: msg.ts });
 
       if (msg.t === 'create' || msg.t === 'join' || msg.t === 'rejoin') {
         if (room) return fail('already', 'Você já está em uma sala.');

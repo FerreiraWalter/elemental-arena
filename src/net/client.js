@@ -1,7 +1,7 @@
 // Cliente de rede (navegador e Node 22+: ambos têm WebSocket global).
 // Eventos sintéticos: { t:'closed', wasOpen } só quando uma conexão JÁ ABERTA cai (falha ao conectar vira rejeição da Promise).
 export class NetClient {
-  constructor() { this.ws = null; this.handlers = new Map(); this.open = false; this.url = null; this.ping = null; this.lastRx = 0; }
+  constructor() { this.ws = null; this.handlers = new Map(); this.open = false; this.url = null; this.ping = null; this.lastRx = 0; this.rtt = 0; }
 
   // Tenta cada URL em ordem; resolve com a primeira que abrir.
   async connect(urls, timeout = 5000) {
@@ -37,20 +37,20 @@ export class NetClient {
         this.lastRx = Date.now();
         let msg;
         try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : ev.data.toString()); } catch { return; }
-        if (msg.t === 'pong') return;
+        if (msg.t === 'pong') { if (msg.ts) { const r = Date.now() - msg.ts; this.rtt = this.rtt ? this.rtt * 0.7 + r * 0.3 : r; } return; }
         this.emit(msg);
       };
     });
   }
 
-  // Ping a cada 15 s (mantém proxies/balanceadores abertos e detecta queda silenciosa: 45 s sem nada = caiu).
+  // Ping a cada 3 s: mede a latência (rtt, em ms), mantém proxies abertos e detecta queda silenciosa (45 s sem nada = caiu).
   startKeepalive() {
     this.stopKeepalive();
     this.ping = setInterval(() => {
       if (!this.open) return;
       if (Date.now() - this.lastRx > 45000) { try { this.ws.close(); } catch { /* ok */ } return; }
-      this.send({ t: 'ping' });
-    }, 15000);
+      this.send({ t: 'ping', ts: Date.now() });
+    }, 3000);
     this.ping.unref?.();
   }
   stopKeepalive() { if (this.ping) clearInterval(this.ping); this.ping = null; }

@@ -361,7 +361,9 @@ export class Renderer {
     // Composição na tela com escala e tremor.
     const c = this.ctx, W = this.canvas.width, H = this.canvas.height;
     const dpr = ui.dpr;
-    const top = 66 * dpr, bottom = (world.playerTeam !== null ? 74 : 24) * dpr;
+    // Escala da interface (cartões, barra de habilidades): cresce com a altura da janela para continuar legível.
+    const hs = this.hudScale = Math.max(1.15, Math.min(2, H / dpr / 500));
+    const top = 66 * dpr * hs, bottom = (world.playerTeam !== null ? 74 : 24) * dpr * hs;
     let S = Math.min(W / WORLD_W, (H - top - bottom) / WORLD_H);
     if (S >= 2) S = Math.floor(S);
     const ox = Math.round((W - WORLD_W * S) / 2), oy = Math.round(top + (H - top - bottom - WORLD_H * S) / 2);
@@ -568,7 +570,7 @@ export class Renderer {
     }
   }
 
-  lerpPos(m, alpha) { return { x: m.px + (m.x - m.px) * alpha, y: m.py + (m.y - m.py) * alpha }; }
+  lerpPos(m, alpha) { const l = m.lead; return { x: m.px + (m.x - m.px) * alpha + (l ? l.x : 0), y: m.py + (m.y - m.py) * alpha + (l ? l.y : 0) }; }
 
   drawShadowRing(m, alpha) {
     const l = this.l;

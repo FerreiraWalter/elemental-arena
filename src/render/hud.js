@@ -130,12 +130,12 @@ function abilityBar(c, world, ox, aw, y, dpr) {
     c.strokeStyle = using ? '#ffe066' : cd > 0 ? '#3a302a' : ELEMENT_COLOR[m.element];
     c.lineWidth = 2 * dpr;
     c.strokeRect(x + dpr, y + dpr, bw - 2 * dpr, bh - 2 * dpr);
-    const ksz = fit(c, key, 5, bw - 6 * dpr, dpr);
+    const ksz = fit(c, key, 6, bw - 6 * dpr, dpr);
     text(c, key, x + bw / 2, y + 11 * dpr, ksz, '#ffe9b0', 'center', dpr);
     const words = ab.name.split(' ');
     const l1 = words.length > 1 ? words.slice(0, Math.ceil(words.length / 2)).join(' ') : ab.name;
     const l2 = words.length > 1 ? words.slice(Math.ceil(words.length / 2)).join(' ') : '';
-    const nsz = Math.min(fit(c, l1, 5, bw - 6 * dpr, dpr), fit(c, l2 || l1, 5, bw - 6 * dpr, dpr));
+    const nsz = Math.min(fit(c, l1, 6.5, bw - 6 * dpr, dpr), fit(c, l2 || l1, 6.5, bw - 6 * dpr, dpr));
     text(c, l1, x + bw / 2, y + 25 * dpr, nsz, '#e8e0d0', 'center', dpr);
     if (l2) text(c, l2, x + bw / 2, y + 34 * dpr, nsz, '#e8e0d0', 'center', dpr);
     if (cd > 0) {
@@ -165,7 +165,7 @@ function abilityBar(c, world, ox, aw, y, dpr) {
 }
 
 export function drawHud(c, r, world, ui) {
-  const { dpr } = ui;
+  const dpr = ui.dpr * (r.hudScale || 1); // unidade de interface = pixels do dispositivo × escala da janela
   const H = c.canvas.height;
   const { ox, oy, S } = r.view;
   const aw = 640 * S, ah = 360 * S;
