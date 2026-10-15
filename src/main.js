@@ -6,12 +6,12 @@ import { Renderer, setPerspective } from './render/renderer.js';
 import { UI } from './ui/ui.js';
 import { NetClient, serverUrls, inviteCode } from './net/client.js';
 import { createMirror } from './net/mirror.js';
-import { applySnapshot, SNAP_HZ } from './net/snapshot.js';
+import { NetSmoother } from './net/smooth.js';
 
 // Fluxo: carregando → menu (time → arena | multiplayer → sala) → batalha → pausa/fim.
 // Batalha LOCAL: passo fixo de 1/60 s (a simulação roda no navegador, contra a IA).
 // Batalha ONLINE: o servidor simula (autoritativo); o navegador só envia entradas e desenha o "mundo espelho"
-// atualizado pelos snapshots a 30 Hz, interpolando posições entre eles.
+// atualizado pelos snapshots a 20 Hz, interpolando posições entre eles.
 
 const canvas = document.getElementById('game');
 const params = new URLSearchParams(location.search);
@@ -31,8 +31,7 @@ let last = performance.now();
 let net = null;
 let online = false;
 let mirror = null;
-let pendingSnaps = [];
-let lastSnapAt = 0;
+
 let netPresses = [];
 let lastSent = 0;
 let lastSentKey = '';
@@ -80,7 +79,7 @@ function makeNet() {
     if (online) notice = { text: m.message, t: 4 }; else ui.mpError(m.message);
   });
   n.on('start', startOnline);
-  n.on('snap', (m) => { if (online) { pendingSnaps.push(m); if (pendingSnaps.length > 30) pendingSnaps.shift(); } });
+  n.on('snap', (m) => { if (online) smooth.enqueue(m, performance.now(), world); });
   n.on('left', () => {});
   n.on('closed', () => {
     if (net !== n) return;
@@ -157,8 +156,7 @@ function startOnline(start) {
   mode = 'battle';
   overlay = null;
   overT = 0;
-  pendingSnaps = [];
-  lastSnapAt = performance.now();
+  smooth.reset();
   hud.paused = false;
   hud.speed = 1;
   window.world = world;
@@ -172,7 +170,7 @@ function sendInput(now, neutral = false) {
     : { t: 'input', mx: inp.move.x, my: inp.move.y, ax: Math.round(inp.aim.x), ay: Math.round(inp.aim.y), hp: !!inp.held.primary, hm: !!inp.held.melee, presses: netPresses.splice(0, 6) };
   const key = JSON.stringify([msg.mx, msg.my, msg.hp, msg.hm, msg.ax >> 3, msg.ay >> 3]);
   if (!msg.presses.length && key === lastSentKey && now - lastSent < 250) return;
-  if (!msg.presses.length && now - lastSent < 16) return;
+  if (!msg.presses.length && now - lastSent < 25) return;
   lastSent = now; lastSentKey = key;
   net.send(msg);
 }
@@ -328,28 +326,7 @@ function readInput() {
   }
 }
 
-// Compensação de latência do PRÓPRIO monstro: o servidor é quem manda, mas o desenho do seu monstro "adianta" a
-// direção que você está segurando (até ~0,12 s), então o movimento responde na hora. O adiantamento nunca entra
-// em parede (checa o terreno) e encolhe sozinho quando você para ou o monstro está em golpe/atordoado.
-const lead = { x: 0, y: 0 };
-function updateLead(dt) {
-  const m = world.active;
-  if (!m || overlay) { lead.x = lead.y = 0; if (m) m.lead = null; return; }
-  const inp = world.input, l = Math.hypot(inp.move.x, inp.move.y);
-  const free = m.alive && !m.action && !m.switchState && !(m.evolveT > 0) && !(m.status.stun > 0) && !(m.status.root > 0) && !(m.lift > 0) && l > 0;
-  const L = Math.min(0.12, (net?.rtt || 0) / 2000 + 0.05);
-  const spd = m.def.speed * (m.speedMult ? m.speedMult(world) : 1);
-  let tx = 0, ty = 0;
-  if (free) {
-    tx = (inp.move.x / l) * spd * L; ty = (inp.move.y / l) * spd * L;
-    // não adianta para dentro de obstáculo/água funda/penhasco
-    if (!world.standable(m, m.x + tx, m.y + ty)) { tx *= 0.4; ty *= 0.4; if (!world.standable(m, m.x + tx, m.y + ty)) { tx = ty = 0; } }
-  }
-  const step = spd * dt * 1.5; // cresce/encolhe no máximo a 1,5× a velocidade: sem "teletransporte"
-  const dx = tx - lead.x, dy = ty - lead.y, d = Math.hypot(dx, dy);
-  if (d <= step) { lead.x = tx; lead.y = ty; } else { lead.x += (dx / d) * step; lead.y += (dy / d) * step; }
-  m.lead = lead;
-}
+const smooth = new NetSmoother(); // buffer de interpolação + predição do próprio monstro (net/smooth.js)
 
 function drawPing(c) {
   if (!net || !net.rtt) return;
@@ -396,11 +373,11 @@ function frame(now) {
     ui.render(dt, hud.dpr);
   } else if (online) {
     canvas.style.cursor = world.active && !overlay ? 'none' : 'default';
-    while (pendingSnaps.length) { applySnapshot(world, pendingSnaps.shift(), mirror.ctx); lastSnapAt = now; }
+    const alpha = smooth.pump(now, world, mirror.ctx);
     if (!overlay) { readInput(); sendInput(now); }
     if (world.over) { overT += dt; if (overT > 1.5 && overlay !== 'end') { overlay = 'end'; ui.focus = 0; } }
-    updateLead(dt);
-    renderer.render(world, Math.min(1, (now - lastSnapAt) / (1000 / SNAP_HZ)), dt, hud);
+    smooth.lead(now, dt, alpha, world, !!overlay, net?.rtt || 60);
+    renderer.render(world, alpha, dt, hud);
     drawNotice(c, dt);
     drawPing(c);
     if (overlay) {
@@ -440,6 +417,7 @@ async function init() {
   window.renderer = renderer;
   window.ui = ui;
   window.__tick = (sec) => frame(last + sec * 1000); // avança um quadro manualmente (testes/depuração)
+  window.__now = () => frame(performance.now()); // um quadro no tempo real (depuração com a aba em segundo plano)
   window.__state = () => ({ mode, overlay, screen: ui.screen, online });
   // Atalhos para testes: ?arena=jardim&autostart  ·  ?watch (IA × IA)
   const arena = ARENAS[params.get('arena')] ? params.get('arena') : 'jardim';

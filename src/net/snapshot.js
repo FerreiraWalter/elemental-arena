@@ -1,4 +1,4 @@
-// Protocolo de estado do multiplayer. O SERVIDOR é autoritativo: ele roda a simulação (World) e, a 30 Hz,
+// Protocolo de estado do multiplayer. O SERVIDOR é autoritativo: ele roda a simulação (World) e, a 20 Hz,
 // envia snapshots. O cliente nunca simula combate: aplica o snapshot num "mundo espelho" (mesma arena,
 // mesmos monstros) e o renderizador desenha esse espelho. Assim todos veem exatamente o mesmo estado.
 //
@@ -14,7 +14,7 @@ import { SPECIES } from '../sim/species.js';
 import { ABILITIES } from '../sim/abilities.js';
 import { Monster } from '../sim/monster.js';
 
-export const SNAP_HZ = 30;
+export const SNAP_HZ = 20;
 const r1 = (v) => Math.round(v * 10) / 10;
 const r2 = (v) => Math.round(v * 100) / 100;
 const PH = ['idle', 'warn', 'active'];

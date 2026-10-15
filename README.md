@@ -20,7 +20,7 @@ Abra `http://localhost:8140`. O mesmo servidor entrega o jogo e as salas de mult
 
 Como funciona (servidor autoritativo):
 - O **servidor** simula tudo (mesmo `World` do modo local, a 60 Hz): movimento, golpes, projéteis, dano, status, evoluções, trocas, terreno, perigos e resultado. O cliente só envia **entradas** (direção, mira, botões, `switch`, `evolve`); o servidor valida e limita tudo (números fora do faixa, teclas inválidas, trocas proibidas, evolução sem energia).
-- A 30 Hz o servidor envia **snapshots** do estado; o navegador aplica num mundo espelho (nunca simula) e interpola. Todos veem o mesmo estado. Fogo, água, raízes, obstáculos destruídos e nuvens são sincronizados.
+- A 20 Hz o servidor envia **snapshots** do estado; o navegador aplica num mundo espelho (nunca simula) e interpola. Todos veem o mesmo estado. Fogo, água, raízes, obstáculos destruídos e nuvens são sincronizados.
 - **Desconexões:** no lobby a vaga é liberada (o anfitrião passa para o próximo); em partida, **a IA assume o time** de quem saiu e, se a queda foi de rede, o navegador **reconecta sozinho (~40 s) e devolve o controle**; sem jogadores a sala é encerrada. **Sala cheia**, **código inválido** e **partida já iniciada** mostram mensagens claras.
 - Para testar sozinho: `npm run bot -- CODIGO` entra na sala como um robô que joga de verdade pela rede (rode vários para completar um 2v2).
 
