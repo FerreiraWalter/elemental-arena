@@ -35,6 +35,7 @@ let mirror = null;
 let netPresses = [];
 let lastSent = 0;
 let lastSentKey = '';
+let lastMoveKey = '';
 const playerName = (() => {
   const gen = 'Jogador ' + ((Math.random() * 90 + 10) | 0);
   try { const n = localStorage.getItem('ea-name'); if (n) return n; localStorage.setItem('ea-name', gen); } catch { /* sem armazenamento */ }
@@ -169,9 +170,12 @@ function sendInput(now, neutral = false) {
     ? { t: 'input', mx: 0, my: 0, ax: inp.aim.x, ay: inp.aim.y, hp: false, hm: false, presses: [] }
     : { t: 'input', mx: inp.move.x, my: inp.move.y, ax: Math.round(inp.aim.x), ay: Math.round(inp.aim.y), hp: !!inp.held.primary, hm: !!inp.held.melee, presses: netPresses.splice(0, 6) };
   const key = JSON.stringify([msg.mx, msg.my, msg.hp, msg.hm, msg.ax >> 3, msg.ay >> 3]);
-  if (!msg.presses.length && key === lastSentKey && now - lastSent < 250) return;
-  if (!msg.presses.length && now - lastSent < 25) return;
-  lastSent = now; lastSentKey = key;
+  // Mudança de direção/botão vai NA HORA (toque curto de tecla não se perde); só a mira é limitada a ~40/s.
+  const moveKey = `${msg.mx},${msg.my},${msg.hp},${msg.hm}`;
+  const urgent = msg.presses.length > 0 || moveKey !== lastMoveKey;
+  if (!urgent && key === lastSentKey && now - lastSent < 250) return;
+  if (!urgent && now - lastSent < 25) return;
+  lastSent = now; lastSentKey = key; lastMoveKey = moveKey;
   net.send(msg);
 }
 

@@ -4,6 +4,7 @@ services:
     name: elemental-arena
     runtime: node
     plan: free
+    region: virginia # mais perto do Brasil que o padrão (oregon); só vale ao CRIAR o serviço
     buildCommand: npm ci --omit=dev
     startCommand: node server/server.js
     healthCheckPath: /health
