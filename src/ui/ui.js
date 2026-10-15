@@ -1,0 +1,574 @@
+import { SPECIES, ROSTER, formsOf } from '../sim/species.js';
+
+import { ARENAS, ARENA_ORDER } from '../arenas/index.js';
+import { ELEMENT_MULT, EVOLUTION, SWITCH } from '../config.js';
+import { World } from '../sim/world.js';
+import { Renderer, ELEMENT_COLOR } from '../render/renderer.js';
+import { makeCanvas } from '../render/pixel.js';
+
+// Telas fora da batalha (menu, time, arena, bestiário, opções) e menus sobre a batalha (pausa, fim).
+// Tudo desenhado no canvas no mesmo estilo pixel art; mouse e teclado funcionam em todas as telas.
+
+const FONT = '"Press Start 2P", monospace';
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta' };
+const KEY_LABEL = { primary: 'BOT. ESQ', melee: 'BOT. DIR', q: 'Q', e: 'E', f: 'F', dodge: 'ESPAÇO' };
+const DIFFICULTY = { easy: 'Fácil', normal: 'Normal', hard: 'Difícil' };
+const SETTINGS_KEY = 'elemental-arena-opcoes';
+
+export function loadSettings() {
+  const def = { shake: true, numbers: true, difficulty: 'normal', speed: 1, debug: false };
+  try { return { ...def, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch { return def; }
+}
+function saveSettings(s) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* armazenamento indisponível */ } }
+
+function text(c, s, x, y, size, color, align = 'left', u = 1, stroke = true) {
+  c.font = `${size * u}px ${FONT}`;
+  c.textAlign = align;
+  if (stroke) { c.lineWidth = 3 * u; c.strokeStyle = '#0c0806'; c.strokeText(s, x, y); }
+  c.fillStyle = color;
+  c.fillText(s, x, y);
+}
+function fitSize(c, s, size, maxW, u) {
+  let sz = size;
+  c.font = `${sz * u}px ${FONT}`;
+  while (sz > 4 && c.measureText(s).width > maxW) { sz -= 0.5; c.font = `${sz * u}px ${FONT}`; }
+  return sz;
+}
+function wrap(c, s, size, maxW, u) {
+  c.font = `${size * u}px ${FONT}`;
+  const words = s.split(' '), lines = [];
+  let line = '';
+  for (const w of words) {
+    const t = line ? line + ' ' + w : w;
+    if (c.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+function panel(c, x, y, w, h, u, border = '#5a4636', fill = 'rgba(18,12,10,0.92)') {
+  c.fillStyle = fill;
+  c.fillRect(x, y, w, h);
+  c.strokeStyle = border;
+  c.lineWidth = 2 * u;
+  c.strokeRect(x + u, y + u, w - 2 * u, h - 2 * u);
+  c.fillStyle = 'rgba(255,255,255,0.06)';
+  c.fillRect(x + 2 * u, y + 2 * u, w - 4 * u, 2 * u);
+}
+const matchText = (el) => {
+  const strong = Object.keys(ELEMENT_MULT[el]).find((k) => ELEMENT_MULT[el][k] > 1);
+  const weak = Object.keys(ELEMENT_MULT).find((k) => ELEMENT_MULT[k][el] > 1);
+  return `Forte contra ${ELEMENT_NAME[strong]} · fraco contra ${ELEMENT_NAME[weak]}`;
+};
+
+export class UI {
+  constructor(canvas, art, hooks) {
+    this.canvas = canvas;
+    this.c = canvas.getContext('2d');
+    this.art = art;
+    this.hooks = hooks; // { startBattle(cfg), applySettings(s) }
+    this.settings = loadSettings();
+    this.screen = 'menu';
+    this.time = 0;
+    this.mouse = { x: -1, y: -1 };
+    this.buttons = [];
+    this.focus = 0;
+    this.fade = 1;
+    this.team = [];
+    this.arena = null;
+    this.bestiaryLine = ROSTER[0];
+    this.previews = {};
+    this.overlay = null; // 'pause' | 'end' durante a batalha
+    this.demo = null;
+    this.flow = 'local'; // 'local' (contra a IA) | 'mp' (online)
+    // Estado do multiplayer (preenchido pelo main.js a partir das mensagens do servidor).
+    this.mp = { room: null, myId: null, error: null, errorT: 0, busy: false, code: '', status: '' };
+  }
+
+  mpError(msg) { this.mp.error = msg; this.mp.errorT = 5; this.mp.busy = false; }
+
+  go(screen) {
+    if (this.screen === screen) return;
+    this.screen = screen;
+    this.fade = 1;
+    this.focus = 0;
+    if (screen === 'arena') this.buildPreviews();
+  }
+
+  // Fundo animado: uma luta IA × IA de verdade numa arena aleatória.
+  ensureDemo() {
+    if (this.demo && !this.demo.world.over && this.demo.world.time < 90) return;
+    const arena = ARENA_ORDER[(Math.random() * 3) | 0];
+    const world = World.match((Math.random() * 1e6) | 0, undefined, null, arena);
+    if (!this.demo) this.demo = { renderer: new Renderer(makeCanvas(8, 8)) };
+    this.demo.renderer.art = this.art;
+    this.demo.renderer.shakeEnabled = false;
+    this.demo.renderer.reset(world);
+    this.demo.world = world;
+  }
+
+  buildPreviews() {
+    for (const id of ARENA_ORDER) {
+      if (this.previews[id]) continue;
+      const world = World.match(7, undefined, null, id);
+      for (let k = 0; k < 30; k++) world.step(1 / 60);
+      const r = new Renderer(makeCanvas(8, 8));
+      r.art = this.art;
+      r.reset(world);
+      r.render(world, 1, 1 / 60, { dpr: 1, embedded: true, speed: 1 });
+      const img = makeCanvas(640, 360);
+      img.getContext('2d').drawImage(r.low, 0, 0);
+      this.previews[id] = img;
+    }
+  }
+
+  // ───────────── Entrada ─────────────
+  pointerMove(x, y) { this.mouse = { x, y }; }
+  pointerDown(x, y) {
+    this.mouse = { x, y };
+    for (const b of this.buttons) {
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { if (!b.disabled) b.onClick(); return true; }
+    }
+    return false;
+  }
+  keyDown(code, key = '') {
+    if (this.screen === 'mp') {
+      if (/^[a-zA-Z0-9]$/.test(key) && !this.mp.busy) { if (this.mp.code.length < 4) this.mp.code += key.toUpperCase(); return true; }
+      if (code === 'Backspace' && this.mp.code) { this.mp.code = this.mp.code.slice(0, -1); return true; }
+      if (code === 'Enter' && this.mp.code.length === 4 && !this.mp.busy) { this.hooks.mpJoin(this.mp.code); return true; }
+    }
+    const list = this.buttons.filter((b) => !b.disabled && !b.noFocus);
+    if (!list.length) return false;
+    if (code === 'ArrowDown' || code === 'ArrowRight' || code === 'KeyS' || code === 'KeyD' || code === 'Tab') { this.focus = (this.focus + 1) % list.length; return true; }
+    if (code === 'ArrowUp' || code === 'ArrowLeft' || code === 'KeyW' || code === 'KeyA') { this.focus = (this.focus - 1 + list.length) % list.length; return true; }
+    if (code === 'Enter' || code === 'Space') { list[Math.min(this.focus, list.length - 1)].onClick(); return true; }
+    if (code === 'Escape' || code === 'Backspace') {
+      const back = this.buttons.find((b) => b.back);
+      if (back) { back.onClick(); return true; }
+    }
+    return false;
+  }
+
+  button(x, y, w, h, label, onClick, opts = {}) {
+    const b = { x, y, w, h, label, onClick, ...opts };
+    this.buttons.push(b);
+    return b;
+  }
+
+  drawButtons(u) {
+    const c = this.c;
+    const focusable = this.buttons.filter((b) => !b.disabled && !b.noFocus);
+    for (const b of this.buttons) {
+      if (b.custom) continue;
+      const hover = this.mouse.x >= b.x && this.mouse.x <= b.x + b.w && this.mouse.y >= b.y && this.mouse.y <= b.y + b.h;
+      const focused = focusable[this.focus] === b;
+      const on = (hover || focused) && !b.disabled;
+      c.fillStyle = b.disabled ? 'rgba(30,24,20,0.8)' : on ? (b.color || '#ffd23a') : 'rgba(24,16,12,0.92)';
+      c.fillRect(b.x, b.y, b.w, b.h);
+      c.strokeStyle = b.disabled ? '#3a302a' : b.color || '#ffd23a';
+      c.lineWidth = 2 * u;
+      c.strokeRect(b.x + u, b.y + u, b.w - 2 * u, b.h - 2 * u);
+      const sz = fitSize(c, b.label, b.size || 9, b.w - 16 * u, u);
+      text(c, b.label, b.x + b.w / 2, b.y + b.h / 2 + sz * u * 0.45, sz, b.disabled ? '#665' : on ? '#140c08' : '#f4ead0', 'center', u, !on);
+      if (on) text(c, '▶', b.x - 12 * u, b.y + b.h / 2 + 4 * u, 8, b.color || '#ffd23a', 'center', u);
+    }
+  }
+
+  // Desenha a arte de uma forma, animada, com escala inteira.
+  drawMonsterArt(def, x, y, scale, seed = 0, flip = false) {
+    const c = this.c;
+    if (!this.art.has(def.sprite)) return 0;
+    const f = this.art.render('ui:' + def.key + ':' + seed, def.sprite, { t: this.time + seed, walk: 0, moving: 0, crouch: 0, lunge: 0, dash: 0, dead: 0, seed, power: 0, flames: def.element === 'fire' ? (def.stage > 1 ? 6 : 3) : 0 });
+    c.save();
+    c.imageSmoothingEnabled = false;
+    c.translate(Math.round(x), Math.round(y));
+    if (flip) c.scale(-1, 1);
+    c.drawImage(f.canvas, -f.ax * scale, -f.ay * scale, f.w * scale, f.h * scale);
+    c.restore();
+    return f.top * scale;
+  }
+
+  // ───────────── Quadro ─────────────
+  render(dt, dpr) {
+    this.time += dt;
+    this.fade = Math.max(0, this.fade - dt * 4);
+    const c = this.c, W = this.canvas.width, H = this.canvas.height;
+    const u = Math.max(1, Math.min(W / 760, H / 520)) ;
+    this.buttons = [];
+    // Fundo: luta de demonstração escurecida.
+    this.ensureDemo();
+    const d = this.demo;
+    if (dt > 0) for (let k = 0; k < Math.round(dt * 60); k++) d.world.step(1 / 60);
+    d.renderer.render(d.world, 1, dt, { dpr, embedded: true, speed: 1 });
+    c.imageSmoothingEnabled = false;
+    const S = Math.max(W / 640, H / 360);
+    c.drawImage(d.renderer.low, (W - 640 * S) / 2, (H - 360 * S) / 2, 640 * S, 360 * S);
+    const grd = c.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.9);
+    grd.addColorStop(0, 'rgba(10,6,4,0.55)');
+    grd.addColorStop(1, 'rgba(10,6,4,0.9)');
+    c.fillStyle = grd;
+    c.fillRect(0, 0, W, H);
+    if (this.screen === 'menu') this.renderMenu(u, W, H);
+    else if (this.screen === 'team') this.renderTeam(u, W, H);
+    else if (this.screen === 'arena') this.renderArena(u, W, H);
+    else if (this.screen === 'bestiary') this.renderBestiary(u, W, H);
+    else if (this.screen === 'options') this.renderOptions(u, W, H);
+    else if (this.screen === 'mp') this.renderMp(u, W, H);
+    else if (this.screen === 'lobby') this.renderLobby(u, W, H);
+    if (this.mp.errorT > 0 && this.mp.error) {
+      this.mp.errorT -= dt;
+      const sz = fitSize(this.c, this.mp.error, 7, W - 30 * u, u);
+      this.c.fillStyle = 'rgba(80,10,16,0.92)';
+      this.c.fillRect(0, H - 56 * u, W, 24 * u);
+      text(this.c, this.mp.error, W / 2, H - 40 * u, sz, '#ffd0d0', 'center', u);
+    }
+    this.drawButtons(u);
+    if (this.fade > 0) { c.fillStyle = `rgba(0,0,0,${this.fade})`; c.fillRect(0, 0, W, H); }
+  }
+
+  renderMenu(u, W, H) {
+    const c = this.c;
+    const cx = W / 2;
+    // Título com as cores dos três elementos.
+    const title = 'ELEMENTAL ARENA';
+    const ts = Math.min(30, (W / u) / 22);
+    c.font = `${ts * u}px ${FONT}`;
+    const tw = c.measureText(title).width;
+    let x = cx - tw / 2;
+    const cols = ['#ff8a3a', '#ffb040', '#ffd860', '#8fd8ff', '#46b4ff', '#7ad84a', '#a8f070'];
+    for (let k = 0; k < title.length; k++) {
+      const ch = title[k];
+      const y = H * 0.15 + Math.sin(this.time * 3 + k * 0.5) * 3 * u;
+      text(this.c, ch, x, y, ts, cols[Math.floor((k / title.length) * cols.length)], 'left', u);
+      x += c.measureText(ch).width;
+    }
+    text(c, 'Duelo de monstros elementais em tempo real · 6 monstros · online até 2v2', cx, H * 0.15 + 22 * u, 6, '#e8dcc0', 'center', u);
+    // Os seis monstros (forma base) com as evoluções esmaecidas ao fundo.
+    const gap = Math.min(104 * u, W / 6.6);
+    ROSTER.forEach((key, k) => {
+      const base = SPECIES[key], evo = SPECIES[base.evolvesTo];
+      const mx = cx + (k - 2.5) * gap, my = H * 0.43;
+      this.c.globalAlpha = 0.3;
+      this.drawMonsterArt(evo, mx + 14 * u, my - 6 * u, Math.max(1, Math.round(1.3 * u)), k + 10);
+      this.c.globalAlpha = 1;
+      this.drawMonsterArt(base, mx - 4 * u, my + Math.sin(this.time * 2 + k) * 2 * u, Math.max(1, Math.round(2 * u)), k);
+      text(c, base.name.toUpperCase(), mx, my + 14 * u, fitSize(c, base.name.toUpperCase(), 6, gap - 4 * u, u), ELEMENT_COLOR[base.element], 'center', u);
+    });
+    const bw = 230 * u, bh = 28 * u;
+    let by = H * 0.56;
+    this.button(cx - bw / 2, by, bw, bh, 'JOGAR CONTRA A IA', () => { this.team = []; this.flow = 'local'; this.go('team'); }, { size: 10 });
+    by += bh + 8 * u;
+    this.button(cx - bw / 2, by, bw, bh, 'MULTIPLAYER ONLINE', () => { this.team = this.team.length === 3 ? this.team : []; this.flow = 'mp'; this.go('team'); }, { color: '#ff8a3a', size: 10 });
+    by += bh + 8 * u;
+    this.button(cx - bw / 2, by, bw, bh, 'MONSTROS', () => this.go('bestiary'), { color: '#7ad84a' });
+    by += bh + 8 * u;
+    this.button(cx - bw / 2, by, bw, bh, 'OPÇÕES', () => this.go('options'), { color: '#46b4ff' });
+    text(c, 'Mouse ou setas + Enter · arte dos monstros: folhas do usuário', cx, H - 12 * u, 5, '#887', 'center', u);
+  }
+
+  renderTeam(u, W, H) {
+    const c = this.c, cx = W / 2;
+    text(c, this.flow === 'mp' ? 'SEU TIME PARA O ONLINE' : 'MONTE SEU TIME', cx, 30 * u, 13, '#ffe9b0', 'center', u);
+    text(c, 'Escolha 3 dos 6 monstros, na ordem em que vão entrar (o 1º começa em campo).', cx, 46 * u, 6, '#d8ccb0', 'center', u);
+    const gap = 8 * u, top = 56 * u, btnH = 28 * u, btnY = H - btnH - 10 * u, orderH = 30 * u;
+    const avail = btnY - orderH - 10 * u - top;
+    const ch = Math.floor((avail - gap) / 2);
+    const cw = Math.min(Math.floor((W - 24 * u - gap * 2) / 3), 240 * u);
+    const x0 = cx - (cw * 3 + gap * 2) / 2;
+    ROSTER.forEach((key, k) => {
+      const def = SPECIES[key];
+      const x = x0 + (k % 3) * (cw + gap), y = top + Math.floor(k / 3) * (ch + gap);
+      const idx = this.team.indexOf(key);
+      const hover = this.mouse.x >= x && this.mouse.x <= x + cw && this.mouse.y >= y && this.mouse.y <= y + ch;
+      panel(c, x, y, cw, ch, u, idx >= 0 ? '#ffd23a' : hover ? ELEMENT_COLOR[def.element] : '#5a4636');
+      const model = this.art.models[def.sprite];
+      const scale = Math.max(1, Math.min(3, Math.floor((ch * 0.4) / (model ? model.h : 36))));
+      const artH = (model ? model.h : 36) * scale;
+      this.drawMonsterArt(def, x + cw / 2, y + 10 * u + artH, scale, k);
+      let ly = y + 10 * u + artH + 14 * u;
+      text(c, def.name.toUpperCase(), x + cw / 2, ly, fitSize(c, def.name.toUpperCase(), 8, cw - 14 * u, u), ELEMENT_COLOR[def.element], 'center', u);
+      ly += 11 * u;
+      text(c, `${ELEMENT_NAME[def.element]} · ${def.profile.personality}`, x + cw / 2, ly, fitSize(c, `${ELEMENT_NAME[def.element]} · ${def.profile.personality}`, 5, cw - 14 * u, u), '#bba', 'center', u);
+      ly += 11 * u;
+      for (const tr of def.traits) for (const line of wrap(c, '· ' + tr, 4.5, cw - 16 * u, u)) {
+        if (ly > y + ch - 16 * u) break;
+        text(c, line, x + 8 * u, ly, 4.5, '#e8dcc0', 'left', u);
+        ly += 8.5 * u;
+      }
+      text(c, `Evolui: ${SPECIES[def.evolvesTo].name}`, x + cw / 2, y + ch - 7 * u, fitSize(c, `Evolui: ${SPECIES[def.evolvesTo].name}`, 4.5, cw - 10 * u, u), '#e8b8ff', 'center', u);
+      if (idx >= 0) {
+        c.fillStyle = '#ffd23a';
+        c.fillRect(x + 6 * u, y + 6 * u, 20 * u, 20 * u);
+        text(c, String(idx + 1), x + 16 * u, y + 21 * u, 10, '#140c08', 'center', u, false);
+      }
+      this.button(x, y, cw, ch, '', () => {
+        if (idx >= 0) this.team.splice(idx, 1);
+        else if (this.team.length < 3) this.team.push(key);
+      }, { custom: true });
+    });
+    // Ordem escolhida.
+    const sy = top + 2 * ch + gap + 8 * u;
+    for (let k = 0; k < 3; k++) {
+      const key = this.team[k];
+      const x = cx + (k - 1) * 128 * u - 54 * u;
+      panel(c, x, sy, 108 * u, 22 * u, u, key ? ELEMENT_COLOR[SPECIES[key].element] : '#3a302a');
+      text(c, `${k + 1}º ${key ? SPECIES[key].name : '—'}`, x + 54 * u, sy + 15 * u, fitSize(c, `${k + 1}º ${key ? SPECIES[key].name : '—'}`, 6, 100 * u, u), key ? '#fff' : '#776', 'center', u);
+    }
+    this.button(cx - 250 * u, btnY, 150 * u, btnH, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
+    this.button(cx - 75 * u, btnY, 150 * u, btnH, 'ALEATÓRIO', () => { this.team = [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3); }, { color: '#e8b8ff' });
+    this.button(cx + 100 * u, btnY, 150 * u, btnH, 'CONTINUAR', () => this.go(this.flow === 'mp' ? 'mp' : 'arena'), { disabled: this.team.length !== 3 });
+  }
+
+  // ───────────── Multiplayer: criar / entrar em sala ─────────────
+  renderMp(u, W, H) {
+    const c = this.c, cx = W / 2, mp = this.mp;
+    text(c, 'MULTIPLAYER ONLINE', cx, 36 * u, 14, '#ffe9b0', 'center', u);
+    text(c, 'Seu time: ' + this.team.map((k) => SPECIES[k].name).join(' · '), cx, 54 * u, 6, '#d8ccb0', 'center', u);
+    const bw = 250 * u, bh = 30 * u;
+    let y = 82 * u;
+    text(c, 'CRIAR UMA SALA (você recebe um código para os amigos)', cx, y, 6, '#e8dcc0', 'center', u);
+    y += 10 * u;
+    this.button(cx - bw - 6 * u, y, bw, bh, 'CRIAR SALA 1v1', () => this.hooks.mpCreate('1v1'), { color: '#ff8a3a', disabled: mp.busy });
+    this.button(cx + 6 * u, y, bw, bh, 'CRIAR SALA 2v2', () => this.hooks.mpCreate('2v2'), { color: '#ff8a3a', disabled: mp.busy });
+    y += bh + 30 * u;
+    text(c, 'OU ENTRAR COM UM CÓDIGO (4 caracteres, digite no teclado)', cx, y, 6, '#e8dcc0', 'center', u);
+    y += 12 * u;
+    const bx = 44 * u, gp = 8 * u, tot = bx * 4 + gp * 3;
+    for (let k = 0; k < 4; k++) {
+      const x = cx - tot / 2 + k * (bx + gp);
+      panel(c, x, y, bx, bx, u, k === mp.code.length ? '#ffd23a' : '#5a4636');
+      const ch = mp.code[k];
+      if (ch) text(c, ch, x + bx / 2, y + bx * 0.66, 18, '#ffffff', 'center', u);
+      else if (k === mp.code.length && Math.floor(this.time * 2) % 2 === 0) text(c, '_', x + bx / 2, y + bx * 0.7, 16, '#ffd23a', 'center', u);
+    }
+    y += bx + 12 * u;
+    this.button(cx - 100 * u, y, 200 * u, bh, mp.busy ? 'CONECTANDO...' : 'ENTRAR NA SALA', () => this.hooks.mpJoin(mp.code), { color: '#7ad84a', disabled: mp.code.length !== 4 || mp.busy });
+    y += bh + 14 * u;
+    if (mp.status) text(c, mp.status, cx, y, 6, '#ffe066', 'center', u);
+    text(c, 'Todos precisam abrir o jogo pelo mesmo endereço do servidor.', cx, H - 52 * u, 5, '#887', 'center', u);
+    this.button(cx - 75 * u, H - 40 * u, 150 * u, 28 * u, 'VOLTAR', () => { this.go('team'); }, { back: true, color: '#aa9' });
+  }
+
+  // ───────────── Multiplayer: sala de espera ─────────────
+  renderLobby(u, W, H) {
+    const c = this.c, cx = W / 2, mp = this.mp;
+    const room = mp.room;
+    if (!room) { this.go('mp'); return; }
+    const isHost = room.host === mp.myId;
+    const me = room.players.find((p) => p.id === mp.myId);
+    text(c, 'SALA', cx - 70 * u, 34 * u, 10, '#bba', 'center', u);
+    text(c, room.code, cx + 20 * u, 36 * u, 22, '#ffe066', 'center', u);
+    text(c, 'Passe o código (ou o link) aos amigos para eles entrarem.', cx, 52 * u, 6, '#d8ccb0', 'center', u);
+    const copied = mp.copiedAt && performance.now() - mp.copiedAt < 2000;
+    this.button(cx + 90 * u, 20 * u, 150 * u, 22 * u, copied ? 'LINK COPIADO!' : 'COPIAR LINK', () => { this.hooks.mpCopyLink?.(room.code).then((ok) => { mp.copiedAt = ok ? performance.now() : 0; if (!ok) this.mpError('Não foi possível copiar. Passe o código: ' + room.code); }); }, { color: '#46b4ff', size: 7 });
+    const arenaName = ARENAS[room.arena].name;
+    // Configuração (só o anfitrião muda).
+    let y = 62 * u;
+    const bw = 190 * u, bh = 24 * u;
+    this.button(cx - bw - 6 * u, y, bw, bh, `MODO: ${room.mode}`, () => this.hooks.mpSend({ t: 'config', mode: room.mode === '1v1' ? '2v2' : '1v1' }), { disabled: !isHost, color: '#ff8a3a', size: 8 });
+    const ai = ARENA_ORDER.indexOf(room.arena);
+    this.button(cx + 6 * u, y, bw, bh, `ARENA: ${arenaName}`, () => this.hooks.mpSend({ t: 'config', arena: ARENA_ORDER[(ai + 1) % ARENA_ORDER.length] }), { disabled: !isHost, color: '#46b4ff', size: 7 });
+    y += bh + 6 * u;
+    if (!isHost) text(c, 'Só o anfitrião muda o modo e a arena.', cx, y + 6 * u, 5, '#887', 'center', u);
+    y += 14 * u;
+    // Vagas por equipe.
+    const half = room.seats / 2;
+    const sw = Math.min(250 * u, (W - 40 * u) / 2 - 6 * u), sh = Math.min(54 * u, (H - y - 120 * u) / half - 6 * u);
+    for (let side = 0; side < 2; side++) {
+      const x = cx + (side === 0 ? -sw - 6 * u : 6 * u);
+      text(c, side === 0 ? 'EQUIPE A' : 'EQUIPE B', x + sw / 2, y + 8 * u, 8, side === 0 ? '#ffd23a' : '#ff4a5a', 'center', u);
+      for (let k = 0; k < half; k++) {
+        const seat = side === 0 ? (room.mode === '1v1' ? 0 : k) : (room.mode === '1v1' ? 1 : half + k);
+        const p = room.players.find((q) => q.seat === seat);
+        const sy = y + 14 * u + k * (sh + 6 * u);
+        panel(c, x, sy, sw, sh, u, p ? (p.ready ? '#7ad84a' : '#8a7a5a') : '#3a302a');
+        if (p) {
+          text(c, p.name + (p.id === room.host ? ' ★' : '') + (p.id === mp.myId ? ' (você)' : ''), x + 8 * u, sy + 14 * u, fitSize(c, p.name + ' (você) ★', 7, sw - 16 * u, u), p.connected ? '#fff' : '#888', 'left', u);
+          text(c, p.ready ? 'PRONTO' : 'esperando...', x + sw - 8 * u, sy + 14 * u, 6, p.ready ? '#7ad84a' : '#bba', 'right', u);
+          (p.team || []).forEach((key, i) => this.drawMonsterArt(SPECIES[key], x + 30 * u + i * 44 * u, sy + sh - 6 * u, 1, i + seat));
+          if (!p.team) text(c, 'sem time', x + 8 * u, sy + sh - 10 * u, 5, '#887', 'left', u);
+        } else {
+          text(c, 'vaga livre', x + sw / 2, sy + sh / 2 - 2 * u, 7, '#776', 'center', u);
+          text(c, 'clique para sentar aqui', x + sw / 2, sy + sh / 2 + 9 * u, 5, '#665', 'center', u);
+          this.button(x, sy, sw, sh, '', () => this.hooks.mpSend({ t: 'seat', seat }), { custom: true });
+        }
+      }
+    }
+    const by = H - 40 * u;
+    this.button(cx - 270 * u, by, 120 * u, 28 * u, 'SAIR', () => this.hooks.mpLeave(), { back: true, color: '#aa9' });
+    this.button(cx - 130 * u, by, 150 * u, 28 * u, me?.ready ? 'DESMARCAR' : 'PRONTO', () => this.hooks.mpSend({ t: 'ready', ready: !me?.ready }), { color: '#7ad84a', disabled: !me?.team });
+    const allReady = room.players.length === room.seats && room.players.every((p) => p.team && (p.ready || p.id === room.host));
+    this.button(cx + 40 * u, by, 220 * u, 28 * u, 'INICIAR PARTIDA', () => this.hooks.mpSend({ t: 'start' }), { disabled: !isHost || !allReady, color: '#ff8a3a' });
+    const need = room.seats - room.players.length;
+    text(c, need > 0 ? `Aguardando ${need} jogador${need > 1 ? 'es' : ''}...` : allReady ? 'Todos prontos!' : 'Aguardando todos ficarem prontos...', cx, by - 8 * u, 6, '#ffe066', 'center', u);
+  }
+
+  renderArena(u, W, H) {
+    const c = this.c, cx = W / 2;
+    text(c, 'ESCOLHA A ARENA', cx, 30 * u, 13, '#ffe9b0', 'center', u);
+    const ids = ARENA_ORDER;
+    // Layout que sempre cabe: botões fixos no rodapé, descrição acima deles, cartões no espaço restante.
+    const btnH = 28 * u, btnY = H - btnH - 10 * u;
+    const descH = 24 * u;
+    const top = 44 * u, bottom = btnY - descH - 8 * u;
+    const gap = 8 * u;
+    const cols = 2, rows = 2;
+    const ch = Math.floor((bottom - top - gap * (rows - 1)) / rows);
+    const cwMax = Math.floor((Math.min(W - 24 * u, 1100 * u) - gap * (cols - 1)) / cols);
+    const textH = 56 * u; // nome + subtítulo + 2 linhas de recursos
+    // Prévia 16:9 que cabe na altura e na largura do cartão.
+    let ph = Math.min(ch - textH - 8 * u, (cwMax - 12 * u) * 9 / 16);
+    ph = Math.max(40 * u, ph);
+    const pw = ph * 16 / 9;
+    const cw = Math.min(cwMax, pw + 12 * u);
+    const x0 = cx - (cw * cols + gap * (cols - 1)) / 2;
+    ids.forEach((id, k) => {
+      const A = ARENAS[id];
+      const x = x0 + (k % cols) * (cw + gap), y = top + Math.floor(k / cols) * (ch + gap);
+      const sel = this.arena === id;
+      const hover = this.mouse.x >= x && this.mouse.x <= x + cw && this.mouse.y >= y && this.mouse.y <= y + ch;
+      panel(c, x, y, cw, ch, u, sel ? '#ffd23a' : hover ? '#c8b080' : '#5a4636');
+      if (this.previews[id]) { c.imageSmoothingEnabled = false; c.drawImage(this.previews[id], x + (cw - pw) / 2, y + 6 * u, pw, ph); }
+      const ty = y + ph + 20 * u;
+      text(c, A.name.toUpperCase(), x + 8 * u, ty, fitSize(c, A.name.toUpperCase(), 7, cw - 16 * u, u), sel ? '#ffd23a' : '#f4ead0', 'left', u);
+      text(c, A.subtitle, x + 8 * u, ty + 11 * u, fitSize(c, A.subtitle, 5, cw - 16 * u, u), '#bba', 'left', u);
+      // Recursos em linhas curtas (cortadas ao espaço disponível).
+      let ly = ty + 22 * u;
+      for (const f of A.features) {
+        if (ly > y + ch - 4 * u) break;
+        text(c, '· ' + f, x + 8 * u, ly, fitSize(c, '· ' + f, 4.5, cw - 16 * u, u), '#e8dcc0', 'left', u);
+        ly += 8.5 * u;
+      }
+      this.button(x, y, cw, ch, '', () => { this.arena = id; }, { custom: true });
+    });
+    const A = this.arena && ARENAS[this.arena];
+    const desc = A ? A.description : 'Clique em uma arena para selecioná-la.';
+    wrap(c, desc, 5.5, Math.min(W - 40 * u, 700 * u), u).slice(0, 2).forEach((ln, k) => text(c, ln, cx, bottom + 16 * u + k * 10 * u, 5.5, '#e8dcc0', 'center', u));
+    this.button(cx - 170 * u, btnY, 150 * u, btnH, 'VOLTAR', () => this.go('team'), { back: true, color: '#aa9' });
+    this.button(cx + 20 * u, btnY, 150 * u, btnH, 'LUTAR!', () => this.hooks.startBattle({ team: [...this.team], arena: this.arena }), { disabled: !this.arena, color: '#ff8a3a' });
+  }
+
+  renderBestiary(u, W, H) {
+    const c = this.c, cx = W / 2;
+    text(c, 'MONSTROS', cx, 34 * u, 14, '#ffe9b0', 'center', u);
+    // Abas das linhas evolutivas.
+    ROSTER.forEach((key, k) => {
+      const def = SPECIES[key];
+      const bw = Math.min(112 * u, (W - 40 * u) / 6 - 4 * u);
+      const b = this.button(cx + (k - 2.5) * (bw + 4 * u) - bw / 2, 44 * u, bw, 22 * u, def.name.toUpperCase(), () => { this.bestiaryLine = key; }, { color: ELEMENT_COLOR[def.element], size: 6 });
+      if (this.bestiaryLine === key) b.label = '★ ' + b.label;
+    });
+    const [base, evo] = formsOf(this.bestiaryLine);
+    const pw = Math.min(360 * u, (W - 40 * u) / 2 - 6 * u), ph = H - 130 * u;
+    [base, evo].forEach((def, k) => {
+      const x = cx + (k === 0 ? -pw - 6 * u : 6 * u), y = 74 * u;
+      const other = k === 0 ? evo : base;
+      panel(c, x, y, pw, ph, u, ELEMENT_COLOR[def.element]);
+      this.drawMonsterArt(def, x + 56 * u, y + 112 * u, Math.max(1, Math.round((def.stage > 1 ? 1.8 : 2.6) * u)), k);
+      text(c, def.name.toUpperCase(), x + 112 * u, y + 20 * u, fitSize(c, def.name.toUpperCase(), 8, pw - 120 * u, u), ELEMENT_COLOR[def.element], 'left', u);
+      text(c, `${def.title} · ${ELEMENT_NAME[def.element]} · ${def.profile.personality}`, x + 112 * u, y + 32 * u, fitSize(c, `${def.title} · ${ELEMENT_NAME[def.element]} · ${def.profile.personality}`, 5, pw - 120 * u, u), '#bba', 'left', u);
+      // Atributos em barras, com a diferença para a outra forma.
+      const stats = [['Vida', def.hp, 260, other.hp], ['Velocidade', def.speed, 80, other.speed], ['Tamanho', def.radius, 14, other.radius]];
+      stats.forEach(([name, v, max, ov], j) => {
+        const sy = y + 46 * u + j * 13 * u;
+        text(c, name, x + 112 * u, sy + 6 * u, 5, '#e8dcc0', 'left', u);
+        const bx = x + 180 * u, bw = pw - 230 * u;
+        c.fillStyle = '#2a201a'; c.fillRect(bx, sy, bw, 7 * u);
+        c.fillStyle = ELEMENT_COLOR[def.element]; c.fillRect(bx, sy, bw * Math.min(1, v / max), 7 * u);
+        const diff = v - ov;
+        text(c, `${v}${k === 1 && diff ? (diff > 0 ? ' +' : ' ') + diff : ''}`, bx + bw + 4 * u, sy + 6 * u, 5, k === 1 && diff ? (diff > 0 ? '#7ae07a' : '#ff8a8a') : '#fff', 'left', u);
+      });
+      let ly = y + 98 * u;
+      for (const tr of def.traits) for (const line of wrap(c, '· ' + tr, 5, pw - 20 * u, u)) { text(c, line, x + 10 * u, ly, 5, '#f4ead0', 'left', u); ly += 9 * u; }
+      ly += 4 * u;
+      text(c, 'HABILIDADES', x + 10 * u, ly, 6, '#ffe9b0', 'left', u);
+      ly += 12 * u;
+      const otherIds = new Set(other.abilities.map((a) => a.id));
+      for (const [slot, id] of Object.entries(def.controls)) {
+        const ab = def.abilities.find((a) => a.id === id);
+        const tag = k === 1 && !otherIds.has(id) ? ' [NOVA]' : '';
+        text(c, `${KEY_LABEL[slot]}`, x + 10 * u, ly, 5, '#ffd23a', 'left', u);
+        text(c, ab.name + tag, x + 66 * u, ly, 5, tag ? '#e8b8ff' : '#fff', 'left', u);
+        ly += 8 * u;
+        for (const line of wrap(c, ab.desc || '', 4.5, pw - 76 * u, u)) { if (ly < y + ph - 24 * u) text(c, line, x + 66 * u, ly, 4.5, '#bba', 'left', u); ly += 8 * u; }
+        ly += 2 * u;
+      }
+      text(c, matchText(def.element), x + pw / 2, y + ph - 10 * u, 5, '#9ae070', 'center', u);
+    });
+    text(c, `Evolução: energia por dano causado/recebido, esquivas e interações com o terreno. Ao chegar a ${EVOLUTION.threshold}, aperte G (uma vez por partida; a vida mantém a porcentagem).`, cx, H - 44 * u, fitSize(c, 'Evolução: energia por dano causado/recebido, esquivas e interações com o terreno. Ao chegar a 150, aperte G (uma vez por partida; a vida mantém a porcentagem).', 5, W - 30 * u, u), '#e8b8ff', 'center', u);
+    this.button(cx - 75 * u, H - 34 * u, 150 * u, 26 * u, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
+  }
+
+  renderOptions(u, W, H) {
+    const c = this.c, cx = W / 2;
+    const S = this.settings;
+    text(c, 'OPÇÕES', cx, 40 * u, 14, '#ffe9b0', 'center', u);
+    const pw = Math.min(520 * u, W - 40 * u);
+    const x = cx - pw / 2;
+    let y = 60 * u;
+    const set = (k, v) => { S[k] = v; saveSettings(S); this.hooks.applySettings(S); };
+    const row = (label, value, onClick) => {
+      text(c, label, x, y + 17 * u, 7, '#f4ead0', 'left', u);
+      this.button(x + pw - 170 * u, y, 170 * u, 26 * u, value, onClick, { size: 7, color: '#46b4ff' });
+      y += 34 * u;
+    };
+    row('Tremor de tela', S.shake ? 'LIGADO' : 'DESLIGADO', () => set('shake', !S.shake));
+    row('Números de dano', S.numbers ? 'LIGADO' : 'DESLIGADO', () => set('numbers', !S.numbers));
+    const diffs = Object.keys(DIFFICULTY);
+    row('Dificuldade da IA', DIFFICULTY[S.difficulty].toUpperCase(), () => set('difficulty', diffs[(diffs.indexOf(S.difficulty) + 1) % diffs.length]));
+    const speeds = [0.5, 1, 1.5];
+    row('Velocidade do jogo', `${S.speed}x`, () => set('speed', speeds[(speeds.indexOf(S.speed) + 1) % speeds.length]));
+    row('Visão da IA (depuração)', S.debug ? 'LIGADA' : 'DESLIGADA', () => set('debug', !S.debug));
+    text(c, 'Esta versão ainda não tem áudio.', x, y + 8 * u, 5, '#998', 'left', u);
+    y += 22 * u;
+    panel(c, x, y, pw, H - y - 50 * u, u);
+    const ctl = [
+      ['WASD / setas', 'mover'], ['Mouse', 'mirar'], ['Botão esquerdo', 'ataque à distância'], ['Botão direito', 'corpo a corpo'],
+      ['Q / E / F', 'poderes especiais'], ['Espaço / Shift', 'esquiva'], ['1 2 3 / Tab', `trocar monstro (recarga ${SWITCH.cooldown}s)`],
+      ['G', 'evoluir (com a energia cheia)'], ['P / Esc', 'pausar'], ['I', 'visão da IA'],
+    ];
+    let ly = y + 18 * u;
+    for (const [k, v] of ctl) {
+      if (ly > H - 56 * u) break;
+      text(c, k, x + 14 * u, ly, 6, '#ffd23a', 'left', u);
+      text(c, v, x + 170 * u, ly, 6, '#e8dcc0', 'left', u);
+      ly += 13 * u;
+    }
+    this.button(cx - 75 * u, H - 40 * u, 150 * u, 28 * u, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
+  }
+
+  // Menus sobre a batalha (pausa / fim de partida). Retorna true se algo foi desenhado.
+  renderOverlay(kind, u, W, H, world, actions) {
+    const c = this.c, cx = W / 2;
+    this.buttons = [];
+    const bw = 200 * u, bh = 28 * u;
+    if (kind === 'pause') {
+      c.fillStyle = 'rgba(8,4,2,0.7)';
+      c.fillRect(0, 0, W, H);
+      text(c, 'PAUSADO', cx, H * 0.32, 16, '#ffe9b0', 'center', u);
+      let y = H * 0.4;
+      this.button(cx - bw / 2, y, bw, bh, 'CONTINUAR', actions.resume); y += bh + 10 * u;
+      this.button(cx - bw / 2, y, bw, bh, 'REINICIAR PARTIDA', actions.rematch, { color: '#ff8a3a' }); y += bh + 10 * u;
+      this.button(cx - bw / 2, y, bw, bh, 'MENU PRINCIPAL', actions.menu, { color: '#aa9' });
+    } else if (kind === 'online') {
+      c.fillStyle = 'rgba(8,4,2,0.55)';
+      c.fillRect(0, 0, W, H);
+      text(c, 'MENU (a partida continua)', cx, H * 0.32, 12, '#ffe9b0', 'center', u);
+      let y = H * 0.4;
+      this.button(cx - bw / 2, y, bw, bh, 'CONTINUAR', actions.resume); y += bh + 10 * u;
+      this.button(cx - bw / 2, y, bw, bh, 'SAIR DA PARTIDA', actions.leaveOnline, { color: '#ff8a3a' });
+    } else if (kind === 'end') {
+      const y = H * 0.66;
+      if (actions.online) {
+        const host = actions.isHost();
+        this.button(cx - bw - 6 * u, y, bw, bh, host ? 'VOLTAR À SALA' : 'AGUARDANDO ANFITRIÃO', actions.backToRoom, { color: '#ff8a3a', disabled: !host, size: 7 });
+        this.button(cx + 6 * u, y, bw, bh, 'SAIR DA SALA', actions.leaveOnline, { color: '#aa9' });
+      } else {
+        this.button(cx - bw * 1.5 - 10 * u, y, bw, bh, 'REVANCHE', actions.rematch, { color: '#ff8a3a' });
+        this.button(cx - bw / 2, y, bw, bh, 'OUTRO TIME/ARENA', actions.reselect, { color: '#7ad84a' });
+        this.button(cx + bw / 2 + 10 * u, y, bw, bh, 'MENU PRINCIPAL', actions.menu, { color: '#aa9' });
+      }
+    }
+    this.drawButtons(u);
+    void world;
+  }
+}

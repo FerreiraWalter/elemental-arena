@@ -1,0 +1,694 @@
+import { angleDiff, angleTo, pointSeg, clamp, turnToward } from '../core/math.js';
+import { TILE } from '../config.js';
+import { T } from './tiles.js';
+
+// Cada habilidade tem fases reais: preparação (windup, telegrafada), ativa (hitbox/efeito) e recuperação.
+// move = multiplicador de deslocamento em cada fase; turn = rad/s de rastreio da mira em windup/ativa.
+
+function meleeTick(w, m, a, { reach, arc, dmg, kb, stun, extra }) {
+  for (const t of w.enemiesOf(m)) {
+    if (a.hit.has(t.id)) continue;
+    const d = Math.hypot(t.x - m.x, t.y - m.y);
+    if (d > m.r + reach + t.r) continue;
+    const slack = d > 0 ? Math.asin(Math.min(1, t.r / d)) : Math.PI;
+    if (Math.abs(angleDiff(a.aim, angleTo(m, t))) > arc / 2 + slack) continue;
+    if (!w.los(m.x, m.y, t.x, t.y, { noSteam: true })) continue;
+    a.hit.add(t.id);
+    w.damage(t, dmg, m, { kb, ang: a.aim, stun, element: m.element, ...extra });
+  }
+}
+
+function inCone(ox, oy, aim, len, half, x, y, r = 0) {
+  const d = Math.hypot(x - ox, y - oy);
+  if (d > len + r) return false;
+  if (d < 1) return true;
+  const slack = Math.asin(Math.min(1, r / d));
+  return Math.abs(angleDiff(aim, Math.atan2(y - oy, x - ox))) <= half + slack;
+}
+
+function every(a, dt, period) {
+  a.data.acc = (a.data.acc || 0) + dt;
+  if (a.data.acc < period) return false;
+  a.data.acc -= period;
+  return true;
+}
+
+export const ABILITIES = {
+  // ───────────── FOGO ─────────────
+  ember: {
+    id: 'ember', name: 'Brasa', element: 'fire', kind: 'projectile',
+    cooldown: 0.95, windup: 0.2, active: 0.02, recovery: 0.2,
+    move: [0.55, 0.55, 0.8], turn: [9, 0], range: 200, speed: 250,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'ember', owner: m, ang: a.aim, speed: 250, r: 3, range: 205, dmg: 9, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 3, aimPoint: a.aimPoint });
+    },
+  },
+  claw: {
+    id: 'claw', name: 'Garra Ígnea', element: 'fire', kind: 'melee',
+    cooldown: 0.9, windup: 0.15, active: 0.1, recovery: 0.24,
+    move: [0.3, 1, 0.4], turn: [10, 2], range: 16,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 120; m.ky += Math.sin(a.aim) * 120; },
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 16, arc: 2.0, dmg: 14, kb: 150, stun: 0.25, extra: { burn: 1.8 } }); },
+  },
+  flameWave: {
+    id: 'flameWave', name: 'Sopro Ígneo', element: 'fire', kind: 'cone',
+    cooldown: 7, windup: 0.45, active: 0.9, recovery: 0.35, superArmor: true,
+    move: [0.15, 0.25, 0.5], turn: [6, 1.4], range: 72, len: 72, half: 0.5,
+    onActiveTick(w, m, a, dt) { this.coneTick(w, m, a, dt, 2); },
+    coneTick(w, m, a, dt, dmg) {
+      if (!every(a, dt, 0.1)) return;
+      const ox = m.x + Math.cos(a.aim) * m.r * 0.8, oy = m.y + Math.sin(a.aim) * m.r * 0.8 - 2;
+      const { len, half } = this;
+      for (const t of w.enemiesOf(m)) {
+        if (inCone(ox, oy, a.aim, len, half, t.x, t.y, t.r) && w.los(ox, oy, t.x, t.y, { noSteam: true }))
+          w.damage(t, dmg, m, { dot: true, burn: 2.2, element: 'fire', push: 25, ang: a.aim });
+      }
+      const tr = w.terrain;
+      const c0 = Math.floor((ox - len) / TILE), c1 = Math.floor((ox + len) / TILE);
+      const r0 = Math.floor((oy - len) / TILE), r1 = Math.floor((oy + len) / TILE);
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+        const i = tr.idx(c, r);
+        if (i < 0) continue;
+        const x = c * TILE + 4, y = r * TILE + 4;
+        if (!inCone(ox, oy, a.aim, len, half, x, y)) continue;
+        if (w.rng() > 0.35) continue;
+        if (!w.los(ox, oy, x, y, { noSteam: true })) continue;
+        w.igniteTile(i, 1.4, m);
+      }
+      for (const o of w.obstacles) if (o.flammable && !o.destroyed && inCone(ox, oy, a.aim, len, half, o.x, o.y, o.r)) {
+        w.igniteObstacle(o, m);
+        w.hurtObstacle(o, 1.5, m);
+      }
+      for (const p of w.projectiles) if (p.kind === 'waterBolt' && p.team !== m.team && inCone(ox, oy, a.aim, len, half, p.x, p.y)) w.clash(p, null);
+    },
+  },
+  fireDash: {
+    id: 'fireDash', name: 'Investida Flamejante', element: 'fire', kind: 'dash',
+    cooldown: 6.5, windup: 0.22, active: 0.3, recovery: 0.25, superArmor: true,
+    move: [0.1, 1, 0.3], turn: [8, 0], range: 110, dash: { speed: 360 },
+    onActiveTick(w, m, a) {
+      w.igniteTile(w.terrain.at(m.x, m.y), 2.6, m);
+      for (const t of w.enemiesOf(m)) {
+        if (a.hit.has(t.id) || Math.hypot(t.x - m.x, t.y - m.y) > m.r + t.r + 3) continue;
+        a.hit.add(t.id);
+        w.damage(t, 10, m, { kb: 190, ang: a.aim, stun: 0.3, burn: 2.2, element: 'fire' });
+      }
+    },
+  },
+  meteor: {
+    id: 'meteor', name: 'Meteoro', element: 'fire', kind: 'lob',
+    cooldown: 10, windup: 0.35, active: 0.05, recovery: 0.3,
+    move: [0.3, 0.3, 0.7], turn: [8, 0], range: 230, radius: 30, flight: 0.95,
+    onActiveStart(w, m, a) {
+      const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
+      const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 40, this.range);
+      const tx = clamp(m.x + Math.cos(ang) * d, 10, 630), ty = clamp(m.y + Math.sin(ang) * d, 10, 350);
+      w.spawnProjectile({ kind: 'meteor', owner: m, lob: true, x: m.x, y: m.y - 8, tx, ty, flight: this.flight, radius: this.radius, dmg: 22 });
+    },
+  },
+  hop: {
+    id: 'hop', name: 'Salto Lateral', element: 'fire', kind: 'dodge',
+    cooldown: 3.4, windup: 0, active: 0.17, recovery: 0.1,
+    move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 330, invuln: true },
+  },
+
+  // ───────────── ÁGUA ─────────────
+  waterBolt: {
+    id: 'waterBolt', name: "Jato d'Água", element: 'water', kind: 'projectile',
+    cooldown: 0.9, windup: 0.2, active: 0.02, recovery: 0.2,
+    move: [0.55, 0.55, 0.8], turn: [9, 0], range: 220, speed: 265,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'waterBolt', owner: m, ang: a.aim, speed: 265, r: 3, range: 225, dmg: 7, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 3, aimPoint: a.aimPoint });
+    },
+  },
+  headbutt: {
+    id: 'headbutt', name: 'Cabeçada', element: 'water', kind: 'melee',
+    cooldown: 1.1, windup: 0.16, active: 0.1, recovery: 0.26,
+    move: [0.3, 1, 0.4], turn: [10, 2], range: 14,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 130; m.ky += Math.sin(a.aim) * 130; },
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 14, arc: 1.8, dmg: 12, kb: 200, stun: 0.25, extra: { wet: 2 } }); },
+  },
+  hydroBeam: {
+    id: 'hydroBeam', name: 'Hidro-Raio', element: 'water', kind: 'beam',
+    cooldown: 9, windup: 0.6, active: 1.1, recovery: 0.45, superArmor: true,
+    move: [0.15, 0.1, 0.5], turn: [3, 0.85], range: 190, width: 5,
+    beamEnd(w, m, a) {
+      const ox = m.x + Math.cos(a.aim) * (m.r + 1), oy = m.y + Math.sin(a.aim) * (m.r + 1) - 3;
+      const L = w.raycast(ox, oy, a.aim, this.range);
+      return { ox, oy, ex: ox + Math.cos(a.aim) * L.len, ey: oy + Math.sin(a.aim) * L.len, hit: L.hit };
+    },
+    onActiveTick(w, m, a, dt) {
+      const b = this.beamEnd(w, m, a);
+      a.data.beam = b;
+      const ca = Math.cos(a.aim), sa = Math.sin(a.aim);
+      for (const t of w.enemiesOf(m)) {
+        if (pointSeg(t.x, t.y, b.ox, b.oy, b.ex, b.ey).d > this.width + t.r) continue;
+        w.damage(t, 14 * dt, m, { dot: true, wet: 2.5, element: 'water' });
+        t.kx += ca * 520 * dt; t.ky += sa * 520 * dt;
+      }
+      const L = Math.hypot(b.ex - b.ox, b.ey - b.oy);
+      if (every(a, dt, 0.05)) for (let s = 0; s <= L; s += 5) w.douseArea(b.ox + ca * s, b.oy + sa * s, 5, 7, m);
+      if (b.hit && b.hit.burning > 0) w.douseObstacle(b.hit, m);
+      for (const p of w.projectiles) if (p.kind === 'ember' && p.team !== m.team && pointSeg(p.x, p.y, b.ox, b.oy, b.ex, b.ey).d < this.width + p.r) w.clash(p, null);
+    },
+  },
+  whirlpool: {
+    id: 'whirlpool', name: 'Redemoinho', element: 'water', kind: 'aoe',
+    cooldown: 9, windup: 0.3, active: 1.3, recovery: 0.35, superArmor: true,
+    move: [0.2, 0.35, 0.5], turn: [0, 0], range: 46, radius: 46,
+    onActiveTick(w, m, a, dt) {
+      const R = this.radius * Math.min(1, a.t / 0.35);
+      a.data.R = R;
+      m.status.burn = 0;
+      for (const t of w.enemiesOf(m)) {
+        const dx = t.x - m.x, dy = t.y - m.y, d = Math.hypot(dx, dy) || 1;
+        if (d > R + t.r) continue;
+        w.damage(t, 14 * dt, m, { dot: true, wet: 2, element: 'water' });
+        t.kx += (dx / d * 300 - dy / d * 160) * dt * 3;
+        t.ky += (dy / d * 300 + dx / d * 160) * dt * 3;
+      }
+      if (every(a, dt, 0.1)) {
+        const tr = w.terrain;
+        const c0 = Math.floor((m.x - R) / TILE), c1 = Math.floor((m.x + R) / TILE);
+        const r0 = Math.floor((m.y - R) / TILE), r1 = Math.floor((m.y + R) / TILE);
+        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+          const i = tr.idx(c, r);
+          if (i >= 0 && Math.hypot(c * TILE + 4 - m.x, r * TILE + 4 - m.y) <= R) w.douseTile(i, 8, m);
+        }
+        for (const o of w.obstacles) if (o.burning > 0 && Math.hypot(o.x - m.x, o.y - m.y) < R + o.r) w.douseObstacle(o, m);
+      }
+      for (const p of w.projectiles) if (p.kind === 'ember' && p.team !== m.team && Math.hypot(p.x - m.x, p.y - m.y) < R) w.clash(p, null);
+    },
+  },
+  shellRoll: {
+    id: 'shellRoll', name: 'Rolagem de Casco', element: 'water', kind: 'dodge',
+    cooldown: 3.2, windup: 0, active: 0.26, recovery: 0.12,
+    move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 300, invuln: true },
+    onActiveTick(w, m) { w.douseTile(w.terrain.at(m.x, m.y), 5, m); },
+  },
+
+  // ───────────── PLANTA: controladora, prende e recupera terreno ─────────────
+  seedShot: {
+    id: 'seedShot', name: 'Semente Afiada', element: 'plant', kind: 'projectile',
+    cooldown: 0.8, windup: 0.18, active: 0.02, recovery: 0.2,
+    move: [0.55, 0.55, 0.8], turn: [9, 0], range: 200, speed: 240,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'seed', owner: m, ang: a.aim, speed: 240, r: 3, range: 200, dmg: 8, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 3, aimPoint: a.aimPoint });
+    },
+  },
+  vineWhip: {
+    id: 'vineWhip', name: 'Chicote de Vinha', element: 'plant', kind: 'melee', vine: true,
+    cooldown: 1.3, windup: 0.18, active: 0.12, recovery: 0.26,
+    move: [0.3, 0.5, 0.4], turn: [10, 2], range: 26,
+    // Knockback negativo: puxa o alvo para perto.
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 26, arc: 1.3, dmg: 10, kb: -170, stun: 0.3, extra: {} }); },
+  },
+  rootSnare: {
+    id: 'rootSnare', name: 'Raízes', element: 'plant', kind: 'lob',
+    cooldown: 8, windup: 0.3, active: 0.05, recovery: 0.3,
+    move: [0.4, 0.4, 0.7], turn: [8, 0], range: 170, radius: 22, flight: 0.6,
+    onActiveStart(w, m, a) {
+      const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
+      const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 20, this.range);
+      const tx = clamp(m.x + Math.cos(ang) * d, 10, 630), ty = clamp(m.y + Math.sin(ang) * d, 10, 350);
+      w.spawnProjectile({ kind: 'roots', owner: m, lob: true, flat: true, x: tx, y: ty, tx, ty, flight: this.flight, radius: this.radius, dmg: 8 });
+    },
+  },
+  overgrowth: {
+    id: 'overgrowth', name: 'Crescimento', element: 'plant', kind: 'aoe', harmless: true,
+    cooldown: 12, windup: 0.4, active: 0.8, recovery: 0.3, superArmor: true,
+    move: [0.2, 0.2, 0.6], turn: [0, 0], range: 52, radius: 52,
+    onActiveTick(w, m, a, dt) {
+      m.hp = Math.min(m.maxHp, m.hp + 15 * dt);
+      for (const ally of w.alliesOf(m)) if (Math.hypot(ally.x - m.x, ally.y - m.y) < this.radius + ally.r) ally.hp = Math.min(ally.maxHp, ally.hp + 14 * dt);
+      if (!every(a, dt, 0.1)) return;
+      const R = this.radius * Math.min(1, a.t / 0.5);
+      const tr = w.terrain;
+      for (let k = 0; k < 14; k++) {
+        const ang = w.rng() * Math.PI * 2, d = Math.sqrt(w.rng()) * R;
+        const i = tr.at(m.x + Math.cos(ang) * d, m.y + Math.sin(ang) * d);
+        if (i >= 0 && tr.growGrass(i)) { m.stats.grown = (m.stats.grown || 0) + 1; w.emit({ type: 'grow', x: tr.cx(i), y: tr.cy(i) }); }
+      }
+    },
+  },
+  leafDash: {
+    id: 'leafDash', name: 'Folha ao Vento', element: 'plant', kind: 'dodge',
+    cooldown: 3, windup: 0, active: 0.24, recovery: 0.1,
+    move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 300, invuln: true },
+  },
+
+  // ═════════════ FORMAS EVOLUÍDAS ═════════════
+  // ───── Brasalisco Ascendido: pressão ofensiva, rastros de lava, investida explosiva ─────
+  magmaBall: {
+    id: 'magmaBall', name: 'Bola de Magma', element: 'fire', kind: 'projectile',
+    cooldown: 1.15, windup: 0.24, active: 0.02, recovery: 0.22,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 210, speed: 215,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'magma', owner: m, ang: a.aim, speed: 215, r: 4, range: 210, dmg: 12, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 4, aimPoint: a.aimPoint });
+    },
+  },
+  volcanicClaw: {
+    id: 'volcanicClaw', name: 'Garra Vulcânica', element: 'fire', kind: 'melee',
+    cooldown: 1.0, windup: 0.18, active: 0.12, recovery: 0.26,
+    move: [0.3, 1, 0.4], turn: [10, 2], range: 20,
+    onActiveStart(w, m, a) {
+      m.kx += Math.cos(a.aim) * 140; m.ky += Math.sin(a.aim) * 140;
+      // A garra deixa um arco de chão em brasa à frente.
+      for (const off of [-0.6, 0, 0.6]) w.igniteTile(w.terrain.at(m.x + Math.cos(a.aim + off) * (m.r + 14), m.y + Math.sin(a.aim + off) * (m.r + 14)), 2.5, m);
+    },
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 20, arc: 2.2, dmg: 18, kb: 210, stun: 0.3, extra: { burn: 2.5 } }); },
+  },
+  infernoBreath: {
+    id: 'infernoBreath', name: 'Sopro Infernal', element: 'fire', kind: 'cone',
+    cooldown: 7.5, windup: 0.45, active: 1.0, recovery: 0.4, superArmor: true,
+    move: [0.15, 0.25, 0.5], turn: [6, 1.3], range: 88, len: 88, half: 0.55,
+    onActiveTick(w, m, a, dt) { ABILITIES.flameWave.coneTick.call(this, w, m, a, dt, 2.6); },
+  },
+  eruptionDash: {
+    id: 'eruptionDash', name: 'Erupção', element: 'fire', kind: 'dash',
+    cooldown: 7, windup: 0.25, active: 0.3, recovery: 0.35, superArmor: true,
+    move: [0.1, 1, 0.3], turn: [8, 0], range: 120, dash: { speed: 400 },
+    onActiveTick(w, m, a) {
+      w.igniteTile(w.terrain.at(m.x, m.y), 3, m);
+      for (const t of w.enemiesOf(m)) {
+        if (a.hit.has(t.id) || Math.hypot(t.x - m.x, t.y - m.y) > m.r + t.r + 3) continue;
+        a.hit.add(t.id);
+        w.damage(t, 14, m, { kb: 200, ang: a.aim, stun: 0.3, burn: 2.5, element: 'fire' });
+      }
+    },
+    // No fim da investida, uma explosão em área.
+    onEnd(w, m) {
+      w.emit({ type: 'explosion', x: m.x, y: m.y, r: 34, src: m });
+      for (const t of w.enemiesOf(m)) {
+        const d = Math.hypot(t.x - m.x, t.y - m.y);
+        if (d > 34 + t.r) continue;
+        w.damage(t, 16, m, { tag: 'eruptionDash', kb: 230, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.3, burn: 3, element: 'fire' });
+      }
+      w.igniteArea(m.x, m.y, 26, 3, m);
+    },
+  },
+  heavyHop: {
+    id: 'heavyHop', name: 'Salto Pesado', element: 'fire', kind: 'dodge',
+    cooldown: 4.8, windup: 0, active: 0.18, recovery: 0.16,
+    move: [1, 1, 0.5], turn: [0, 0], dash: { speed: 300, invuln: true },
+  },
+
+  // ───── Hidrocasco Abissal: mobilidade, posicionamento e defesa ─────
+  abyssBolt: {
+    id: 'abyssBolt', name: 'Jato Abissal', element: 'water', kind: 'projectile',
+    cooldown: 0.8, windup: 0.18, active: 0.02, recovery: 0.18,
+    move: [0.6, 0.6, 0.85], turn: [9, 0], range: 230, speed: 290,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'waterBolt', owner: m, ang: a.aim, speed: 290, r: 3, range: 235, dmg: 8, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 4, aimPoint: a.aimPoint });
+    },
+  },
+  abyssPincer: {
+    id: 'abyssPincer', name: 'Pinça Abissal', element: 'water', kind: 'melee',
+    cooldown: 1.1, windup: 0.16, active: 0.1, recovery: 0.24,
+    move: [0.3, 1, 0.4], turn: [10, 2], range: 18,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 130; m.ky += Math.sin(a.aim) * 130; },
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 18, arc: 1.9, dmg: 14, kb: 240, stun: 0.25, extra: { wet: 3 } }); },
+  },
+  tidalWave: {
+    id: 'tidalWave', name: 'Maré Esmagadora', element: 'water', kind: 'projectile',
+    cooldown: 7, windup: 0.45, active: 0.05, recovery: 0.35, superArmor: true,
+    move: [0.2, 0.2, 0.6], turn: [5, 0], range: 200, speed: 170, wave: true,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'wave', owner: m, ang: a.aim, speed: 170, r: 12, range: 200, dmg: 13, pierce: true, x: m.x + Math.cos(a.aim) * (m.r + 6), y: m.y + Math.sin(a.aim) * (m.r + 6), aimPoint: a.aimPoint });
+    },
+  },
+  bubbleShield: {
+    id: 'bubbleShield', name: 'Bolha Protetora', element: 'water', kind: 'buff',
+    cooldown: 16, windup: 0.15, active: 0.05, recovery: 0.15,
+    move: [0.6, 0.6, 0.8], turn: [0, 0],
+    onActiveStart(w, m) {
+      m.status.shield = 5;
+      m.shieldHp = 30;
+      m.status.burn = 0;
+      w.emit({ type: 'shield', m, x: m.x, y: m.y });
+    },
+  },
+  abyssCurrent: {
+    id: 'abyssCurrent', name: 'Corrente Abissal', element: 'water', kind: 'dodge',
+    cooldown: 2.6, windup: 0, active: 0.32, recovery: 0.1,
+    move: [1, 1, 0.7], turn: [0, 0], dash: { speed: 360, invuln: true },
+    onActiveTick(w, m) { w.douseArea(m.x, m.y, 6, 6, m); },
+  },
+
+  // ───── Brotossauro Ancestral: controle de área e armadilhas, pouca mobilidade ─────
+  thornShot: {
+    id: 'thornShot', name: 'Espinho Ancestral', element: 'plant', kind: 'projectile',
+    cooldown: 0.85, windup: 0.22, active: 0.02, recovery: 0.22,
+    move: [0.5, 0.5, 0.8], turn: [9, 0], range: 200, speed: 230,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'thorn', owner: m, ang: a.aim, speed: 230, r: 3, range: 200, dmg: 12, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 4, aimPoint: a.aimPoint });
+    },
+  },
+  ancientWhip: {
+    id: 'ancientWhip', name: 'Açoite de Raiz', element: 'plant', kind: 'melee', vine: true,
+    cooldown: 1.5, windup: 0.22, active: 0.14, recovery: 0.3,
+    move: [0.3, 0.4, 0.4], turn: [10, 2], range: 34,
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 34, arc: 1.2, dmg: 13, kb: -220, stun: 0.35, extra: {} }); },
+  },
+  ancientRoots: {
+    id: 'ancientRoots', name: 'Raízes Ancestrais', element: 'plant', kind: 'lob',
+    cooldown: 9, windup: 0.35, active: 0.05, recovery: 0.35,
+    move: [0.3, 0.3, 0.6], turn: [8, 0], range: 180, radius: 32, flight: 0.65,
+    onActiveStart(w, m, a) {
+      const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
+      const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 20, this.range);
+      const tx = clamp(m.x + Math.cos(ang) * d, 10, 630), ty = clamp(m.y + Math.sin(ang) * d, 10, 350);
+      w.spawnProjectile({ kind: 'roots', owner: m, lob: true, flat: true, x: tx, y: ty, tx, ty, flight: this.flight, radius: this.radius, dmg: 12, rootTime: 2.4, rootTiles: 7 });
+    },
+  },
+  ancientGrove: {
+    id: 'ancientGrove', name: 'Bosque Antigo', element: 'plant', kind: 'aoe', harmless: true,
+    cooldown: 14, windup: 0.45, active: 0.8, recovery: 0.35, superArmor: true,
+    move: [0.1, 0.1, 0.5], turn: [0, 0], range: 52, radius: 52,
+    onActiveStart(w, m, a) {
+      // Ergue uma barreira de mata fechada entre a planta e o alvo: bloqueia passagem e tiros, mas queima.
+      const foe = w.enemiesOf(m)[0];
+      const ang = foe ? Math.atan2(foe.y - m.y, foe.x - m.x) : a.aim;
+      const cx = m.x + Math.cos(ang) * 34, cy = m.y + Math.sin(ang) * 34;
+      for (let k = -2; k <= 2; k++) {
+        const x = cx - Math.sin(ang) * k * 14, y = cy + Math.cos(ang) * k * 14;
+        const i = w.terrain.at(x, y);
+        if (i < 0 || w.terrain.isWater(i) || w.blocked(x, y, 6) || w.monsters.some((o) => o.alive && Math.hypot(o.x - x, o.y - y) < o.r + 8)) continue;
+        const o = w.addObstacle('thicket', x, y, 7);
+        o.life = 10;
+        w.emit({ type: 'grow', x, y, big: true });
+      }
+    },
+    onActiveTick(w, m, a, dt) {
+      m.hp = Math.min(m.maxHp, m.hp + 12 * dt);
+      if (!every(a, dt, 0.1)) return;
+      const R = this.radius * Math.min(1, a.t / 0.5);
+      for (let k = 0; k < 16; k++) {
+        const ang = w.rng() * Math.PI * 2, d = Math.sqrt(w.rng()) * R;
+        const i = w.terrain.at(m.x + Math.cos(ang) * d, m.y + Math.sin(ang) * d);
+        if (i >= 0 && w.terrain.growGrass(i, w.rng() < 0.3 ? T.THORNS : T.GRASS)) { m.stats.grown = (m.stats.grown || 0) + 1; w.emit({ type: 'grow', x: w.terrain.cx(i), y: w.terrain.cy(i) }); }
+      }
+    },
+  },
+  barkStep: {
+    id: 'barkStep', name: 'Passo de Casca', element: 'plant', kind: 'dodge',
+    cooldown: 5, windup: 0, active: 0.22, recovery: 0.16,
+    move: [1, 1, 0.5], turn: [0, 0], dash: { speed: 240, invuln: true },
+  },
+  // ═════════════ NOVOS MONSTROS ═════════════
+  // ───── Ouriflama (fogo): ágil, investida com rastro de fogo ─────
+  quillShot: {
+    id: 'quillShot', name: 'Espinhos em Brasa', element: 'fire', kind: 'projectile',
+    cooldown: 0.9, windup: 0.18, active: 0.02, recovery: 0.2,
+    move: [0.6, 0.6, 0.85], turn: [9, 0], range: 190, speed: 270,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'ember', owner: m, ang: a.aim, speed: 270, r: 3, range: 190, dmg: 6, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 3, aimPoint: a.aimPoint });
+    },
+  },
+  prick: {
+    id: 'prick', name: 'Espetada Ardente', element: 'fire', kind: 'melee',
+    cooldown: 0.85, windup: 0.13, active: 0.1, recovery: 0.22,
+    move: [0.3, 1, 0.4], turn: [10, 2], range: 15,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 130; m.ky += Math.sin(a.aim) * 130; },
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 15, arc: 1.9, dmg: 9, kb: 130, stun: 0.2, extra: { burn: 1.8 } }); },
+  },
+  quillBurst: {
+    id: 'quillBurst', name: 'Eriçar', element: 'fire', kind: 'cone',
+    cooldown: 5.5, windup: 0.3, active: 0.3, recovery: 0.3,
+    move: [0.2, 0.3, 0.5], turn: [6, 0], range: 48, len: 48, half: 1.5,
+    onActiveStart(w, m, a) {
+      for (const t of w.enemiesOf(m)) {
+        if (inCone(m.x, m.y, a.aim, this.len, this.half, t.x, t.y, t.r)) w.damage(t, 14, m, { tag: 'quillBurst', kb: 210, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.25, burn: 1.8, element: 'fire' });
+      }
+      w.igniteArea(m.x + Math.cos(a.aim) * 22, m.y + Math.sin(a.aim) * 22, 20, 2, m);
+    },
+  },
+  blazeRush: {
+    id: 'blazeRush', name: 'Investida Incandescente', element: 'fire', kind: 'dash',
+    cooldown: 8, windup: 0.22, active: 0.4, recovery: 0.3, superArmor: true,
+    move: [0.1, 1, 0.3], turn: [8, 0], range: 130, dash: { speed: 325 },
+    // Rastro largo de chão em brasa por todo o caminho.
+    onActiveTick(w, m, a) {
+      const px = -Math.sin(a.aim) * 7, py = Math.cos(a.aim) * 7;
+      for (const k of [-1, 0, 1]) w.igniteTile(w.terrain.at(m.x + px * k, m.y + py * k), 4.5, m);
+      for (const t of w.enemiesOf(m)) {
+        if (a.hit.has(t.id) || Math.hypot(t.x - m.x, t.y - m.y) > m.r + t.r + 3) continue;
+        a.hit.add(t.id);
+        w.damage(t, 8, m, { tag: 'blazeRush', kb: 180, ang: a.aim, stun: 0.25, burn: 2.2, element: 'fire' });
+      }
+    },
+  },
+  curlRoll: {
+    id: 'curlRoll', name: 'Rolo Eriçado', element: 'fire', kind: 'dodge',
+    cooldown: 3.2, windup: 0, active: 0.24, recovery: 0.1,
+    move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 310, invuln: true },
+    onActiveTick(w, m) { w.igniteTile(w.terrain.at(m.x, m.y), 1.6, m); },
+  },
+  // ───── Ouriflama Vulcânico: entra na terra e levanta o inimigo ─────
+  magmaQuill: {
+    id: 'magmaQuill', name: 'Espinho de Magma', element: 'fire', kind: 'projectile',
+    cooldown: 0.8, windup: 0.18, active: 0.02, recovery: 0.2,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 215, speed: 255,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'magma', owner: m, ang: a.aim, speed: 255, r: 4, range: 215, dmg: 9, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 4, aimPoint: a.aimPoint });
+    },
+  },
+  burrow: {
+    id: 'burrow', name: 'Mergulho Vulcânico', element: 'fire', kind: 'dash', burrow: true,
+    cooldown: 12, windup: 0.35, active: 1.15, recovery: 0.5, superArmor: true,
+    move: [0.1, 1, 0.3], turn: [8, 0], range: 190, dash: { speed: 175, invuln: true },
+    // Debaixo da terra: invulnerável, persegue o alvo e irrompe embaixo dele, lançando-o para cima.
+    onActiveTick(w, m, a, dt) {
+      const foe = w.enemiesOf(m).sort((p, q) => Math.hypot(p.x - m.x, p.y - m.y) - Math.hypot(q.x - m.x, q.y - m.y))[0];
+      if (foe) {
+        a.dir = turnToward(a.dir, Math.atan2(foe.y - m.y, foe.x - m.x), 5 * dt);
+        a.aim = a.dir;
+        if (Math.hypot(foe.x - m.x, foe.y - m.y) < m.r + foe.r + 5) a.t = this.active; // chegou: irrompe agora
+      }
+      if (every(a, dt, 0.07)) w.emit({ type: 'dig', x: m.x, y: m.y });
+    },
+    onEnd(w, m) {
+      w.emit({ type: 'burrowEruption', x: m.x, y: m.y, r: 30, m });
+      for (const t of w.enemiesOf(m)) {
+        const d = Math.hypot(t.x - m.x, t.y - m.y);
+        if (d > 30 + t.r) continue;
+        w.damage(t, 16, m, { tag: 'burrow', kb: 90, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.9, lift: 0.9, burn: 2.5, element: 'fire' });
+      }
+      w.igniteArea(m.x, m.y, 24, 3.5, m);
+    },
+  },
+
+  // ───── Gotapus (água): bolhas, tinta e jato ─────
+  bubbleShot: {
+    id: 'bubbleShot', name: 'Bolhas', element: 'water', kind: 'projectile',
+    cooldown: 0.85, windup: 0.18, active: 0.02, recovery: 0.2,
+    move: [0.6, 0.6, 0.85], turn: [9, 0], range: 210, speed: 255,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'waterBolt', owner: m, ang: a.aim, speed: 255, r: 3, range: 215, dmg: 9, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 3, aimPoint: a.aimPoint });
+    },
+  },
+  tentacleSlap: {
+    id: 'tentacleSlap', name: 'Chicotada', element: 'water', kind: 'melee',
+    cooldown: 1.0, windup: 0.16, active: 0.1, recovery: 0.24,
+    move: [0.3, 1, 0.4], turn: [10, 2], range: 22,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 100; m.ky += Math.sin(a.aim) * 100; },
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 22, arc: 2.6, dmg: 13, kb: 150, stun: 0.22, extra: { wet: 2 } }); },
+  },
+  inkCloud: {
+    id: 'inkCloud', name: 'Nuvem de Tinta', element: 'water', kind: 'buff',
+    cooldown: 11, windup: 0.15, active: 0.05, recovery: 0.25,
+    move: [0.6, 0.6, 0.8], turn: [0, 0],
+    onActiveStart(w, m) { w.puffInk(m.x, m.y, 28); },
+  },
+  jetDash: {
+    id: 'jetDash', name: 'Jato Propulsor', element: 'water', kind: 'dodge',
+    cooldown: 2.8, windup: 0, active: 0.28, recovery: 0.1,
+    move: [1, 1, 0.7], turn: [0, 0], dash: { speed: 340, invuln: true },
+    onActiveStart(w, m) { w.puffInk(m.x, m.y, 14); },
+    onActiveTick(w, m) { w.douseTile(w.terrain.at(m.x, m.y), 5, m); },
+  },
+  // ───── Leviapus: agarra, cobre tudo de tinta, domina o campo ─────
+  tentacleSweep: {
+    id: 'tentacleSweep', name: 'Varredura de Tentáculos', element: 'water', kind: 'melee',
+    cooldown: 1.1, windup: 0.2, active: 0.12, recovery: 0.26,
+    move: [0.3, 0.7, 0.4], turn: [10, 2], range: 30,
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 30, arc: 3.4, dmg: 18, kb: 290, stun: 0.3, extra: { wet: 3 } }); },
+  },
+  krakenGrip: {
+    id: 'krakenGrip', name: 'Abraço do Kraken', element: 'water', kind: 'melee',
+    cooldown: 8, windup: 0.3, active: 0.14, recovery: 0.32, superArmor: true,
+    move: [0.2, 0.3, 0.4], turn: [8, 2], range: 44,
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 44, arc: 1.1, dmg: 17, kb: -320, stun: 0.45, extra: { wet: 3, root: 1.5 } }); },
+  },
+  inkStorm: {
+    id: 'inkStorm', name: 'Tempestade de Tinta', element: 'water', kind: 'buff',
+    cooldown: 14, windup: 0.25, active: 0.05, recovery: 0.3,
+    move: [0.4, 0.4, 0.6], turn: [0, 0],
+    onActiveStart(w, m) {
+      w.puffInk(m.x, m.y, 36);
+      for (const t of w.enemiesOf(m)) w.puffInk(t.x, t.y, 30); // cega o inimigo onde ele estiver
+      for (let k = 0; k < 3; k++) { const an = w.rng() * 6.28; w.puffInk(m.x + Math.cos(an) * 34, m.y + Math.sin(an) * 34, 24); }
+    },
+  },
+
+  // ───── Mantifolha (planta): ágil, saltos longos e esporos ─────
+  leafBlade: {
+    id: 'leafBlade', name: 'Lâmina de Folha', element: 'plant', kind: 'projectile',
+    cooldown: 0.75, windup: 0.15, active: 0.02, recovery: 0.18,
+    move: [0.6, 0.6, 0.85], turn: [9, 0], range: 200, speed: 285,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'seed', owner: m, ang: a.aim, speed: 285, r: 3, range: 200, dmg: 8, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 3, aimPoint: a.aimPoint });
+    },
+  },
+  scytheSlash: {
+    id: 'scytheSlash', name: 'Foice Verde', element: 'plant', kind: 'melee',
+    cooldown: 0.85, windup: 0.14, active: 0.1, recovery: 0.22,
+    move: [0.3, 1, 0.4], turn: [10, 2], range: 26,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 110; m.ky += Math.sin(a.aim) * 110; },
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 26, arc: 2.1, dmg: 12, kb: 110, stun: 0.2, extra: {} }); },
+  },
+  sporePuff: {
+    id: 'sporePuff', name: 'Nuvem de Esporos', element: 'plant', kind: 'cone',
+    cooldown: 6, windup: 0.3, active: 0.6, recovery: 0.3, superArmor: true,
+    move: [0.25, 0.4, 0.5], turn: [6, 1.4], range: 58, len: 58, half: 0.6,
+    onActiveTick(w, m, a, dt) { ABILITIES.sporePuff.sporeTick.call(this, w, m, a, dt, 1.4, 1.0); },
+    // Pequeno dano contínuo e enraíza quem entra no cone (uma vez por uso).
+    sporeTick(w, m, a, dt, dmg, rootT) {
+      if (!every(a, dt, 0.1)) return;
+      for (const t of w.enemiesOf(m)) {
+        if (!inCone(m.x, m.y, a.aim, this.len, this.half, t.x, t.y, t.r) || !w.los(m.x, m.y, t.x, t.y, { noSteam: true })) continue;
+        w.damage(t, dmg, m, { dot: true, element: 'plant', tag: this.id, push: 12, ang: a.aim });
+        if (!a.hit.has(t.id)) { a.hit.add(t.id); t.status.root = Math.max(t.status.root, rootT); w.emit({ type: 'rooted', m: t, x: t.x, y: t.y }); }
+      }
+    },
+  },
+  longLeap: {
+    id: 'longLeap', name: 'Salto Longo', element: 'plant', kind: 'dash', leap: true,
+    cooldown: 5.5, windup: 0.22, active: 0.46, recovery: 0.2,
+    move: [0.1, 1, 0.4], turn: [8, 0], range: 155, dash: { speed: 335, invuln: true },
+    onEnd(w, m) {
+      w.emit({ type: 'leapLand', x: m.x, y: m.y, r: 24, m });
+      for (const t of w.enemiesOf(m)) if (Math.hypot(t.x - m.x, t.y - m.y) < 24 + t.r) w.damage(t, 10, m, { tag: 'longLeap', kb: 170, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.25, element: 'plant' });
+      w.sprout(m.x, m.y, T.GRASS, m);
+    },
+  },
+  wingDash: {
+    id: 'wingDash', name: 'Voo Curto', element: 'plant', kind: 'dodge',
+    cooldown: 2.8, windup: 0, active: 0.22, recovery: 0.1,
+    move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 300, invuln: true },
+  },
+  // ───── Silvamante: salto celeste, tempestade de lâminas ─────
+  mantisClaw: {
+    id: 'mantisClaw', name: 'Garras de Mantis', element: 'plant', kind: 'melee',
+    cooldown: 0.95, windup: 0.17, active: 0.11, recovery: 0.24,
+    move: [0.3, 0.8, 0.4], turn: [10, 2], range: 32,
+    onActiveTick(w, m, a) { meleeTick(w, m, a, { reach: 32, arc: 2.3, dmg: 17, kb: -160, stun: 0.3, extra: {} }); },
+  },
+  bladeStorm: {
+    id: 'bladeStorm', name: 'Tempestade de Lâminas', element: 'plant', kind: 'projectile',
+    cooldown: 1.3, windup: 0.22, active: 0.02, recovery: 0.24,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 190, speed: 270,
+    onActiveStart(w, m, a) {
+      for (const off of [-0.24, 0, 0.24]) {
+        const ang = a.aim + off;
+        w.spawnProjectile({ kind: 'seed', owner: m, ang, speed: 270, r: 3, range: 190, dmg: 9, x: m.x + Math.cos(ang) * (m.r + 2), y: m.y + Math.sin(ang) * (m.r + 2) - 3 });
+      }
+    },
+  },
+  sporeStorm: {
+    id: 'sporeStorm', name: 'Tempestade de Esporos', element: 'plant', kind: 'cone',
+    cooldown: 9, windup: 0.4, active: 0.9, recovery: 0.35, superArmor: true,
+    move: [0.15, 0.3, 0.5], turn: [6, 1.2], range: 80, len: 80, half: 0.8,
+    onActiveTick(w, m, a, dt) { ABILITIES.sporePuff.sporeTick.call(this, w, m, a, dt, 2.4, 1.4); },
+  },
+  skyLeap: {
+    id: 'skyLeap', name: 'Salto Celeste', element: 'plant', kind: 'dash', leap: true,
+    cooldown: 8, windup: 0.3, active: 0.6, recovery: 0.3, superArmor: true,
+    move: [0.1, 1, 0.3], turn: [8, 0], range: 250, dash: { speed: 420, invuln: true },
+    onEnd(w, m) {
+      w.emit({ type: 'rootsErupt', x: m.x, y: m.y, r: 34, src: m });
+      for (const t of w.enemiesOf(m)) {
+        if (Math.hypot(t.x - m.x, t.y - m.y) > 34 + t.r) continue;
+        w.damage(t, 18, m, { tag: 'skyLeap', kb: 270, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.3, element: 'plant', root: 1.3 });
+      }
+      for (let k = 0; k < 24; k++) {
+        const an = w.rng() * 6.28, d = w.rng() * 34;
+        w.terrain.growRoots(w.terrain.at(m.x + Math.cos(an) * d, m.y + Math.sin(an) * d), 4);
+      }
+    },
+  },
+};
+
+// Variações de habilidades existentes, com nomes próprios.
+ABILITIES.lavaBite = { ...ABILITIES.volcanicClaw, id: 'lavaBite', name: 'Mordida de Lava' };
+ABILITIES.quillStorm = {
+  ...ABILITIES.infernoBreath, id: 'quillStorm', name: 'Tempestade de Espinhos', len: 80, range: 80,
+  onActiveTick(w, m, a, dt) { ABILITIES.flameWave.coneTick.call(this, w, m, a, dt, 2.4); },
+};
+ABILITIES.volcanoRush = {
+  ...ABILITIES.blazeRush, id: 'volcanoRush', name: 'Investida Vulcânica', cooldown: 9, dash: { speed: 380 }, range: 150,
+  onEnd: ABILITIES.eruptionDash.onEnd,
+};
+
+// Descrições curtas (bestiário e HUD).
+const DESC = {
+  ember: 'Projétil de fogo; queima o alvo e incendeia onde cai.',
+  claw: 'Golpe corpo a corpo com avanço; deixa o alvo em chamas.',
+  flameWave: 'Cone de fogo canalizado; incendeia a vegetação à frente.',
+  fireDash: 'Investida que deixa um rastro de chão em brasa.',
+  meteor: 'Bola de fogo em arco com área marcada no chão.',
+  hop: 'Salto lateral com invulnerabilidade breve.',
+  waterBolt: 'Jato que molha o alvo e apaga o fogo pelo caminho.',
+  headbutt: 'Cabeçada com empurrão forte; molha o alvo.',
+  hydroBeam: 'Raio d’água contínuo que empurra e apaga o terreno.',
+  whirlpool: 'Redemoinho ao redor: empurra, molha e apaga chamas.',
+  shellRoll: 'Rolagem no casco com invulnerabilidade.',
+  seedShot: 'Semente afiada; onde cai, brota grama.',
+  vineWhip: 'Chicote que puxa o inimigo para perto.',
+  rootSnare: 'Raízes brotam na área marcada e prendem quem estiver lá.',
+  overgrowth: 'Faz crescer grama ao redor e cura a planta.',
+  leafDash: 'Esquiva rápida levada pelo vento.',
+  magmaBall: 'Projétil pesado que deixa uma poça de lava ardendo.',
+  volcanicClaw: 'Garra mais forte que incendeia um arco de chão à frente.',
+  infernoBreath: 'Cone de fogo maior, mais longo e mais quente.',
+  eruptionDash: 'Investida que explode em área ao terminar.',
+  heavyHop: 'Esquiva mais lenta de recarregar (pouca defesa).',
+  abyssBolt: 'Jato mais rápido e de maior alcance.',
+  abyssPincer: 'Pinçada que empurra longe e encharca.',
+  tidalWave: 'Onda larga que atravessa e arrasta o inimigo.',
+  bubbleShield: 'Bolha que absorve 30 de dano por 5 s.',
+  abyssCurrent: 'Esquiva longa que molha o caminho.',
+  thornShot: 'Espinho que faz brotar espinheiro onde cai.',
+  ancientWhip: 'Açoite de longo alcance que puxa com força.',
+  ancientRoots: 'Raízes maiores e mais duradouras (recarga longa).',
+  ancientGrove: 'Ergue uma barreira de mata fechada e espalha vegetação.',
+  barkStep: 'Esquiva curta e lenta (pouca mobilidade).',
+};
+for (const [id, d] of Object.entries(DESC)) ABILITIES[id].desc = d;
+
+ABILITIES.quillShot.desc = 'Espinhos em brasa; queimam e incendeiam onde caem.';
+ABILITIES.prick.desc = 'Espetada rápida que deixa o alvo em chamas.';
+ABILITIES.quillBurst.desc = 'Eriça os espinhos num leque curto: empurra e queima.';
+ABILITIES.blazeRush.desc = 'Investida que deixa um LARGO rastro de fogo no chão.';
+ABILITIES.curlRoll.desc = 'Esquiva enrolado em bola, deixando brasas.';
+ABILITIES.magmaQuill.desc = 'Espinho de magma; deixa lava ardendo onde cai.';
+ABILITIES.burrow.desc = 'Mergulha na terra (invulnerável), persegue o alvo e irrompe embaixo dele, LEVANTANDO-O no ar.';
+ABILITIES.lavaBite.desc = 'Mordida que incendeia um arco de chão à frente.';
+ABILITIES.quillStorm.desc = 'Cone enorme de espinhos incandescentes.';
+ABILITIES.volcanoRush.desc = 'Investida com rastro de fogo que explode ao terminar.';
+ABILITIES.bubbleShot.desc = 'Bolhas que molham o alvo e apagam o fogo.';
+ABILITIES.tentacleSlap.desc = 'Chicotada larga com tentáculos; encharca.';
+ABILITIES.inkCloud.desc = 'Solta uma nuvem de tinta que bloqueia a visão.';
+ABILITIES.jetDash.desc = 'Esquiva a jato, deixando uma nuvem de tinta.';
+ABILITIES.tentacleSweep.desc = 'Varredura ampla que empurra longe.';
+ABILITIES.krakenGrip.desc = 'Agarra o inimigo, puxa e o prende por 1,5 s.';
+ABILITIES.inkStorm.desc = 'Cobre a arena de tinta, inclusive sobre o inimigo.';
+ABILITIES.leafBlade.desc = 'Lâmina de folha veloz; brota grama onde cai.';
+ABILITIES.scytheSlash.desc = 'Foice rápida com avanço.';
+ABILITIES.sporePuff.desc = 'Cone de esporos que enraíza quem entra.';
+ABILITIES.longLeap.desc = 'SALTO LONGO por cima de obstáculos e inimigos; aterrissa causando dano.';
+ABILITIES.wingDash.desc = 'Esquiva curta batendo as asas.';
+ABILITIES.mantisClaw.desc = 'Garras longas que puxam o alvo para perto.';
+ABILITIES.bladeStorm.desc = 'Leque de três lâminas de folha.';
+ABILITIES.sporeStorm.desc = 'Tempestade de esporos: grande cone que enraíza.';
+ABILITIES.skyLeap.desc = 'Salto celeste enorme; ao cair, enraíza e arremessa quem estiver perto.';

@@ -1,0 +1,21 @@
+{
+  "name": "elemental-arena",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/switching.mjs && node test/evolution.mjs && node test/monsters.mjs && node test/acceptance.mjs 20 && node test/net.mjs",
+    "build": "node tools/build.mjs",
+    "pairs": "node test/pairs.mjs 12",
+    "arenas": "node test/arenas.mjs 6",
+    "tuning": "node test/switch-tuning.mjs 20",
+    "balance": "node test/batch.mjs 30 player",
+    "sprites": "python tools/extract_sprites.py && python tools/extract_sheet2.py",
+    "start": "node server/server.js",
+    "server": "node server/server.js",
+    "bot": "node tools/bot.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

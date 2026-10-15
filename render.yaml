@@ -1,0 +1,13 @@
+# Publicação com 1 clique no Render (https://render.com): "New > Blueprint" apontando para este repositório.
+services:
+  - type: web
+    name: elemental-arena
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: node server/server.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
