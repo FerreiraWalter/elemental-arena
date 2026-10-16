@@ -177,6 +177,7 @@ test('Ilusões: a esquiva deixa uma cópia; tiro na cópia estoura a tinta sem f
   cast(w, A, 'jetDash', { dir: Math.PI / 2, aim: Math.PI / 2 });
   assert(w.decoys.length === 1, 'esquiva não criou cópia');
   const d = w.decoys[0];
+  d.shootT = 99; // aqui a cópia não revida (o jato dela apagaria a brasa no ar)
   step(w, 0.4);
   ready(B); const hp = A.hp;
   B.cast(w, B.ability('ember'), { aim: Math.atan2(d.y - B.y, d.x - B.x), aimPoint: { x: d.x, y: d.y } });
@@ -202,6 +203,82 @@ test('Ilusão de Tinta: camufla até atacar e engana a mira da IA', () => {
   assert(fooled || hidden, 'IA continuou vendo o Gotapus de verdade');
   ready(A); cast(w, A, 'bubbleShot');
   assert(A.status.cloak <= 0, 'atacar não revelou o Gotapus');
+});
+
+test('Cópias atiram bolhas fracas (dano baixo, não enchem a evolução por acerto)', () => {
+  const { w, A, B } = setup('gotapus', 'brotossauro', { gap: 120 });
+  const d = w.decoys.length; void d;
+  A.vx = 60;
+  cast(w, A, 'jetDash', { dir: Math.PI / 2, aim: Math.PI / 2 });
+  const dc = w.decoys[0];
+  dc.x = B.x - 90; dc.y = B.y; dc.vx = dc.vy = 0; dc.shootT = 0.05;
+  let shot = null;
+  for (let k = 0; k < 1 / DT && !shot; k++) { w.step(DT); for (const e of w.drainEvents()) if (e.type === 'shoot' && e.p.fromDecoy) shot = e.p; }
+  assert(shot, 'a cópia não atirou');
+  assert(shot.dmg <= 3 && shot.owner === A, 'tiro da cópia forte demais ou sem dono');
+  const hp = B.hp, en = A.energy;
+  for (let k = 0; k < 1 / DT; k++) { w.step(DT); w.drainEvents(); }
+  assert(B.hp < hp && hp - B.hp <= 4, `dano da cópia: ${(hp - B.hp).toFixed(1)}`);
+  assert(A.energy - en < EVOLUTION.hit, 'tiro da cópia deu o bônus de acerto da evolução');
+});
+
+test('Bolha Prisão: estoura no círculo e prende o alvo dentro de uma bolha', () => {
+  const { w, A, B } = setup('gotapus', 'brasalisco', { gap: 110 });
+  cast(w, A, 'bubbleTrap', { point: { x: B.x, y: B.y } });
+  until(w, () => B.status.bubble > 0, 2);
+  assert(B.status.bubble > 0.8 && B.status.root > 0.8, 'alvo não ficou preso na bolha');
+  let popped = false;
+  for (let k = 0; k < 2 / DT; k++) { w.step(DT); for (const e of w.drainEvents()) if (e.type === 'bubblePop') popped = true; }
+  assert(popped && B.status.bubble <= 0, 'a bolha não estourou no fim');
+});
+
+test('Tentáculos do Abismo: tentáculo no ponto marcado e um em cada cópia', () => {
+  const { w, A, B } = setup('gotapus', 'brotossauro', { gap: 120, evolved: true });
+  assert(A.def.key === 'leviapus', 'não evoluiu');
+  A.vx = 60; cast(w, A, 'krakenJet', { dir: Math.PI / 2, aim: Math.PI / 2 }); step(w, 0.5);
+  ready(A);
+  const n = w.decoys.filter((d) => d.owner === A).length;
+  assert(n >= 1, 'sem cópia para testar');
+  const hp = B.hp;
+  cast(w, A, 'abyssTentacles', { point: { x: B.x, y: B.y } });
+  let slams = 0;
+  for (let k = 0; k < 1.5 / DT; k++) { w.step(DT); for (const e of w.drainEvents()) if (e.type === 'tentacleSlam') slams++; }
+  assert(slams === 1 + n, `tentáculos: ${slams} (esperado ${1 + n})`);
+  assert(B.hp < hp - 10, 'tentáculo gigante não feriu o alvo');
+});
+
+test('Redemoinho: arrasta em volta e cospe para fora no fim', () => {
+  const { w, A, B } = setup('hidrocasco', 'brasalisco', { gap: 30 });
+  B.status.root = 0;
+  cast(w, A, 'whirlpool');
+  let burst = false, tang = 0;
+  for (let k = 0; k < 2 / DT; k++) {
+    w.step(DT);
+    for (const e of w.drainEvents()) if (e.type === 'whirlBurst') burst = true;
+    const rx = B.x - A.x, ry = B.y - A.y;
+    tang += Math.abs((-ry * B.kx + rx * B.ky) / (Math.hypot(rx, ry) || 1));
+  }
+  assert(burst, 'sem a explosão final');
+  assert(tang > 100, 'o redemoinho não girou o alvo');
+});
+
+test('Esquiva enterrada do Brotossauro: invulnerável enquanto está sob a terra', () => {
+  const { w, A, B } = setup('brotossauro', 'brasalisco', { gap: 120 });
+  cast(w, A, 'leafDash', { dir: 0, aim: 0 });
+  step(w, 0.1);
+  assert(A.action?.ab.burrowDodge === 'flower' && A.status.invuln > 0.2, 'não ficou enterrado/invulnerável');
+  const hp = A.hp; w.damage(A, 20, B, { element: 'fire' });
+  assert(A.hp === hp, 'levou dano enterrado');
+});
+
+test('Evolução: cada ataque que acerta enche um pedaço fixo da barra', () => {
+  const { w, A, B } = setup('brasalisco', 'brotossauro', { gap: 60 });
+  A.energy = 0;
+  w.damage(B, 8, A, { element: 'fire', proj: true });
+  const per = A.energy;
+  assert(per >= EVOLUTION.hit && per / EVOLUTION.threshold >= 0.06, `um tiro comum encheu só ${(per / EVOLUTION.threshold * 100).toFixed(1)}%`);
+  w.damage(B, 8, A, { element: 'fire', proj: true });
+  assert(A.energy - per < EVOLUTION.hit, 'rajada no mesmo instante contou dois ataques');
 });
 
 // ───────────── Marca do Louva-a-deus (Mantifolha) ─────────────

@@ -161,10 +161,12 @@ export const ABILITIES = {
       for (const p of w.projectiles) if (p.kind === 'ember' && p.team !== m.team && pointSeg(p.x, p.y, b.ox, b.oy, b.ex, b.ey).d < this.width + p.r) w.clash(p, null);
     },
   },
+  // Redemoinho: o Hidrocasco gira e ANDA dentro dele; quem está perto é arrastado em volta (e um pouco para
+  // dentro) e, no fim, o redemoinho cospe todo mundo para fora.
   whirlpool: {
     id: 'whirlpool', name: 'Redemoinho', element: 'water', kind: 'aoe',
-    cooldown: 9, windup: 0.3, active: 1.3, recovery: 0.35, superArmor: true,
-    move: [0.2, 0.35, 0.5], turn: [0, 0], range: 46, radius: 46,
+    cooldown: 9, windup: 0.3, active: 1.4, recovery: 0.35, superArmor: true,
+    move: [0.25, 0.8, 0.5], turn: [0, 0], range: 46, radius: 46,
     onActiveTick(w, m, a, dt) {
       const R = this.radius * Math.min(1, a.t / 0.35);
       a.data.R = R;
@@ -172,9 +174,11 @@ export const ABILITIES = {
       for (const t of w.enemiesOf(m)) {
         const dx = t.x - m.x, dy = t.y - m.y, d = Math.hypot(dx, dy) || 1;
         if (d > R + t.r) continue;
-        w.damage(t, 14 * dt, m, { dot: true, wet: 2, element: 'water' });
-        t.kx += (dx / d * 300 - dy / d * 160) * dt * 3;
-        t.ky += (dy / d * 300 + dx / d * 160) * dt * 3;
+        w.damage(t, 11 * dt, m, { dot: true, wet: 2, element: 'water', tag: 'whirlpool' });
+        // Órbita: empurra de lado (giro) e puxa de leve para o centro.
+        const tang = 210, pull = d > m.r + t.r + 6 ? 70 : -40;
+        t.kx += (-dy / d * tang - dx / d * pull) * dt * 3;
+        t.ky += (dx / d * tang - dy / d * pull) * dt * 3;
       }
       if (every(a, dt, 0.1)) {
         const tr = w.terrain;
@@ -187,6 +191,15 @@ export const ABILITIES = {
         for (const o of w.obstacles) if (o.burning > 0 && Math.hypot(o.x - m.x, o.y - m.y) < R + o.r) w.douseObstacle(o, m);
       }
       for (const p of w.projectiles) if (p.kind === 'ember' && p.team !== m.team && Math.hypot(p.x - m.x, p.y - m.y) < R) w.clash(p, null);
+    },
+    // Fim do giro: o redemoinho arremessa quem estava dentro.
+    onEnd(w, m) {
+      w.emit({ type: 'whirlBurst', x: m.x, y: m.y, r: this.radius, m });
+      for (const t of w.enemiesOf(m)) {
+        const d = Math.hypot(t.x - m.x, t.y - m.y);
+        if (d > this.radius + t.r + 4) continue;
+        w.damage(t, 5, m, { tag: 'whirlpool', element: 'water', kb: 230, ang: Math.atan2(t.y - m.y, t.x - m.x), wet: 2, proj: true });
+      }
     },
   },
   // Casco Reflexo: bloqueio curto. Projéteis voltam contra quem atirou; quem bate de perto leva o contra-ataque.
@@ -234,8 +247,8 @@ export const ABILITIES = {
     cooldown: 12, windup: 0.4, active: 0.8, recovery: 0.3, superArmor: true,
     move: [0.2, 0.2, 0.6], turn: [0, 0], range: 52, radius: 52,
     onActiveTick(w, m, a, dt) {
-      m.hp = Math.min(m.maxHp, m.hp + 15 * dt);
-      for (const ally of w.alliesOf(m)) if (Math.hypot(ally.x - m.x, ally.y - m.y) < this.radius + ally.r) ally.hp = Math.min(ally.maxHp, ally.hp + 14 * dt);
+      w.heal(m, 15 * dt);
+      for (const ally of w.alliesOf(m)) if (Math.hypot(ally.x - m.x, ally.y - m.y) < this.radius + ally.r) w.heal(ally, 14 * dt);
       if (!every(a, dt, 0.1)) return;
       const R = this.radius * Math.min(1, a.t / 0.5);
       const tr = w.terrain;
@@ -253,10 +266,12 @@ export const ABILITIES = {
     move: [0.4, 0.4, 0.7], turn: [8, 0], range: 150, radius: 10, flight: 0.55,
     onActiveStart(w, m, a) { sentryLob(w, m, a, this, 'sentry', 10); },
   },
+  // Esquiva enterrada: o Brotossauro mergulha na terra (invulnerável) e só uma flor vermelha anda pela superfície.
   leafDash: {
-    id: 'leafDash', name: 'Folha ao Vento', element: 'plant', kind: 'dodge',
-    cooldown: 3, windup: 0, active: 0.24, recovery: 0.1,
-    move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 300, invuln: true },
+    id: 'leafDash', name: 'Raiz Escondida', element: 'plant', kind: 'dodge', burrowDodge: 'flower',
+    cooldown: 3.4, windup: 0, active: 0.45, recovery: 0.12,
+    move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 185, invuln: true },
+    onEnd(w, m) { w.emit({ type: 'burrowOut', m, x: m.x, y: m.y }); w.sprout(m.x, m.y, T.GRASS, m); },
   },
 
   // ═════════════ FORMAS EVOLUÍDAS ═════════════
@@ -396,7 +411,7 @@ export const ABILITIES = {
       }
     },
     onActiveTick(w, m, a, dt) {
-      m.hp = Math.min(m.maxHp, m.hp + 12 * dt);
+      w.heal(m, 12 * dt);
       if (!every(a, dt, 0.1)) return;
       const R = this.radius * Math.min(1, a.t / 0.5);
       for (let k = 0; k < 16; k++) {
@@ -412,10 +427,19 @@ export const ABILITIES = {
     move: [0.3, 0.3, 0.6], turn: [8, 0], range: 160, radius: 12, flight: 0.6,
     onActiveStart(w, m, a) { sentryLob(w, m, a, this, 'ancientSentry', 13); },
   },
+  // Ancestral: afunda e vira uma arvorezinha andando; ao brotar de volta, raízes empurram quem estiver colado.
   barkStep: {
-    id: 'barkStep', name: 'Passo de Casca', element: 'plant', kind: 'dodge',
-    cooldown: 5, windup: 0, active: 0.22, recovery: 0.16,
-    move: [1, 1, 0.5], turn: [0, 0], dash: { speed: 240, invuln: true },
+    id: 'barkStep', name: 'Árvore Andante', element: 'plant', kind: 'dodge', burrowDodge: 'tree',
+    cooldown: 4.6, windup: 0, active: 0.55, recovery: 0.16,
+    move: [1, 1, 0.5], turn: [0, 0], dash: { speed: 150, invuln: true },
+    onEnd(w, m) {
+      w.emit({ type: 'burrowOut', m, x: m.x, y: m.y, big: true });
+      for (const t of w.enemiesOf(m)) {
+        const d = Math.hypot(t.x - m.x, t.y - m.y);
+        if (d < m.r + t.r + 14) { t.kx += (t.x - m.x) / (d || 1) * 180 / t.def.mass; t.ky += (t.y - m.y) / (d || 1) * 180 / t.def.mass; }
+      }
+      for (let k = 0; k < 10; k++) { const an = w.rng() * 6.28, r = 6 + w.rng() * 16; const i = w.terrain.at(m.x + Math.cos(an) * r, m.y + Math.sin(an) * r); if (i >= 0 && w.terrain.growGrass(i)) w.emit({ type: 'grow', x: w.terrain.cx(i), y: w.terrain.cy(i) }); }
+    },
   },
   // ═════════════ NOVOS MONSTROS ═════════════
   // ───── Ouriflama (fogo): ágil, investida com rastro de fogo ─────
@@ -507,7 +531,7 @@ export const ABILITIES = {
     cooldown: 0.85, windup: 0.18, active: 0.02, recovery: 0.2,
     move: [0.6, 0.6, 0.85], turn: [9, 0], range: 210, speed: 255,
     onActiveStart(w, m, a) {
-      w.spawnProjectile({ kind: 'waterBolt', tag: 'bubbleShot', owner: m, ang: a.aim, speed: 255, r: 3, range: 215, dmg: 7.5, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 3, aimPoint: a.aimPoint });
+      w.spawnProjectile({ kind: 'waterBolt', tag: 'bubbleShot', owner: m, ang: a.aim, speed: 255, r: 3, range: 215, dmg: 7, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 3, aimPoint: a.aimPoint });
     },
   },
   tentacleSlap: {
@@ -516,6 +540,18 @@ export const ABILITIES = {
     move: [0.3, 1, 0.4], turn: [10, 2], range: 22,
     onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 100; m.ky += Math.sin(a.aim) * 100; },
     ...melee({ reach: 22, arc: 2.6, dmg: 12, kb: 150, stun: 0.22, extra: { wet: 2 } }),
+  },
+  // Bolha Prisão: uma bolha em arco (mais rápida que o meteoro) que estoura e prende quem estiver no círculo.
+  bubbleTrap: {
+    id: 'bubbleTrap', name: 'Bolha Prisão', element: 'water', kind: 'lob',
+    cooldown: 10, windup: 0.3, active: 0.05, recovery: 0.3,
+    move: [0.4, 0.4, 0.7], turn: [8, 0], range: 190, radius: 20, flight: 0.5,
+    onActiveStart(w, m, a) {
+      const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
+      const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 30, this.range);
+      const tx = clamp(m.x + Math.cos(ang) * d, 10, 630), ty = clamp(m.y + Math.sin(ang) * d, 10, 350);
+      w.spawnProjectile({ kind: 'bubble', owner: m, lob: true, x: m.x, y: m.y - 6, tx, ty, flight: this.flight, radius: this.radius, dmg: 5, trap: 1.1 });
+    },
   },
   // Ilusão de Tinta: nuvem de tinta + duas cópias falsas correndo; o Gotapus fica camuflado até atacar.
   inkCloud: {
@@ -552,6 +588,22 @@ export const ABILITIES = {
     onActiveStart(w, m) {
       illusion(w, m, 34, 3, 2.2);
       for (const t of w.enemiesOf(m)) w.puffInk(t.x, t.y, 26); // cega o inimigo onde ele estiver
+    },
+  },
+  // Tentáculos do Abismo: marca um ponto; um tentáculo gigante irrompe lá e, onde houver cópias suas,
+  // irrompem tentáculos menores. As ilusões viram emboscadas.
+  abyssTentacles: {
+    id: 'abyssTentacles', name: 'Tentáculos do Abismo', element: 'water', kind: 'lob',
+    cooldown: 11, windup: 0.35, active: 0.05, recovery: 0.35,
+    move: [0.3, 0.3, 0.6], turn: [8, 0], range: 185, radius: 24, flight: 0.65,
+    onActiveStart(w, m, a) {
+      const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
+      const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 30, this.range);
+      const tx = clamp(m.x + Math.cos(ang) * d, 12, 628), ty = clamp(m.y + Math.sin(ang) * d, 12, 348);
+      w.spawnProjectile({ kind: 'tentacle', big: true, owner: m, lob: true, flat: true, x: tx, y: ty, tx, ty, flight: this.flight, radius: this.radius, dmg: 18 });
+      for (const dc of w.decoys.filter((x) => x.owner === m).slice(0, 3)) {
+        w.spawnProjectile({ kind: 'tentacle', owner: m, lob: true, flat: true, x: dc.x, y: dc.y, tx: dc.x, ty: dc.y, flight: this.flight, radius: 16, dmg: 8 });
+      }
     },
   },
   krakenJet: {
@@ -722,13 +774,13 @@ const DESC = {
   waterBolt: 'Jato que molha o alvo e apaga o fogo pelo caminho.',
   headbutt: 'Cabeçada com empurrão forte; molha o alvo.',
   hydroBeam: 'Raio d’água contínuo que empurra e apaga o terreno.',
-  whirlpool: 'Redemoinho ao redor: empurra, molha e apaga chamas.',
+  whirlpool: 'Redemoinho móvel: você anda girando, arrasta quem estiver perto em volta e cospe todos no fim.',
   shellRoll: 'Rolagem no casco com invulnerabilidade.',
   seedShot: 'Semente afiada; onde cai, brota grama.',
   vineWhip: 'Chicote que puxa o inimigo para perto.',
   rootSnare: 'Raízes brotam na área marcada e prendem quem estiver lá.',
   overgrowth: 'Faz crescer grama ao redor e cura a planta.',
-  leafDash: 'Esquiva rápida levada pelo vento.',
+  leafDash: 'Mergulha na terra (invulnerável); só uma flor vermelha se move na superfície.',
   magmaBall: 'Projétil pesado que deixa uma poça de lava ardendo.',
   volcanicClaw: 'Garra mais forte que incendeia um arco de chão à frente.',
   infernoBreath: 'Cone de fogo maior, mais longo e mais quente.',
@@ -743,12 +795,14 @@ const DESC = {
   ancientWhip: 'Açoite de longo alcance que puxa com força.',
   ancientRoots: 'Raízes maiores e mais duradouras (recarga longa).',
   ancientGrove: 'Ergue uma barreira de mata fechada e espalha vegetação.',
-  barkStep: 'Esquiva curta e lenta (pouca mobilidade).',
+  barkStep: 'Afunda e anda como uma arvorezinha (invulnerável); ao brotar, empurra quem estiver colado e espalha grama.',
   shellGuard: 'BLOQUEIO de 0,55 s: reduz o dano em 85%, devolve projéteis e contra-ataca quem bate de perto.',
   abyssGuard: 'Bloqueio mais longo; bloquear um golpe dá uma bolha que absorve 25 de dano.',
   plantSentry: 'Planta um BROTO SENTINELA (10 s) que atira sementes sozinho e cura você por perto. Máx. 2.',
   ancientSentry: 'Guardião maior e mais resistente: dispara espinhos e cura mais. Máx. 2.',
   krakenJet: 'Esquiva a jato que deixa uma cópia de tinta para enganar o inimigo.',
+  bubbleTrap: 'Bolha em arco, rápida: estoura no círculo marcado e PRENDE quem estiver dentro por ~1 s.',
+  abyssTentacles: 'Um tentáculo gigante irrompe no ponto marcado (ergue e molha); onde houver cópias suas, irrompem tentáculos menores.',
 };
 for (const [id, d] of Object.entries(DESC)) ABILITIES[id].desc = d;
 

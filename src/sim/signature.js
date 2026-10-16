@@ -84,6 +84,9 @@ export function update(w, m, dt) {
       if (m.momentum >= 100) { m.charged = true; w.emit({ type: 'charged', m, x: m.x, y: m.y }); }
     } else if (!m.action) m.momentum = Math.max(0, m.momentum - M.loss * dt);
   }
+  // Bolha Prisão: quando a bolha acaba, ela estoura.
+  if (m._bubbleWas > 0 && st.bubble <= 0) w.emit({ type: 'bubblePop', m, x: m.x, y: m.y });
+  m._bubbleWas = st.bubble;
   // Marcas recebidas (de uma Mantifolha) somem com o tempo.
   if (m.marks.n > 0) { m.marks.t -= dt; if (m.marks.t <= 0) m.marks.n = 0; }
   if (m.ccGuard > 0) m.ccGuard = Math.max(0, m.ccGuard - dt);
@@ -202,6 +205,7 @@ export function spawnDecoy(w, owner, ang, life = SIG.decoy.life) {
   const d = {
     id: nextDecoy++, owner, team: owner.team, x: owner.x, y: owner.y, px: owner.x, py: owner.y,
     vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life, max: life, facing: ang, turnT: 0.4,
+    shootT: 0.45 + w.rng() * 0.3, atk: 0, // as cópias também atiram (dano baixo) para parecerem de verdade
   };
   w.decoys.push(d);
   w.emit({ type: 'decoy', m: owner, x: d.x, y: d.y, id: d.id });
@@ -233,7 +237,23 @@ export function updateDecoys(w, dt) {
       else { nx = d.x; ny = d.y; d.vx = -d.vx; d.vy = -d.vy; }
     }
     d.x = nx; d.y = ny;
-    if (Math.abs(d.vx) > 2) d.facing = Math.atan2(d.vy, d.vx);
+    if (Math.abs(d.vx) > 2 && d.atk <= 0) d.facing = Math.atan2(d.vy, d.vx);
+    d.atk = Math.max(0, d.atk - dt);
+    // Tiro da cópia: bolha fraca no inimigo mais próximo à vista (confunde quem está sendo atacado).
+    d.shootT -= dt;
+    if (d.shootT <= 0 && d.life > 0.2) {
+      d.shootT = 1.1 + w.rng() * 0.3;
+      let best = null, bd = 175;
+      for (const t of w.enemiesOf(d.owner)) {
+        const dd = Math.hypot(t.x - d.x, t.y - d.y);
+        if (dd < bd && w.los(d.x, d.y, t.x, t.y)) { bd = dd; best = t; }
+      }
+      if (best) {
+        const ang = Math.atan2(best.y - d.y, best.x - d.x) + (w.rng() - 0.5) * 0.12;
+        d.facing = ang; d.atk = 0.25;
+        w.spawnProjectile({ kind: 'waterBolt', tag: 'copia', fromDecoy: true, owner: d.owner, ang, speed: 250, r: 3, range: 185, dmg: d.owner.def.sig?.cloneDmg ?? 2.5, x: d.x + Math.cos(ang) * (d.owner.r + 2), y: d.y + Math.sin(ang) * (d.owner.r + 2) - 3, level: w.terrain.heightAt(d.x, d.y) });
+      }
+    }
     if (d.life <= 0) w.emit({ type: 'decoyFade', x: d.x, y: d.y, m: d.owner });
   }
   w.decoys = w.decoys.filter((d) => d.life > 0 && d.owner.alive && d.owner.onField);
@@ -282,7 +302,7 @@ export function updateSentry(w, o, dt) {
   if (!owner || !owner.alive || !owner.onField) { o.life = Math.min(o.life, 0.4); return; }
   const S = o.def.shot;
   // Raízes conectadas: o dono perto da sentinela se regenera.
-  if (Math.hypot(owner.x - o.x, owner.y - o.y) < o.def.healR) owner.hp = Math.min(owner.maxHp, owner.hp + o.def.heal * dt);
+  if (Math.hypot(owner.x - o.x, owner.y - o.y) < o.def.healR) w.heal(owner, o.def.heal * dt);
   o.fireT -= dt;
   if (o.fireT > 0) return;
   // Mira automática: a sentinela também cai nas cópias de tinta (alvo mais próximo, real ou falso).

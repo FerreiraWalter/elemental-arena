@@ -394,10 +394,10 @@ export class Brain {
       return;
     }
     if (this.state === 'retreat') {
-      const done = c.hpF > this.p.retreatHp + 0.2 || this.stateT > 7 || (c.d < 30 && c.vis);
+      const done = c.hpF > this.p.retreatHp + 0.2 || this.stateT > 7 || (c.d < 30 && c.vis) || w.suddenDeath;
       if (done) { this.retreatCd = 12; this.setState('acquire'); }
       else { this.goalPt = this.retreatPoint(c) || this.goalPt; this.mode = 'goto'; return; }
-    } else if (c.hpF < this.p.retreatHp && this.retreatCd <= 0 && c.d < 160) {
+    } else if (c.hpF < this.p.retreatHp && this.retreatCd <= 0 && c.d < 160 && !w.suddenDeath) {
       const rp = this.retreatPoint(c);
       if (rp) { this.goalPt = rp; this.mode = 'goto'; this.setState('retreat'); return; }
     }

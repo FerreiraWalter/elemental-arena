@@ -171,6 +171,11 @@ export class Sfx {
       case 'execute': this.hiss({ type: 'bandpass', f0: 3000, f1: 800, q: 1.5, dur: 0.18, vol: 0.3, x }); [784, 988, 1318].forEach((f) => this.tone({ type: 'triangle', f0: f, dur: 0.35, vol: 0.08, at: 0.05, x })); return;
       case 'sentryGrow': this.tone({ type: 'triangle', f0: 400, f1: 600, dur: 0.1, vol: 0.1, x }); this.tone({ type: 'triangle', f0: 600, f1: 800, dur: 0.1, vol: 0.08, at: 0.08, x }); return;
       case 'sentryShot': if (this.ok('sentryShot', 0.08)) this.tone({ type: 'square', f0: 1200, f1: 600, dur: 0.04, vol: 0.04, x }); return;
+      case 'bubbleBurst': this.tone({ type: 'sine', f0: 300, f1: 900, dur: 0.15, vol: 0.16, x }); this.hiss({ type: 'lowpass', f0: 1800, f1: 400, dur: 0.3, vol: 0.18, x }); return;
+      case 'bubblePop': this.tone({ type: 'sine', f0: 700, f1: 1600, dur: 0.07, vol: 0.14, x }); return;
+      case 'tentacleSlam': this.hiss({ type: 'lowpass', f0: 1400, f1: 120, dur: 0.6, vol: e.big ? 0.35 : 0.2, x }); this.tone({ type: 'sine', f0: e.big ? 90 : 140, f1: 40, dur: 0.5, vol: e.big ? 0.3 : 0.15, x }); return;
+      case 'whirlBurst': this.hiss({ type: 'bandpass', f0: 600, f1: 2200, dur: 0.35, vol: 0.2, x }); return;
+      case 'burrowOut': this.hiss({ type: 'lowpass', f0: 700, f1: 150, dur: 0.25, vol: e.big ? 0.22 : 0.14, x }); this.tone({ type: 'triangle', f0: 180, f1: 90, dur: 0.18, vol: 0.12, x }); return;
       case 'castDenied': if (e.m === world.active) this.play('deny'); return;
       case 'switchDenied': if (e.team === world.playerTeam) this.play('deny'); return;
       case 'evolveDenied': this.play('deny'); return;

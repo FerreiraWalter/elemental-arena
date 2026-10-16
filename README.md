@@ -43,10 +43,10 @@ Triângulo: **Fogo > Planta > Água > Fogo** (+10–12% de dano). Cada linha tem
 | Linha | Mecânica | Como joga | Ponto fraco |
 |---|---|---|---|
 | **Brasalisco** → Ascendido (fogo) | **Fornalha**: cada ataque esquenta; em 100% **SUPERAQUECE** (+20% de dano e velocidade por 3 s) e depois fica **EXAUSTO** (lento, sem poderes, leva +15%). A água esfria. Evoluído: superaquecer solta uma **onda de calor** e a exaustão é menor | rajadas de pressão; saber a hora de parar | a exaustão |
-| **Hidrocasco** → Abissal (água) | **Casco Reflexo** (F): 0,55 s de bloqueio que corta 85% do dano, **devolve projéteis** e **contra-ataca** quem bate de perto. Evoluído: bloquear dá uma bolha de 25 | tempo de reação e posição | áreas, raízes e quem espera o casco abrir |
-| **Brotossauro** → Ancestral (planta) | **Brotos Sentinela** (F): até 2 torres vivas (10 s) que atiram sozinhas e **curam** o dono por perto. Evoluído: guardiões maiores que atiram espinhos | controle de território | fogo (queima as torres) e mobilidade |
+| **Hidrocasco** → Abissal (água) | **Casco Reflexo** (F): 0,55 s de bloqueio que corta 85% do dano, **devolve projéteis** e **contra-ataca** quem bate de perto. **Redemoinho móvel** (E): anda girando, arrasta quem estiver perto em volta e cospe todos no fim. Evoluído: bloquear dá uma bolha de 25 | tempo de reação e posição | áreas, raízes e quem espera o casco abrir |
+| **Brotossauro** → Ancestral (planta) | **Brotos Sentinela** (F): até 2 torres vivas (10 s) que atiram sozinhas e **curam** o dono por perto. **Raízes** (Q): círculo rúnico no chão e uma jaula de raízes que brota da borda. **Esquiva enterrada**: só uma flor vermelha anda na superfície (no Ancestral, uma arvorezinha, que ao brotar empurra quem estiver colado). Evoluído: guardiões maiores que atiram espinhos | controle de território | fogo (queima as torres) e mobilidade |
 | **Ouriflama** → Vulcânico (fogo) | **Ímpeto**: correndo sem parar entra **EM DISPARADA** (+15% de velocidade) e o próximo golpe de perto ou investida causa **+60%**. **Espinhos** ferem quem o ataca de perto. Evoluído: sair do Mergulho Vulcânico (que levanta o alvo) enche o ímpeto | bater e correr | atordoar ou prender zera o ímpeto |
-| **Gotapus** → Leviapus (água) | **Ilusões de Tinta**: a esquiva deixa uma **cópia falsa** correndo; a Ilusão (Q) cria duas cópias e **camufla** até atacar. Cópias enganam a IA e as sentinelas e estouram em tinta. Evoluído: 3 cópias, camuflagem maior e agarrão do Kraken | confusão e emboscada | ataques em área estouram todas as cópias |
+| **Gotapus** → Leviapus (água) | **Ilusões de Tinta**: a esquiva deixa uma **cópia falsa** correndo; a Ilusão (Q) cria duas cópias e **camufla** até atacar. As cópias **atiram bolhas fracas**, enganam a IA e as sentinelas e estouram em tinta. **Bolha Prisão** (E): bolha em arco que prende quem estiver no círculo. Evoluído (Leviapus): **Tentáculos do Abismo** (E) irrompem no ponto marcado e onde estiverem as cópias; agarrão do Kraken | confusão e emboscada | ataques em área estouram todas as cópias |
 | **Mantifolha** → Silvamante (planta) | **Marca do Louva-a-deus**: cada acerto marca a presa (máx. 3); com 3 marcas, a foice ou o pouso do salto **EXECUTA** (+12 de dano, prende e recarrega o Salto Longo). Evoluída: execução +16, marcas duram mais | marcar de longe, finalizar de perto | é frágil; esquivar o salto quebra o combo |
 
 Na seleção de time cada cartão mostra a mecânica e a dificuldade (◆◆◇); passe o mouse para ver o ponto fraco. O bestiário (Menu → Monstros) detalha tudo.
@@ -61,6 +61,8 @@ O fogo pesava por **somar** efeitos: queimadura renovada a cada tiro, poças de 
 - O poder voltou como **dano direto e legível** (Brasa 10, Bola de Magma 13, Garra Vulcânica 19) e pela Fornalha, em vez de área persistente. A lava vence um jato d'água no ar (o jato vira vapor).
 - **Controle em sequência** (atordoar/prender) perde 60% de força por 1,2 s depois de um controle: não dá para prender alguém em cadeia.
 
+**Morte súbita:** a partir de 2 min 30 s de partida, nenhuma cura funciona (água, vegetação, fogo, sentinelas, Crescimento) e a IA para de recuar. O aviso aparece sob o relógio 20 s antes. Evita partidas eternas entre monstros que se curam.
+
 ## Leitura do combate
 - **Setas e arcos no chão** mostram onde investidas, cones, raios e golpes de perto fortes vão acertar; círculos marcam meteoros, raízes e sementes de sentinela.
 - **Barra sobre a cabeça durante a preparação**: **dourada = IMPARÁVEL**, branca = um acerto interrompe.
@@ -69,7 +71,7 @@ O fogo pesava por **somar** efeitos: queimadura renovada a cada tiro, poças de 
 - O HUD mostra o medidor da mecânica do seu monstro e os status com nome, e pisca o botão quando você aperta algo em recarga ("RECARGA"/"EXAUSTO").
 - **Som** sintetizado (sem arquivos) para tiros, golpes, bloqueios, explosões, evolução e menus; volume em Opções.
 
-Evolução (`EVOLUTION` em `src/config.js`): energia por dano causado/recebido, esquivas e interações com o terreno; com 150, aperte **G** (uma por monstro por partida; vida mantém a %; recargas preservadas; a batalha não pausa). A energia persiste no banco; derrotados não evoluem; a IA evolui sozinha.
+Evolução (`EVOLUTION` em `src/config.js`): **cada ataque que acerta enche ~7% da barra** (bônus fixo por acerto + parte do dano), e dano recebido, esquivas e interações com o terreno também contam; com a barra cheia (em mediana ~20 s de luta), aperte **G** (uma por monstro por partida; vida mantém a %; recargas preservadas; a batalha não pausa). A energia persiste no banco; derrotados não evoluem; a IA evolui sozinha.
 
 ## Arenas
 Jardim Selvagem (raízes que irrompem, espinheiros, sebes, ruínas), Abismo das Marés (ilhas, água funda, plataforma alta, correntezas, gêiseres), Floresta Ancestral (árvores, troncos, mata baixa, riacho) e Quadra Clássica. Definições data-driven em `src/arenas/`.

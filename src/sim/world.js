@@ -1,4 +1,4 @@
-import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION, FIRE, CONTROL } from '../config.js';
+import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION, FIRE, CONTROL, MATCH } from '../config.js';
 import { mulberry32, segCircle, segAabb, clamp } from '../core/math.js';
 import { Terrain, IGNITE, T, props } from './terrain.js';
 import { ARENAS } from '../arenas/index.js';
@@ -549,7 +549,11 @@ export class World {
       o = { ...o, burn: 0 };
     }
     t.hp -= dmg;
-    if (src && src !== t) this.gainEnergy(src, dmg * EVOLUTION.dealt);
+    if (src && src !== t) {
+      this.gainEnergy(src, dmg * EVOLUTION.dealt);
+      // Cada ataque que acerta enche um pedaço fixo da barra (tiros de sentinelas e cópias não contam).
+      if (!o.dot && !o.minor && dmg > 0 && this.time - (src._hitBonusT ?? -9) >= EVOLUTION.hitGap) { src._hitBonusT = this.time; this.gainEnergy(src, EVOLUTION.hit); }
+    }
     this.gainEnergy(t, dmg * EVOLUTION.taken);
     if (src) {
       src.stats.dmgDealt += dmg;
@@ -592,6 +596,13 @@ export class World {
     Sig.afterDamage(this, t, src, dmg, o);
     if (t.hp <= 0) this.kill(t, src);
     return dmg;
+  }
+
+  // Cura (terreno, sentinelas, habilidades). Na morte súbita não cura mais.
+  get suddenDeath() { return this.time >= MATCH.suddenDeath; }
+  heal(m, amount) {
+    if (!m.alive || this.suddenDeath) return;
+    m.hp = Math.min(m.maxHp, m.hp + amount);
   }
 
   // Atordoar/enraizar seguidos perde força: depois de um controle, o próximo dura menos por um instante.
@@ -745,8 +756,10 @@ export class World {
 
   // ───────────── Passo da simulação ─────────────
   step(dt) {
+    const wasSudden = this.suddenDeath;
     this.time += dt;
     this.tick++;
+    if (!wasSudden && this.suddenDeath && !this.over) { this.emit({ type: 'suddenDeath' }); this.say('MORTE SÚBITA: nenhuma cura funciona mais!', '#ff6a6a'); }
     for (const m of this.monsters) { m.px = m.x; m.py = m.y; }
     this.updateTeams(dt);
     for (const m of this.monsters) {
@@ -788,18 +801,18 @@ export class World {
       const p = props(tr.type[i]);
       if (tr.fire[i] > 0) {
         m.stats.timeOnFire += dt;
-        if (m.element === 'fire') m.hp = Math.min(m.maxHp, m.hp + FIRE.selfHeal * dt);
+        if (m.element === 'fire') this.heal(m, FIRE.selfHeal * dt);
         else {
           // Vegetação em chamas arde mais que o chão em brasa deixado por ataques.
           const dps = p.fuel ? FIRE.fuelDps : FIRE.groundDps;
           this.damage(m, dps * (m.def.burnResist ?? 1) * dt, null, { dot: true, element: 'fire', burn: FIRE.groundBurn, tag: 'chao' });
         }
       }
-      if (m.element === 'plant' && p.vegetation && tr.fire[i] <= 0) m.hp = Math.min(m.maxHp, m.hp + 1 * dt);
+      if (m.element === 'plant' && p.vegetation && tr.fire[i] <= 0) this.heal(m, 1 * dt);
       if (p.thorns && m.element !== 'plant' && tr.fire[i] <= 0) this.damage(m, p.thorns * dt, null, { dot: true, element: 'plant', tag: 'espinhos' });
       if (p.water) {
         st.burn = 0;
-        if (m.element === 'water' && !p.deep) m.hp = Math.min(m.maxHp, m.hp + 2 * this.arena.waterHeal * dt);
+        if (m.element === 'water' && !p.deep) this.heal(m, 2 * this.arena.waterHeal * dt);
         else if (m.element !== 'water') st.wet = Math.max(st.wet, 1);
       } else if (tr.wet[i] > 0) st.burn = 0;
       // Correntezas empurram quem está na água (nadadores resistem mais).
@@ -893,7 +906,14 @@ export class World {
         p.y = p.sy + (p.ty - p.sy) * k;
         p.h = Math.sin(Math.PI * k) * 70;
         if (p.flat) p.h = 0;
-        if (k >= 1) { p.dead = true; if (p.kind === 'roots') this.eruptRoots(p); else if (p.kind === 'sentrySeed') Sig.plantSentry(this, p); else this.explodeMeteor(p); }
+        if (k >= 1) {
+          p.dead = true;
+          if (p.kind === 'roots') this.eruptRoots(p);
+          else if (p.kind === 'sentrySeed') Sig.plantSentry(this, p);
+          else if (p.kind === 'bubble') this.bubbleBurst(p);
+          else if (p.kind === 'tentacle') this.tentacleSlam(p);
+          else this.explodeMeteor(p);
+        }
         continue;
       }
       const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
@@ -987,7 +1007,7 @@ export class World {
   projectileHitMonster(p, m) {
     this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y, target: m });
     const ang = Math.atan2(p.vy, p.vx);
-    const base = { ang, x: p.x, y: p.y, proj: true };
+    const base = { ang, x: p.x, y: p.y, proj: true, minor: !!(p.fromSentry || p.fromDecoy) };
     if (p.kind === 'ember') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'ember', burn: 1.5, kb: 70, stun: 0.1, element: 'fire' });
       this.igniteTile(this.terrain.at(p.x, p.y), 1, p.owner);
@@ -1002,7 +1022,7 @@ export class World {
     } else if (p.kind === 'seed') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.fromSentry ? 'sentinela' : p.tag || 'seedShot', kb: 60, stun: p.fromSentry ? 0 : 0.1, element: 'plant' });
     } else if (p.kind === 'waterBolt') {
-      this.damage(m, p.dmg, p.owner, { ...base, tag: p.reflected ? 'reflexo' : p.tag || 'waterBolt', wet: 3, kb: 80, stun: 0.12, element: 'water' });
+      this.damage(m, p.dmg, p.owner, { ...base, tag: p.reflected ? 'reflexo' : p.tag || 'waterBolt', wet: p.fromDecoy ? 1 : 3, kb: p.fromDecoy ? 30 : 80, stun: p.fromDecoy ? 0 : 0.12, element: 'water' });
       this.douseArea(p.x, p.y, 12, 6, p.owner);
     }
   }
@@ -1053,6 +1073,35 @@ export class World {
     this.igniteArea(p.tx, p.ty, p.radius * 0.6, 2, p.owner);
   }
 
+  // Bolha Prisão (Gotapus): estoura no chão e prende quem estiver dentro numa bolha.
+  bubbleBurst(p) {
+    this.emit({ type: 'bubbleBurst', x: p.tx, y: p.ty, r: p.radius, src: p.owner });
+    for (const m of this.monsters) {
+      if (!m.alive || m.team === p.team) continue;
+      if (Math.hypot(m.x - p.tx, m.y - p.ty) > p.radius + m.r) continue;
+      if (this.damage(m, p.dmg, p.owner, { tag: 'bubbleTrap', element: 'water', wet: 3, proj: true }) > 0 && this.applyRoot(m, p.trap)) {
+        m.status.bubble = m.status.root;
+        m.vx = m.vy = 0; m.kx *= 0.2; m.ky *= 0.2;
+        this.emit({ type: 'bubbled', m, x: m.x, y: m.y });
+      }
+    }
+    this.popDecoysIn(p.tx, p.ty, p.radius, p.team);
+    this.douseArea(p.tx, p.ty, p.radius * 0.8, 6, p.owner);
+  }
+
+  // Tentáculos do Abismo (Leviapus): irrompem do chão onde a marca estava, erguendo e encharcando.
+  tentacleSlam(p) {
+    this.emit({ type: 'tentacleSlam', x: p.tx, y: p.ty, r: p.radius, big: !!p.big, src: p.owner });
+    for (const m of this.monsters) {
+      if (!m.alive || m.team === p.team) continue;
+      const d = Math.hypot(m.x - p.tx, m.y - p.ty);
+      if (d > p.radius + m.r) continue;
+      this.damage(m, p.dmg, p.owner, { tag: 'tentaculos', element: 'water', wet: 3, stun: p.big ? 0.4 : 0.25, lift: p.big ? 0.6 : 0.4, kb: 60, ang: Math.atan2(m.y - p.ty, m.x - p.tx), proj: true, minor: !p.big });
+    }
+    this.popDecoysIn(p.tx, p.ty, p.radius, p.team);
+    this.douseArea(p.tx, p.ty, p.radius * 0.7, 6, p.owner);
+  }
+
   // Semente que cai no chão brota um tufo de grama (ou espinheiro, na forma ancestral).
   sprout(x, y, type = T.GRASS, src = null) {
     const tr = this.terrain;
@@ -1068,7 +1117,7 @@ export class World {
   }
 
   eruptRoots(p) {
-    this.emit({ type: 'rootsErupt', x: p.tx, y: p.ty, r: p.radius, src: p.owner });
+    this.emit({ type: 'rootsErupt', x: p.tx, y: p.ty, r: p.radius, src: p.owner, dur: (p.rootTime || 1.6) + 0.2 });
     for (const m of this.monsters) {
       if (!m.alive || m.team === p.team) continue;
       if (Math.hypot(m.x - p.tx, m.y - p.ty) > p.radius + m.r) continue;

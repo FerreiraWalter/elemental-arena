@@ -38,7 +38,7 @@ function monsterRec(m, idxOf) {
   const idxOfId = (id) => { for (const [mm, i] of idxOf) if (mm.id === id) return i; return -1; };
   const rec = {
     h: r1(m.hp), M: m.maxHp, a: +m.alive, f: +m.onField, d: m.def.key, e: r1(m.energy), ev: +m.evolved,
-    st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield), overheat: r2(m.status.overheat), exhaust: r2(m.status.exhaust), cloak: r2(m.status.cloak) },
+    st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield), overheat: r2(m.status.overheat), exhaust: r2(m.status.exhaust), cloak: r2(m.status.cloak), bubble: r2(m.status.bubble) },
     ht: r1(m.heat), mo: r1(m.momentum), cg: +m.charged, mk: m.marks.n ? [m.marks.n, idxOfId(m.marks.by)] : 0,
     cd: Object.fromEntries(Object.entries(m.cd).map(([k, v]) => [k, r2(v)])),
     x: r1(m.x), y: r1(m.y), vx: r1(m.vx), vy: r1(m.vy), fc: r2(m.facing),
@@ -98,7 +98,7 @@ export function serialize(world, ctx) {
     obs, dyn,
     haz: world.hazards.map((h) => [PH.indexOf(h.phase), r2(h.t)]),
     steam: world.steam.map((s) => [r1(s.x), r1(s.y), r1(s.r), r2(s.density), r2(s.life), +!!s.ink]),
-    dec: world.decoys.map((d) => [d.id, idxOf.get(d.owner), r1(d.x), r1(d.y), r2(d.life), r2(d.max), r2(d.facing), r1(d.vx), r1(d.vy)]),
+    dec: world.decoys.map((d) => [d.id, idxOf.get(d.owner), r1(d.x), r1(d.y), r2(d.life), r2(d.max), r2(d.facing), r1(d.vx), r1(d.vy), r2(d.atk || 0)]),
     terr,
     feed: world.feed.filter((f) => f.seq > ctx.lastFeed).map((f) => [f.text, f.color]),
     events: world.drainEvents().filter((e) => !SKIP_EVENTS.has(e.type)).map((e) => eventRec(e, idxOf, world)),
@@ -190,11 +190,11 @@ export function applySnapshot(world, s, ctx) {
   // Ilusões de tinta (interpoladas como os projéteis).
   ctx.decMap ||= new Map();
   const decs = new Map();
-  for (const [id, oi, x, y, life, max, facing, vx, vy] of s.dec || []) {
+  for (const [id, oi, x, y, life, max, facing, vx, vy, atk] of s.dec || []) {
     let d = ctx.decMap.get(id);
     if (!d) d = { id, px: x, py: y, x, y };
     else { d.px = d.x; d.py = d.y; d.x = x; d.y = y; }
-    d.owner = world.roster[oi]; d.team = d.owner?.team; d.life = life; d.max = max; d.facing = facing; d.vx = vx; d.vy = vy;
+    d.owner = world.roster[oi]; d.team = d.owner?.team; d.life = life; d.max = max; d.facing = facing; d.vx = vx; d.vy = vy; d.atk = atk || 0;
     decs.set(id, d);
   }
   ctx.decMap = decs;

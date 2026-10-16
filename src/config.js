@@ -23,9 +23,11 @@ export const SWITCH = {
 // Evolução: energia ganha em combate; ao encher, o monstro pode evoluir uma vez por partida.
 export const EVOLUTION = {
   threshold: 150, // energia necessária
-  dealt: 0.9, // energia por ponto de dano causado
-  taken: 0.45, // por ponto de dano recebido
-  dodge: 5, // por ataque anulado com esquiva
+  hit: 7, // por ATAQUE que acerta (≈5% da barra; com o dano, um tiro comum vale ~7–8%)
+  hitGap: 0.2, // rajadas (leque de lâminas, cone) contam como um ataque
+  dealt: 0.6, // energia por ponto de dano causado
+  taken: 0.5, // por ponto de dano recebido
+  dodge: 8, // por ataque anulado com esquiva
   environment: 0.35, // por interação elemental com o terreno (incendiar, apagar, fazer crescer)
   envPerSecond: 4, // limite de energia ambiental por segundo
   transformTime: 1.2, // duração da transformação (o resto da batalha continua)
@@ -56,6 +58,10 @@ export const FIRE = {
   selfSpeed: 1.1, // e ficam um pouco mais rápidos
   obstacleDps: 3, // encostar em objeto em chamas
 };
+
+// Morte súbita: depois deste tempo de partida, nenhuma cura funciona (terreno, sentinelas, Crescimento) e a IA
+// para de recuar. Evita partidas eternas entre monstros que se curam (ex.: água × água perto de um riacho).
+export const MATCH = { suddenDeath: 150 };
 
 // Controle: atordoamento e enraizamento seguidos perdem força (evita sequências inevitáveis).
 export const CONTROL = { guardTime: 1.2, chainMult: 0.4 };

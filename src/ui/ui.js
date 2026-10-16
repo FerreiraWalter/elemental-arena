@@ -529,7 +529,8 @@ export class UI {
       if (def.tips) text(c, def.tips, x + pw / 2, y + ph - 20 * u, fitSize(c, def.tips, 4.5, pw - 16 * u, u), '#ffe066', 'center', u);
       text(c, matchText(def.element), x + pw / 2, y + ph - 10 * u, 5, '#9ae070', 'center', u);
     });
-    text(c, `Evolução: energia por dano causado/recebido, esquivas e interações com o terreno. Ao chegar a ${EVOLUTION.threshold}, aperte G (uma vez por partida; a vida mantém a porcentagem).`, cx, H - 44 * u, fitSize(c, 'Evolução: energia por dano causado/recebido, esquivas e interações com o terreno. Ao chegar a 150, aperte G (uma vez por partida; a vida mantém a porcentagem).', 5, W - 30 * u, u), '#e8b8ff', 'center', u);
+    const evoTxt = 'Evolução: cada ataque que acerta enche ~7% da barra (dano, esquivas e terreno também contam). Barra cheia: aperte G (uma vez por partida; a vida mantém a porcentagem).';
+    text(c, evoTxt, cx, H - 44 * u, fitSize(c, evoTxt, 5, W - 30 * u, u), '#e8b8ff', 'center', u);
     this.button(cx - 75 * u, H - 34 * u, 150 * u, 26 * u, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
   }
 

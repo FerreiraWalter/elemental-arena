@@ -71,6 +71,8 @@ export class Renderer {
     this.denyFlash = 0;
     this.denySlot = null;
     this.decoySt = new Map();
+    this.rootFx = []; // jaulas de raízes (Brotossauro)
+    this.tentFx = []; // tentáculos do abismo (Leviapus)
     for (const m of world.roster) this.mon.set(m.id, { pb: new PixelBuf(48, 48), walk: 0, lagHp: m.hp, ghosts: [], ghostT: 0, seed: m.id * 7, top: 30 });
     this.palette = paletteFor(world);
     this.obsSprites = new Map();
@@ -247,7 +249,34 @@ export class Renderer {
         case 'evolveDenied':
           this.evoDeny = 0.6;
           break;
+        case 'bubbleBurst':
+          P.burst(e.x, e.y, 26, { ramp: 'water', speed: 90, life: 0.5, vz: 60, g: 200, size: 2 });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r + 4, t: 0, color: '#c8f0ff', thick: true });
+          this.shake = Math.max(this.shake, 2);
+          break;
+        case 'bubblePop':
+          P.burst(e.x, e.y - 8, 18, { ramp: 'water', speed: 70, life: 0.4, vz: 40, g: 160 });
+          this.rings.push({ x: e.x, y: e.y - 8, r: 6, max: 16, t: 0, color: '#ffffff' });
+          break;
+        case 'tentacleSlam':
+          this.tentFx.push({ x: e.x, y: e.y, r: e.r, big: e.big, t: 0, seed: Math.random() * 6 });
+          P.burst(e.x, e.y, e.big ? 34 : 18, { ramp: 'water', speed: 100, life: 0.6, vz: 120, g: 240, size: 2 });
+          P.burst(e.x, e.y, e.big ? 12 : 6, { ramp: 'ink', speed: 40, life: 0.8, size: 3, grow: 2, alpha: 0.7 });
+          this.shake = Math.max(this.shake, e.big ? 6 : 3);
+          if (e.big) this.hitstop = Math.max(this.hitstop, 0.06);
+          break;
+        case 'whirlBurst':
+          P.burst(e.x, e.y, 34, { ramp: 'water', speed: 140, life: 0.5, vz: 50, g: 200, size: 2 });
+          this.rings.push({ x: e.x, y: e.y, r: 8, max: e.r + 8, t: 0, color: '#e8f8ff', thick: true });
+          this.shake = Math.max(this.shake, 3);
+          break;
+        case 'burrowOut':
+          P.burst(e.x, e.y, e.big ? 26 : 16, { ramp: 'dust', speed: e.big ? 80 : 60, life: 0.6, vz: 70, g: 220, size: 2 });
+          P.burst(e.x, e.y - 6, e.big ? 18 : 8, { ramp: 'leafFall', speed: 60, life: 0.9, vz: 50, g: 80 });
+          if (e.big) this.rings.push({ x: e.x, y: e.y, r: 4, max: 26, t: 0, color: '#9ae070', thick: true });
+          break;
         case 'rootsErupt':
+          this.rootFx.push({ x: e.x, y: e.y, r: e.r, t: 0, dur: e.dur || 1.5, seed: Math.random() * 6 });
           P.burst(e.x, e.y, 26, { ramp: 'dust', speed: 70, life: 0.6, vz: 50, g: 220 });
           P.burst(e.x, e.y, 14, { ramp: 'leaf', speed: 50, life: 0.7, vz: 60, g: 160 });
           this.rings.push({ x: e.x, y: e.y, r: 3, max: e.r + 4, t: 0, color: '#9ae070', thick: true });
@@ -389,6 +418,10 @@ export class Renderer {
         case 'sentryShot':
           P.burst(e.x + Math.cos(e.ang) * 6, e.y + Math.sin(e.ang) * 6, 4, { ramp: 'leaf', speed: 40, life: 0.25 });
           break;
+        case 'suddenDeath':
+          this.addText({ x: 320, y: 120, text: 'MORTE SÚBITA!', t: 0, color: '#ff6a6a', big: true });
+          this.flash = 0.1; this.excite = 1;
+          break;
         case 'castDenied':
           if (e.m === this.world.active) this.denySlot = { slot: e.slot, reason: e.reason, t: 0.45 };
           break;
@@ -433,6 +466,7 @@ export class Renderer {
     this.drawTerrainFx(world, t);
     for (const h of world.hazards) drawHazard(h, this.fxG, this.fxT, t, this.dotCircle.bind(this));
     this.drawTelegraphs(world, t);
+    this.drawGroundAbilityFx(world, t, dt);
     l.drawImage(this.fxG.commit(), 0, 0);
     this.drawGroundDecor(world);
     this.drawCrowd(t);
@@ -448,6 +482,9 @@ export class Renderer {
     for (const e of ents) e.o ? this.drawObstacle(e.o, t) : e.d ? this.drawDecoy(e.d, alpha, dt, t) : this.drawMonster(e.m, alpha, dt, t);
     this.drawProjectiles(world, alpha, t);
     this.drawAbilityFx(world, t);
+    for (const f of this.rootFx) { this.drawRootCage(f, t, true); f.t += dt; }
+    this.rootFx = this.rootFx.filter((f) => f.t < f.dur);
+    this.drawTentacles(dt, t);
     for (const d of world.decor) if (d.kind === 'waterfall') drawWaterfall(d, this.fxT, t);
     l.drawImage(this.fxT.commit(), 0, 0);
     this.drawCanopies(world);
@@ -613,14 +650,19 @@ export class Renderer {
       if (!p.lob) continue;
       const k = p.t / p.flight;
       if (p.kind === 'sentrySeed') continue;
-      if (p.kind === 'roots') {
-        const blink = Math.floor(t * 16) % 2;
-        this.dotCircle(g, p.tx, p.ty, p.radius, rgba(blink ? '#c8ff80' : '#4aa83a', 230), t * 2, 3);
-        for (let s = 0; s < 6; s++) {
-          const a = s * 1.05 + t;
-          const r = p.radius * (1 - k) * 0.9;
-          g.set(p.tx + Math.cos(a) * r, p.ty + Math.sin(a) * r * 0.85, rgba('#8a6038', 220));
-        }
+      if (p.kind === 'roots') { this.drawRootRune(g, p.tx, p.ty, p.radius, k, t); continue; }
+      if (p.kind === 'bubble') {
+        const c = rgba(Math.floor(t * 12) % 2 ? '#e8f8ff' : '#5ab4ff', 230);
+        this.dotCircle(g, p.tx, p.ty, p.radius, c, t * 3, 3);
+        this.dotCircle(g, p.tx, p.ty, p.radius * (1 - k), rgba('#8fd8ff', 200), -t * 4, 4);
+        continue;
+      }
+      if (p.kind === 'tentacle') {
+        // Água escura borbulhando onde o tentáculo vai subir (ondas que se fecham no centro).
+        const R = p.radius;
+        this.dotCircle(g, p.tx, p.ty, R, rgba(Math.floor(t * 14) % 2 ? '#8a7ad0' : '#3a2a6a', 230), t * 2, 3);
+        for (let q = 0; q < 3; q++) { const rr = R * (((1 - k) + q / 3) % 1); this.dotCircle(g, p.tx, p.ty, Math.max(2, rr), rgba('#2a1e52', 180), q, 4); }
+        for (let y = -R; y <= R; y += 2) for (let x = -R; x <= R; x += 2) if (x * x + (y / 0.85) * (y / 0.85) < R * R * 0.5 && hash2(x + 7, y, Math.floor(t * 8)) < 0.18 * k) g.set(p.tx + x, p.ty + y, rgba('#1a1236', 170));
         continue;
       }
       const blink = Math.floor(t * (8 + k * 14)) % 2;
@@ -774,6 +816,7 @@ export class Renderer {
     }
     if (evoK >= 0) beam = Math.max(beam, Math.sin(evoK * Math.PI) * 0.9);
     // Mergulho Vulcânico: o monstro some sob a terra, deixando só um montinho se movendo.
+    if (m.alive && m.action && m.action.ab.burrowDodge && m.action.phase === 'active') { this.drawBurrowDodge(m, p, t); return; }
     if (m.alive && m.action && m.action.ab.burrow && m.action.phase === 'active') {
       const bx = Math.round(p.x), by = Math.round(p.y);
       l.fillStyle = '#3a2818'; l.beginPath(); l.ellipse(bx, by + 1, 9, 4, 0, 0, 6.3); l.fill();
@@ -818,6 +861,24 @@ export class Renderer {
         if (Math.random() > beam) continue;
         g.set(x + q, yy, col[Math.abs(q) >= w - 1 ? 1 : 0]);
       }
+    }
+    // Bolha Prisão: o alvo flutua dentro de uma bolha até ela estourar.
+    if (m.alive && m.status.bubble > 0) {
+      const g = this.fxT, R = m.r + 8, cy = y - frame.top * 0.45 - 2;
+      const wob = Math.sin(t * 9) * 0.8;
+      const Rx = R + wob, Ry = R - wob;
+      // Interior azul translúcido (o monstro aparece "dentro" da água), borda grossa e brilhos.
+      for (let dy = -Math.ceil(Ry); dy <= Ry; dy++) for (let dx = -Math.ceil(Rx); dx <= Rx; dx++) {
+        const d = Math.sqrt((dx * dx) / (Rx * Rx) + (dy * dy) / (Ry * Ry));
+        if (d > 1) continue;
+        const px = Math.round(x + dx), py = Math.round(cy + dy);
+        if (d > 1 - 2 / R) g.set(px, py, (Math.floor((Math.atan2(dy, dx) + t * 2) * 5) % 4) ? rgba('#bfe8ff', 235) : rgba('#ffffff', 245));
+        else if (d > 0.8) g.set(px, py, rgba('#5ab4ff', 95));
+        else if ((dx + dy + Math.floor(t * 4)) % 3 === 0) g.set(px, py, rgba('#8fd8ff', 60));
+      }
+      for (let q = 0; q < 9; q++) { const an = -2.5 + q * 0.11; g.set(Math.round(x + Math.cos(an) * (R - 3)), Math.round(cy + Math.sin(an) * (R - 3)), rgba('#ffffff', 240)); }
+      g.set(Math.round(x + R * 0.45), Math.round(cy + R * 0.4), rgba('#ffffff', 220));
+      if (Math.random() < 0.15) this.particles.add({ ramp: 'water', x: x + (Math.random() - 0.5) * R, y: cy + R * 0.6, vz: 15, life: 0.5 });
     }
     // Casco Reflexo: domo d'água em volta durante o bloqueio.
     if (m.alive && m.action?.ab.kind === 'guard' && m.action.phase === 'active') {
@@ -1037,6 +1098,19 @@ export class Renderer {
           if (d <= 2.6) g.set(x + dx, y + dy, W[Math.min(3, Math.floor(d))]);
         }
         this.particles.add({ ramp: 'water', x, y, vx: -p.vx * 0.12 + (Math.random() - 0.5) * 16, vy: -p.vy * 0.12 + (Math.random() - 0.5) * 16, life: 0.3 });
+      } else if (p.kind === 'bubble') {
+        const l = this.l, k = p.t / p.flight;
+        l.globalAlpha = 0.35; l.fillStyle = '#0a1a30';
+        l.beginPath(); l.ellipse(Math.round(x), Math.round(y), 3 + k * 4, 2 + k * 2, 0, 0, Math.PI * 2); l.fill(); l.globalAlpha = 1;
+        const hy = y - p.h;
+        for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+          const d = Math.hypot(dx, dy);
+          if (d > 5.2) continue;
+          if (d > 4.2) g.set(x + dx, hy + dy, rgba('#8fd8ff', 230));
+          else if (dx < -1 && dy < -1 && d > 2) g.set(x + dx, hy + dy, rgba('#ffffff', 220));
+          else g.set(x + dx, hy + dy, rgba('#3a8ad8', 90));
+        }
+        if (Math.random() < 0.4) this.particles.add({ ramp: 'water', x, y: hy, vz: 10, life: 0.3 });
       } else if (p.kind === 'meteor') {
         const l = this.l;
         l.globalAlpha = 0.4;
@@ -1084,20 +1158,16 @@ export class Renderer {
         for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (Math.hypot(dx, dy) <= r) g.set(x + dx, y + dy, Math.hypot(dx, dy) < r * 0.5 ? rgba('#ffffff') : rgba('#5ab4ff'));
         if (Math.random() < 0.6) { const an = Math.random() * 6.28; this.particles.add({ ramp: 'water', x: x + Math.cos(an) * 14, y: y + Math.sin(an) * 14, vx: -Math.cos(an) * 60, vy: -Math.sin(an) * 60, life: 0.22, drag: 0 }); }
       } else if (ab.id === 'whirlpool' && a.phase === 'active') {
+        // Crista de espuma na metade da frente (o redemoinho envolve o monstro) e respingos jogados de lado.
         const R = a.data.R || 4;
-        const cols = [rgba('#1f62c0'), rgba('#3a9ae8'), rgba('#9ad8ff'), rgba('#ffffff')];
-        for (let arm = 0; arm < 4; arm++) {
-          for (let s = 0; s <= 1; s += 0.006) {
-            const r = 6 + s * (R - 6);
-            const ang = t * 9 + (arm * Math.PI) / 2 + s * 2.6;
-            const w = 1 + (1 - s) * 2;
-            for (let q = 0; q < w; q += 0.7) {
-              const ci = Math.min(3, Math.floor((1 - q / w) * 3 + (s > 0.7 ? 1 : 0)));
-              g.set(m.x + Math.cos(ang) * (r + q), m.y + Math.sin(ang) * (r + q) * 0.8, cols[ci]);
-            }
-          }
+        for (let q = 0; q <= Math.PI; q += 0.035) {
+          const an = q + t * 7;
+          const front = Math.sin(an);
+          if (front < 0) continue;
+          const wob = Math.sin(an * 5 - t * 20) * 1.2;
+          g.set(m.x + Math.cos(an) * (R + wob), m.y + front * (R + wob) * 0.8 - 1, (Math.floor(an * 6) % 3) ? rgba('#e8f8ff', 230) : rgba('#7cc8f0', 200));
         }
-        if (Math.random() < 0.8) { const an = Math.random() * 6.28; this.particles.add({ ramp: 'water', x: m.x + Math.cos(an) * R, y: m.y + Math.sin(an) * R * 0.8, vx: -Math.sin(an) * 80, vy: Math.cos(an) * 60, vz: 20, g: 120, life: 0.4 }); }
+        for (let k = 0; k < 2; k++) if (Math.random() < 0.9) { const an = Math.random() * 6.28, rr = R * (0.6 + Math.random() * 0.4); this.particles.add({ ramp: 'water', x: m.x + Math.cos(an) * rr, y: m.y + Math.sin(an) * rr * 0.8, vx: -Math.sin(an) * 110, vy: Math.cos(an) * 80, vz: 30 + Math.random() * 30, g: 160, life: 0.45 }); }
       } else if (ab.kind === 'cone' && a.phase === 'active') {
         const ox = m.x + Math.cos(a.aim) * m.r, oy = m.y + Math.sin(a.aim) * m.r - 3;
         for (let k = 0; k < 9; k++) {
@@ -1324,7 +1394,7 @@ export class Renderer {
     l.globalAlpha = foe ? 0.9 : 0.4;
     l.fillStyle = TEAM_COLOR[owner.team];
     for (let k = 0; k < 18; k++) { if (k % 3 === 0) continue; const an = (k / 18) * Math.PI * 2 + this.time * 0.8; l.fillRect(Math.round(x + Math.cos(an) * (owner.r + 3)), Math.round(y + 2 + Math.sin(an) * (owner.r + 3) * 0.45), 1, 1); }
-    const pose = { t, walk: st.walk, moving: 1, crouch: 0, lunge: 0, open: 0, dash: 0, spin: 0, dead: 0, seed: st.seed, power: 0 };
+    const pose = { t, walk: st.walk, moving: 1, crouch: 0, lunge: 0, open: d.atk > 0 ? 1 : 0, dash: 0, spin: 0, dead: 0, seed: st.seed, power: 0 };
     if (!this.art.has(owner.def.sprite)) { l.globalAlpha = 1; return; }
     const f = this.art.render('decoy:' + (d.id % 8), owner.def.sprite, pose);
     const face = (Math.cos(d.facing) >= 0 ? 1 : -1) * (f.faces === -1 ? -1 : 1);
@@ -1345,6 +1415,198 @@ export class Renderer {
     l.fillStyle = '#140c0a'; l.fillRect(x - 1, y - 1, 22, 4);
     l.fillStyle = '#5a1a14'; l.fillRect(x, y, 20, 2);
     l.fillStyle = TEAM_COLOR[owner.team]; l.fillRect(x, y, Math.round((owner.hp / owner.maxHp) * 20), 2);
+  }
+
+  // Círculo rúnico das Raízes: anel duplo com runas girando; rachaduras avançam para o centro e brotos
+  // aparecem na borda pouco antes de as raízes subirem.
+  drawRootRune(g, x, y, R, k, t) {
+    const glow = Math.floor(t * (8 + k * 16)) % 2;
+    // Área marcada: verde translúcido que fica mais forte até as raízes subirem.
+    const fill = rgba('#5aa83c', Math.round(35 + 85 * k));
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) { const ey = dy / 0.85; if (dx * dx + ey * ey <= R * R) g.set(x + dx, y + dy, fill); }
+    this.dotCircle(g, x, y, R, rgba(glow ? '#e8ffb0' : '#6ac84a', 250), t * 1.5, 1);
+    this.dotCircle(g, x, y, R - 1, rgba('#2f6a26', 230), t * 1.5, 2);
+    this.dotCircle(g, x, y, R * 0.72, rgba(glow ? '#a8f070' : '#3f8a38', 220), -t * 2.2, 2);
+    // Runas: pequenos símbolos em 6 pontos do anel, girando devagar.
+    for (let q = 0; q < 6; q++) {
+      const an = q * (Math.PI / 3) + t * 0.8;
+      const cx = Math.round(x + Math.cos(an) * R * 0.86), cy = Math.round(y + Math.sin(an) * R * 0.86 * 0.85);
+      const c = rgba(k > 0.5 && glow ? '#ffffff' : '#d8ff90', 250);
+      for (const [dx, dy] of [[0, 0], [1, -1], [-1, -1], [0, -2], [0, 1], [2, 0], [-2, 0]]) g.set(cx + dx, cy + dy, c);
+    }
+    // Rachaduras de terra do anel para dentro.
+    for (let q = 0; q < 8; q++) {
+      const an = q * (Math.PI / 4) + 0.3;
+      const len = R * k;
+      for (let s2 = 0; s2 < len; s2 += 1.2) {
+        const jag = Math.sin(s2 * 0.9 + q * 3) * 1.2;
+        const rr = R - s2;
+        g.set(x + Math.cos(an) * rr - Math.sin(an) * jag, y + (Math.sin(an) * rr + Math.cos(an) * jag) * 0.85, rgba('#3a2414', 200));
+      }
+    }
+    // Pontas de raiz saindo da borda.
+    if (k > 0.55) for (let q = 0; q < 8; q++) {
+      const an = q * (Math.PI / 4) + 0.3;
+      const bx = Math.round(x + Math.cos(an) * R * 0.95), by = Math.round(y + Math.sin(an) * R * 0.95 * 0.85);
+      const h = Math.round((k - 0.55) / 0.45 * 4);
+      for (let s2 = 0; s2 <= h; s2++) g.set(bx, by - s2, s2 === h ? rgba('#84c858') : ROOT[1]);
+    }
+  }
+
+  // Efeitos de chão (por baixo dos monstros): redemoinho, anel de raízes e poça escura dos tentáculos.
+  drawGroundAbilityFx(world, t, dt) {
+    const g = this.fxG;
+    for (const m of world.monsters) {
+      const a = m.action;
+      if (!m.alive || !a || a.ab.id !== 'whirlpool' || a.phase !== 'active') continue;
+      const R = a.data.R || 4;
+      const RR = R * R;
+      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+        const ey = dy / 0.8;
+        const r2 = dx * dx + ey * ey;
+        if (r2 > RR) continue;
+        const r = Math.sqrt(r2), th = Math.atan2(ey, dx);
+        // Espiral logarítmica girando: faixas de espuma, água clara e azul profundo; olho escuro no centro.
+        const v = Math.sin(3 * th + 7 * Math.log(1 + r / 5) - t * 11);
+        const edge = r / R;
+        let c;
+        if (r < R * 0.18) c = rgba('#0e2a5a', 220);
+        else if (v > 0.72 && edge > 0.3) c = rgba('#f0fbff', 230);
+        else if (v > 0.25) c = rgba('#7cc8f0', 150 + Math.round(70 * (1 - edge)));
+        else if (v > -0.35) c = rgba('#3a8ad8', 130 + Math.round(70 * (1 - edge)));
+        else c = rgba('#1f5cb0', 120 + Math.round(60 * (1 - edge)));
+        if (edge > 0.93 && (Math.floor(th * 9 + t * 14) & 1)) c = rgba('#ffffff', 220);
+        g.set(m.x + dx, m.y + dy, c);
+      }
+    }
+    // Jaulas de raízes: anel rachado no chão + raízes de trás (as da frente vão por cima do monstro).
+    for (const f of this.rootFx) this.drawRootCage(f, t, false);
+    // Poça escura dos tentáculos.
+    for (const f of this.tentFx) {
+      const k = Math.min(1, f.t / 0.15), fade = Math.max(0, 1 - Math.max(0, f.t - 0.9) / 0.3);
+      const R = f.r * 0.8 * k;
+      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+        const ey = dy / 0.75;
+        if (dx * dx + ey * ey > R * R) continue;
+        if (hash2(dx + 40, dy, Math.floor(t * 10)) > 0.6 * fade + 0.2) continue;
+        g.set(f.x + dx, f.y + dy, rgba(dx * dx + ey * ey > R * R * 0.7 ? '#5a4aa0' : '#1a1236', 170));
+      }
+    }
+    void dt;
+  }
+
+  // Raízes da jaula: sobem da borda do círculo curvando para o centro, balançam e afundam no fim.
+  drawRootCage(f, t, front) {
+    const g = front ? this.fxT : this.fxG;
+    const n = Math.max(7, Math.min(12, Math.round(f.r / 3)));
+    const H = 12 + f.r * 0.45;
+    const rise = f.t < 0.12 ? (f.t / 0.12) * 1.1 : f.t < 0.22 ? 1.1 - ((f.t - 0.12) / 0.1) * 0.1 : 1;
+    const sink = Math.max(0, Math.min(1, (f.dur - f.t) / 0.3));
+    const grow = Math.min(rise, sink);
+    if (grow <= 0) return;
+    if (!front) {
+      // Anel de terra rachada sob a jaula.
+      this.dotCircle(g, f.x, f.y, f.r * 0.95, rgba('#2a1a10', 220), 0, 2);
+      this.dotCircle(g, f.x, f.y, f.r * 0.8, rgba('#4a2e16', 160), 0.5, 3);
+    }
+    for (let i = 0; i < n; i++) {
+      const an = (i / n) * Math.PI * 2 + f.seed;
+      const isFront = Math.sin(an) >= 0;
+      if (isFront !== front) continue;
+      const bx = f.x + Math.cos(an) * f.r * 0.95, by = f.y + Math.sin(an) * f.r * 0.95 * 0.8;
+      const h = H * (0.8 + 0.4 * hash2(i, 3, Math.round(f.seed * 10)));
+      const tx = f.x + Math.cos(an) * f.r * 0.25 + Math.sin(t * 3 + i) * 1.2, ty = f.y + Math.sin(an) * f.r * 0.2 - h;
+      const cx = bx + (tx - bx) * 0.15, cy = by - h * 1.05;
+      const steps = 22;
+      for (let k2 = 0; k2 <= steps * grow; k2++) {
+        const s2 = k2 / steps, u = 1 - s2;
+        const px = u * u * bx + 2 * u * s2 * cx + s2 * s2 * tx, py = u * u * by + 2 * u * s2 * cy + s2 * s2 * ty;
+        const w = 2 * (1 - s2) + 0.6;
+        for (let oy = -w; oy <= w; oy += 1) for (let ox = -w; ox <= w; ox += 1) {
+          const d = Math.hypot(ox, oy);
+          if (d > w) continue;
+          g.set(px + ox, py + oy, d > w - 0.9 ? rgba('#2a1a0c') : ox < 0 ? ROOT[2] : ROOT[1]);
+        }
+        if (k2 % 5 === 2) { g.set(px + w + 1, py, rgba('#e8dcc0')); }
+        if (k2 % 7 === 4) { g.set(px - w - 1, py - 1, ROOT[3]); g.set(px - w - 2, py - 1, ROOT[4]); }
+      }
+    }
+  }
+
+  // Esquiva enterrada do Brotossauro: montinho de terra andando com uma flor vermelha (ou uma arvorezinha).
+  drawBurrowDodge(m, p, t) {
+    const l = this.l, g = this.fxT;
+    const x = Math.round(p.x), y = Math.round(p.y);
+    const tree = m.action.ab.burrowDodge === 'tree';
+    const mw = tree ? 10 : 8;
+    // Monte de terra elevado: sombra no chão, domo com brilho no topo e torrões.
+    l.globalAlpha = 0.35; l.fillStyle = '#000'; l.beginPath(); l.ellipse(x, y + 2, mw + 2, 3.5, 0, 0, 6.3); l.fill(); l.globalAlpha = 1;
+    for (let row = 0; row <= 4; row++) {
+      const half = Math.round(mw * Math.sqrt(1 - (row / 5) ** 2));
+      l.fillStyle = row === 0 ? '#4a301a' : row >= 3 ? '#8a6038' : '#6e4a2a';
+      l.fillRect(x - half, y + 1 - row, half * 2 + 1, 1);
+    }
+    l.fillStyle = '#a07848';
+    for (let k = 0; k < 4; k++) l.fillRect(x - mw + 3 + ((k * 4 + Math.floor(t * 6)) % (mw * 2 - 5)), y - 1 - (k % 3), 1, 1);
+    l.fillStyle = '#3a2414';
+    for (let k = 0; k < 3; k++) l.fillRect(x - mw + 2 + ((k * 6 + Math.floor(t * 9)) % (mw * 2 - 3)), y + 1, 2, 1);
+    const sway = Math.round(Math.sin(t * 7) * 1);
+    if (!tree) {
+      // Caule com folha e uma flor vermelha cheia (quatro pétalas 2x2 e miolo amarelo).
+      for (let s2 = 0; s2 < 7; s2++) g.set(x + (s2 > 4 ? sway : 0), y - 3 - s2, rgba(s2 % 2 ? '#3f8a38' : '#4a9a3e'));
+      g.set(x - 1, y - 5, rgba('#5aa83c')); g.set(x - 2, y - 6, rgba('#84c858')); g.set(x + 1, y - 7, rgba('#5aa83c'));
+      const fx = x + sway, fy = y - 12;
+      for (const [dx, dy] of [[-1, -3], [1, -1], [-1, 1], [-3, -1]]) {
+        g.set(fx + dx, fy + dy, rgba('#e8303a')); g.set(fx + dx + 1, fy + dy, rgba('#ff5a5a'));
+        g.set(fx + dx, fy + dy + 1, rgba('#b01a24')); g.set(fx + dx + 1, fy + dy + 1, rgba('#e8303a'));
+      }
+      g.set(fx, fy, rgba('#ffd23a')); g.set(fx - 1, fy, rgba('#ffb020')); g.set(fx, fy - 1, rgba('#ffe066')); g.set(fx - 1, fy - 1, rgba('#ffd23a'));
+    } else {
+      // Arvorezinha: tronco, copa redonda com brilho e frutinhas vermelhas.
+      for (let s2 = 0; s2 < 8; s2++) { g.set(x, y - 1 - s2, rgba('#5a3a1a')); g.set(x + 1, y - 1 - s2, rgba('#74502e')); }
+      const cx = x + sway, cy = y - 13;
+      for (let dy = -5; dy <= 5; dy++) for (let dx = -7; dx <= 7; dx++) {
+        const d = (dx * dx) / 49 + (dy * dy) / 25;
+        if (d > 1) continue;
+        g.set(cx + dx, cy + dy, d > 0.75 ? rgba('#1f4a22') : dx < -2 && dy < -1 ? rgba('#62ae4e') : rgba('#3f8a38'));
+      }
+      for (const [dx, dy] of [[-3, 1], [2, -2], [4, 2]]) g.set(cx + dx, cy + dy, rgba('#e8303a'));
+      if (Math.random() < 0.08) this.particles.add({ ramp: 'leafFall', x: cx + (Math.random() - 0.5) * 10, y: cy, z: 4, vz: -6, vx: 6, life: 1 });
+    }
+    if (Math.random() < 0.5) this.particles.add({ ramp: 'dust', x: x + (Math.random() - 0.5) * mw * 2, y, z: 1, vz: 20, vx: (Math.random() - 0.5) * 20, life: 0.35, g: 90 });
+  }
+
+  // Tentáculo do abismo: sobe rápido, balança curvando a ponta e afunda.
+  drawTentacles(dt, t) {
+    const g = this.fxT;
+    for (const f of this.tentFx) {
+      f.t += dt;
+      const up = f.t < 0.15 ? f.t / 0.15 : f.t > 0.9 ? Math.max(0, 1 - (f.t - 0.9) / 0.3) : 1;
+      if (up <= 0) continue;
+      const H = (f.big ? 44 : 28) * up, W = f.big ? 6.5 : 4.2, A = f.big ? 5 : 3.5;
+      // Ponta enrolando: a curva aumenta no fim e balança com o tempo.
+      const curl = (f.big ? 10 : 6) * (0.7 + 0.3 * Math.sin(t * 4 + f.seed));
+      const steps = f.big ? 46 : 32;
+      let prevX = f.x;
+      for (let k = 0; k <= steps; k++) {
+        const s2 = k / steps;
+        const body = Math.sin(s2 * Math.PI * 1.3 + t * 3.5 + f.seed) * A * s2;
+        const hook = s2 > 0.72 ? curl * Math.pow((s2 - 0.72) / 0.28, 2) : 0;
+        const px = f.x + body + hook;
+        const py = f.y - s2 * H + (s2 > 0.85 ? (s2 - 0.85) * H * 0.9 : 0);
+        const w = Math.max(1, W * (1 - s2 * 0.82));
+        const lean = px - prevX; prevX = px;
+        for (let ox = -w; ox <= w; ox += 1) {
+          const e = Math.abs(ox) > w - 1;
+          g.set(px + ox, py, e ? rgba('#22163f') : ox < -w * 0.3 ? rgba('#9a8ae0') : ox < w * 0.4 ? rgba('#5a4aa8') : rgba('#3e2f86'));
+        }
+        // Ventosas no lado de dentro.
+        if (k % 3 === 1 && s2 < 0.8 && w > 2) { g.set(px + w - 1.5, py, rgba('#f0d8ff')); g.set(px + w - 2.5, py, rgba('#c8a8f0')); }
+        void lean;
+      }
+      if (Math.random() < 0.3) this.particles.add({ ramp: 'water', x: f.x + (Math.random() - 0.5) * 8, y: f.y, z: H * 0.8, vz: -20, g: 160, life: 0.5 });
+    }
+    this.tentFx = this.tentFx.filter((f) => f.t < 1.25);
   }
 
   // Raízes que ligam a sentinela ao dono quando ele está perto (cura).

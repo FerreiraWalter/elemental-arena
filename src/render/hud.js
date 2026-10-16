@@ -317,6 +317,8 @@ export function drawHud(c, r, world, ui) {
   text(c, `${String(Math.floor(tm / 60)).padStart(2, '0')}:${String(Math.floor(tm % 60)).padStart(2, '0')}`, mid, 22 * dpr, 11, '#ffffff', 'center', dpr);
   const aliveSide = (side) => world.roster.filter((m) => m.team === side && m.alive).length;
   text(c, `${aliveSide(mySide)} × ${aliveSide(1 - mySide)}`, mid, 36 * dpr, 6, '#ffe9b0', 'center', dpr);
+  if (world.time >= 150 && !world.over) text(c, 'MORTE SÚBITA · sem cura', mid, 62 * dpr, 5, Math.floor(performance.now() / 400) % 2 ? '#ff6a6a' : '#ffb0b0', 'center', dpr);
+  else if (world.time >= 130 && !world.over) text(c, `Morte súbita em ${Math.ceil(150 - world.time)}s`, mid, 62 * dpr, 5, '#ffb070', 'center', dpr);
   if (world.playerTeam !== null) {
     const ts = world.teams[myTeam];
     const anyBench = world.teamOf(myTeam).some((m) => m.alive && !m.onField);

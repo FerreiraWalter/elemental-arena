@@ -24,7 +24,8 @@ export class Monster {
     this.cd = {};
     for (const ab of def.abilities) this.cd[ab.id] = 0;
     // overheat/exhaust: Fornalha (Brasalisco); cloak: camuflagem de tinta (Gotapus).
-    this.status = { burn: 0, wet: 0, stun: 0, invuln: 0, root: 0, shield: 0, overheat: 0, exhaust: 0, cloak: 0 };
+    // bubble: preso na Bolha Prisão do Gotapus (desenho; o efeito real é o enraizamento).
+    this.status = { burn: 0, wet: 0, stun: 0, invuln: 0, root: 0, shield: 0, overheat: 0, exhaust: 0, cloak: 0, bubble: 0 };
     this.heat = 0; // Fornalha (0..100)
     this.heatIdle = 0;
     this.momentum = 0; // Ímpeto do Ouriflama (0..100)

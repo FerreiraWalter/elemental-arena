@@ -221,6 +221,24 @@ export const TACTICS = {
   },
   jetDash(c) { return TACTICS.shellRoll(c); },
   krakenJet(c) { return TACTICS.shellRoll(c); },
+  // Bolha Prisão: como as raízes, melhor em alvo lento, parado ou canalizando.
+  bubbleTrap(c) {
+    if (c.d < 40 || c.d > 190 || c.sinceSeen > 0.8 || c.t.status.root > 0 || c.tGuarding) return null;
+    let s = 0.45;
+    if (c.tChanneling || c.t.status.stun > 0) s += 0.4;
+    if (c.tSpeed < 25) s += 0.2;
+    if (c.t.element === 'fire') s += 0.1;
+    return { score: s, target: c.t, lob: true };
+  },
+  // Tentáculos do Abismo: vale mais com cópias em campo (cada uma vira um tentáculo).
+  abyssTentacles(c) {
+    if (c.d < 30 || c.d > 185 || c.sinceSeen > 1) return null;
+    const decoys = c.w.decoys.filter((d) => d.owner === c.m).length;
+    let s = 0.5 + decoys * 0.12;
+    if (c.tChanneling || c.t.status.stun > 0 || c.t.status.root > 0) s += 0.35;
+    if (c.tSpeed < 25) s += 0.15;
+    return { score: s, target: c.t, lob: true };
+  },
   tentacleSweep(c) {
     if (!c.vis || c.d > reach(c, 33) || c.tGuarding) return null;
     return { score: 0.82 + (c.tBusy ? 0.2 : 0), target: c.t };
