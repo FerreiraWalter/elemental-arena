@@ -24,6 +24,7 @@ Menu → **Treinamento** → escolha de 1 a 3 monstros e a arena. Você treina c
 1. Menu → **Multiplayer online** → escolha seus 3 monstros → **Criar sala 1v1** ou **2v2** (você recebe um código de 4 caracteres, ex.: `K7QM`) — ou digite um código e **Entrar na sala** (aceita minúsculas e Ctrl+V).
 2. Na **sala**: veja jogadores, equipes (A/B), time de cada um e quem está pronto; clique numa vaga livre para sentar nela. O anfitrião (★) muda **modo** (1v1/2v2) e **arena**; mudar a configuração desmarca a prontidão de todos.
 3. Todos clicam **Pronto**; o anfitrião clica **Iniciar partida** (1v1 precisa de 2 jogadores, 2v2 de 4).
+   - **Robôs:** o anfitrião pode ocupar vagas com robôs (IA do servidor): **+ ROBÔ** numa vaga livre ou **COMPLETAR COM ROBÔS**; **ROBÔS: FÁCIL/NORMAL/DIFÍCIL** muda o nível; **NOVO TIME** sorteia outro time para o robô e **REMOVER** libera a vaga. Robôs já entram prontos. Se um amigo entrar com a sala cheia de robôs, ele **toma a vaga de um robô**. Funciona no 1v1 e no 2v2 (ex.: você + um amigo contra 2 robôs, ou você sozinho contra 3 robôs).
 4. Na batalha, cada jogador controla o próprio monstro, com combate simultâneo em tempo real. Ao terminar, o anfitrião escolhe *Voltar à sala* (revanche).
 
 Como funciona (servidor autoritativo):

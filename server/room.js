@@ -1,4 +1,4 @@
-import { World } from '../src/sim/world.js';
+import { World, DIFFICULTY_MODS } from '../src/sim/world.js';
 import { DT } from '../src/config.js';
 import { ROSTER } from '../src/sim/species.js';
 import { ARENA_ORDER } from '../src/arenas/index.js';
@@ -9,12 +9,22 @@ import { serialize, makeSyncCtx, SNAP_HZ } from '../src/net/snapshot.js';
 
 // Sala de multiplayer: lobby (jogadores, vagas/equipes, modo, arena, prontidão) e partida autoritativa.
 // A sala não conhece rede: recebe mensagens já decodificadas e envia por `player.send(obj)`.
+// ROBÔS: o anfitrião pode ocupar vagas com robôs (IA que roda aqui no servidor, igual aos monstros da IA no jogo
+// local). Robôs estão sempre prontos; se um amigo entrar com a sala cheia, ele toma a vaga de um robô.
 
 export const MODES = { '1v1': { seats: 2, sides: [0, 1] }, '2v2': { seats: 4, sides: [0, 0, 1, 1] } };
+export const BOT_LEVELS = ['easy', 'normal', 'hard'];
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem 0/O/1/I para evitar confusão ao ditar o código
 const PRESSES = new Set(['primary', 'melee', 'q', 'e', 'f', 'dodge', 'evolve']);
 const SNAP_EVERY = Math.round(60 / SNAP_HZ);
 const num = (v, lo, hi, def = 0) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : def);
+const noop = () => {};
+
+function randomTeam() {
+  const pool = [...ROSTER];
+  for (let i = pool.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  return pool.slice(0, 3);
+}
 
 export class Room {
   constructor(code, onEmpty, opts = {}) {
@@ -23,8 +33,9 @@ export class Room {
     this.onEmpty = onEmpty;
     this.mode = '1v1';
     this.arena = ARENA_ORDER[0];
+    this.botLevel = 'normal';
     this.state = 'lobby'; // lobby | playing | over
-    this.players = new Map(); // id -> { id, name, seat, team, ready, connected, send }
+    this.players = new Map(); // id -> { id, name, seat, team, ready, connected, send, bot? }
     this.hostId = null;
     this.nextId = 1;
     this.world = null;
@@ -35,20 +46,43 @@ export class Room {
   get seats() { return MODES[this.mode].seats; }
   sideOfSeat(seat) { return MODES[this.mode].sides[seat]; }
   list() { return [...this.players.values()]; }
-  connectedCount() { return this.list().filter((p) => p.connected).length; }
+  humans() { return this.list().filter((p) => !p.bot); }
+  bots() { return this.list().filter((p) => p.bot); }
+  connectedCount() { return this.humans().filter((p) => p.connected).length; }
+  freeSeat() {
+    const taken = new Set(this.list().map((p) => p.seat));
+    for (let i = 0; i < this.seats; i++) if (!taken.has(i)) return i;
+    return -1;
+  }
+  nextHost() { return this.humans().find((p) => p.connected)?.id ?? null; }
 
-  // Entra na sala; retorna { player } ou { error }.
+  // Entra na sala; retorna { player } ou { error }. Sala cheia de robôs: o amigo toma a vaga do último robô.
   join(name, send) {
     if (this.state !== 'lobby') return { error: 'started', message: 'A partida desta sala já começou.' };
-    const taken = new Set(this.list().map((p) => p.seat));
-    let seat = -1;
-    for (let i = 0; i < this.seats; i++) if (!taken.has(i)) { seat = i; break; }
-    if (seat < 0) return { error: 'full', message: 'A sala está cheia.' };
+    let seat = this.freeSeat();
+    if (seat < 0) {
+      const bot = this.bots().pop();
+      if (!bot) return { error: 'full', message: 'A sala está cheia.' };
+      this.players.delete(bot.id);
+      seat = bot.seat;
+    }
     const player = { id: this.nextId++, token: randomBytes(12).toString('hex'), name: String(name || 'Jogador').replace(/[^\p{L}\p{N} _.\-]/gu, '').trim().slice(0, 14) || 'Jogador', seat, team: null, ready: false, connected: true, send };
     this.players.set(player.id, player);
     if (this.hostId === null) this.hostId = player.id;
     this.broadcastRoom();
     return { player };
+  }
+
+  // Robô numa vaga livre (ou na indicada). Retorna o robô ou null.
+  addBot(seat = -1) {
+    if (seat < 0 || seat >= this.seats || this.list().some((p) => p.seat === seat)) seat = this.freeSeat();
+    if (seat < 0) return null;
+    const used = new Set(this.bots().map((b) => b.name));
+    let n = 1;
+    while (used.has(`Robô ${n}`)) n++;
+    const bot = { id: this.nextId++, bot: true, token: null, name: `Robô ${n}`, seat, team: randomTeam(), ready: true, connected: true, send: noop };
+    this.players.set(bot.id, bot);
+    return bot;
   }
 
   // Volta a uma partida em andamento (ou ao lobby) com o token recebido ao entrar. Retorna { player } ou { error }.
@@ -70,23 +104,30 @@ export class Room {
     return { player };
   }
 
+  playerList(ps) { return ps.map((p) => ({ id: p.id, name: p.name, seat: p.seat, bot: !!p.bot })); }
+
   // Reenvia o início da partida a quem voltou (o cliente recria o mundo espelho e segue pelos snapshots).
   resume(player) {
     if (this.state !== 'playing') return;
     const ps = this.list().sort((a, b) => a.seat - b.seat);
-    player.send(JSON.stringify({ t: 'start', seed: this.startInfo.seed, arena: this.arena, mode: this.mode, sides: this.startInfo.sides, rosters: this.startInfo.rosters, players: ps.map((p) => ({ id: p.id, name: p.name, seat: p.seat })), you: player.seat, resumed: true }));
+    player.send(JSON.stringify({ t: 'start', seed: this.startInfo.seed, arena: this.arena, mode: this.mode, sides: this.startInfo.sides, rosters: this.startInfo.rosters, players: this.playerList(ps), you: player.seat, resumed: true }));
   }
 
   roomState() {
     return {
-      t: 'room', code: this.code, mode: this.mode, arena: this.arena, state: this.state, host: this.hostId, seats: this.seats,
-      players: this.list().map((p) => ({ id: p.id, name: p.name, seat: p.seat, side: this.sideOfSeat(p.seat), team: p.team, ready: p.ready, connected: p.connected })),
+      t: 'room', code: this.code, mode: this.mode, arena: this.arena, state: this.state, host: this.hostId, seats: this.seats, botLevel: this.botLevel,
+      players: this.list().map((p) => ({ id: p.id, name: p.name, seat: p.seat, side: this.sideOfSeat(p.seat), team: p.team, ready: p.ready, connected: p.connected, bot: !!p.bot })),
     };
   }
 
   broadcast(obj) { const s = JSON.stringify(obj); for (const p of this.list()) if (p.connected) p.send(s); }
   broadcastRoom() { this.broadcast(this.roomState()); }
   err(player, code, message) { player.send(JSON.stringify({ t: 'error', code, message })); }
+  hostOnly(player) {
+    if (player.id === this.hostId && this.state === 'lobby') return true;
+    this.err(player, 'not_host', this.state === 'lobby' ? 'Só o anfitrião muda as configurações e os robôs.' : 'A partida já começou.');
+    return false;
+  }
 
   handle(player, msg) {
     switch (msg.t) {
@@ -104,30 +145,59 @@ export class Room {
       case 'seat': {
         if (this.state !== 'lobby') return;
         const seat = msg.seat | 0;
-        if (seat < 0 || seat >= this.seats || this.list().some((p) => p.seat === seat)) return this.err(player, 'seat_taken', 'Essa vaga está ocupada.');
+        if (seat < 0 || seat >= this.seats) return this.err(player, 'seat_taken', 'Essa vaga não existe.');
+        const other = this.list().find((p) => p.seat === seat && p !== player);
+        if (other && !other.bot) return this.err(player, 'seat_taken', 'Essa vaga está ocupada.');
+        if (other) other.seat = player.seat; // vaga de robô: troca de lugar com ele
         player.seat = seat; player.ready = false;
         return this.broadcastRoom();
       }
       case 'config': {
-        if (player.id !== this.hostId || this.state !== 'lobby') return this.err(player, 'not_host', 'Só o anfitrião muda as configurações.');
+        if (!this.hostOnly(player)) return;
         if (msg.mode && MODES[msg.mode] && msg.mode !== this.mode) {
-          if (this.players.size > MODES[msg.mode].seats) return this.err(player, 'too_many', `Há jogadores demais para ${msg.mode}.`);
+          const cap = MODES[msg.mode].seats;
+          if (this.humans().length > cap) return this.err(player, 'too_many', `Há jogadores demais para ${msg.mode}.`);
+          // Robôs saem primeiro para caber no modo menor.
+          while (this.players.size > cap) { const b = this.bots().pop(); this.players.delete(b.id); }
           const prev = this.mode;
           this.mode = msg.mode;
           // 1v1 → 2v2: o oponente vai para o outro lado (vaga 2); 2v2 → 1v1: compacta as vagas em 0 e 1.
           const sorted = this.list().sort((x, y) => x.seat - y.seat);
           if (prev === '1v1') { for (const p of sorted) if (p.seat === 1) p.seat = 2; }
           else sorted.forEach((p, i) => { p.seat = i; });
-          for (const p of this.list()) p.ready = false;
+          for (const p of this.humans()) p.ready = false;
         }
-        if (msg.arena && ARENA_ORDER.includes(msg.arena)) { this.arena = msg.arena; for (const p of this.list()) p.ready = false; }
+        if (msg.arena && ARENA_ORDER.includes(msg.arena)) { this.arena = msg.arena; for (const p of this.humans()) p.ready = false; }
+        if (msg.botLevel && BOT_LEVELS.includes(msg.botLevel)) this.botLevel = msg.botLevel;
+        return this.broadcastRoom();
+      }
+      case 'addBot': {
+        if (!this.hostOnly(player)) return;
+        if (!this.addBot(Number.isInteger(msg.seat) ? msg.seat : -1)) return this.err(player, 'full', 'Não há vaga livre para um robô.');
+        return this.broadcastRoom();
+      }
+      case 'fillBots': {
+        if (!this.hostOnly(player)) return;
+        while (this.addBot()) { /* completa todas as vagas livres */ }
+        return this.broadcastRoom();
+      }
+      case 'removeBot': {
+        if (!this.hostOnly(player)) return;
+        const bot = this.bots().find((b) => b.seat === (msg.seat | 0));
+        if (bot) this.players.delete(bot.id);
+        return this.broadcastRoom();
+      }
+      case 'botTeam': {
+        if (!this.hostOnly(player)) return;
+        const bot = this.bots().find((b) => b.seat === (msg.seat | 0));
+        if (bot) bot.team = randomTeam();
         return this.broadcastRoom();
       }
       case 'start': {
         if (player.id !== this.hostId) return this.err(player, 'not_host', 'Só o anfitrião inicia a partida.');
         if (this.state !== 'lobby') return;
         const ps = this.list();
-        if (ps.length !== this.seats) return this.err(player, 'need_players', `Faltam jogadores: ${this.mode} precisa de ${this.seats}.`);
+        if (ps.length !== this.seats) return this.err(player, 'need_players', `Faltam jogadores: ${this.mode} precisa de ${this.seats} (ou complete com robôs).`);
         const host = this.players.get(this.hostId);
         if (host && host.team) host.ready = true;
         if (ps.some((p) => !p.team || !p.ready)) return this.err(player, 'not_ready', 'Todos precisam escolher o time e ficar prontos.');
@@ -161,13 +231,17 @@ export class Room {
     const sides = MODES[this.mode].sides;
     const rosters = ps.map((p) => p.team);
     const seed = (Math.random() * 1e9) | 0;
-    this.world = World.match(seed, rosters, null, this.arena, 'normal', { sides, humans: ps.map((p) => p.seat) });
+    // Vagas de robô ficam com a IA (TeamCoach + Brain), no nível escolhido pelo anfitrião.
+    this.world = World.match(seed, rosters, null, this.arena, 'normal', { sides, humans: ps.filter((p) => !p.bot).map((p) => p.seat) });
+    const botSeats = new Set(ps.filter((p) => p.bot).map((p) => p.seat));
+    const mods = DIFFICULTY_MODS[this.botLevel] || DIFFICULTY_MODS.normal;
+    for (const m of this.world.roster) if (botSeats.has(m.slot)) { m.ai.mods = { ...mods }; m.ai.applyProfile(); }
     this.sync = makeSyncCtx(this.world);
     this.state = 'playing';
     this.stats = { start: Date.now() };
     this.startInfo = { seed, sides, rosters };
-    const base = { t: 'start', seed, arena: this.arena, mode: this.mode, sides, rosters, players: ps.map((p) => ({ id: p.id, name: p.name, seat: p.seat })) };
-    for (const p of ps) p.send(JSON.stringify({ ...base, you: p.seat }));
+    const base = { t: 'start', seed, arena: this.arena, mode: this.mode, sides, rosters, players: this.playerList(ps) };
+    for (const p of ps) if (!p.bot) p.send(JSON.stringify({ ...base, you: p.seat }));
     this.broadcastRoom();
     this.acc = 0;
     this.last = process.hrtime.bigint();
@@ -213,7 +287,7 @@ export class Room {
   backToLobby() {
     this.state = 'lobby';
     this.world = null;
-    for (const p of this.list()) { p.ready = false; if (!p.connected) this.players.delete(p.id); }
+    for (const p of this.list()) { if (!p.bot) p.ready = false; if (!p.connected) this.players.delete(p.id); }
     this.broadcastRoom();
   }
 
@@ -227,7 +301,7 @@ export class Room {
     if (final) player.token = null;
     if (this.state === 'lobby' || this.state === 'over') {
       this.players.delete(player.id);
-      if (this.hostId === player.id) this.hostId = this.list().find((p) => p.connected)?.id ?? null;
+      if (this.hostId === player.id) this.hostId = this.nextHost();
     } else if (this.state === 'playing') {
       player.lostAt = Date.now();
       const w = this.world;
@@ -236,8 +310,9 @@ export class Room {
       const f = w.fieldOf(player.seat);
       if (f) { f.controller = null; f.ai.resume(); }
       w.say(`${player.name} saiu — a IA assumiu o time`, '#ff8a8a');
-      if (this.hostId === player.id) this.hostId = this.list().find((p) => p.connected)?.id ?? null;
+      if (this.hostId === player.id) this.hostId = this.nextHost();
     }
+    // Sem nenhum humano conectado (só robôs), a sala é encerrada.
     if (this.connectedCount() === 0) { this.stop(); this.onEmpty(this.code); return; }
     this.broadcastRoom();
   }

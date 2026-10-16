@@ -28,7 +28,7 @@ const OBSTACLE_DEFS = {
   ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 0.9, healR: 50, shot: { kind: 'thorn', dmg: 4.5, every: 1.5, range: 115, speed: 235 } },
 };
 
-const DIFFICULTY_MODS = {
+export const DIFFICULTY_MODS = {
   easy: { reaction: 1.8, dodgeSkill: 0.5, accuracy: 2.2, lead: 0.7 },
   normal: { reaction: 1.4, dodgeSkill: 0.75, accuracy: 1.6, lead: 0.85 },
   hard: { reaction: 1.1, dodgeSkill: 0.95, accuracy: 1.15, lead: 0.95 },

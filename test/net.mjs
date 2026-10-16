@@ -248,6 +248,60 @@ await test('Anfitrião muda modo e arena; 2v2 precisa de 4 jogadores', async () 
 });
 
 
+await test('Robôs: o anfitrião completa um 2v2 com robôs, joga sozinho e todos veem o mesmo estado', async () => {
+  const host = await client('h');
+  host.c.send({ t: 'create', name: 'Ana', mode: '2v2' });
+  await until(() => host.code && host.room, 3000, 'sala');
+  host.c.send({ t: 'team', team: TEAMS[0] });
+  host.c.send({ t: 'config', botLevel: 'hard' });
+  host.c.send({ t: 'fillBots' });
+  await until(() => host.room.players.length === 4 && host.room.botLevel === 'hard', 3000, 'robôs nas vagas');
+  const bots = host.room.players.filter((p) => p.bot);
+  assert(bots.length === 3 && bots.every((b) => b.ready && b.team?.length === 3), 'robôs sem time ou não prontos');
+  const seat = bots[0].seat, before = bots[0].team.join();
+  host.c.send({ t: 'botTeam', seat });
+  await until(() => host.room.players.find((p) => p.seat === seat).team.join() !== before, 3000, 'time do robô sorteado de novo');
+  host.bot = true;
+  host.c.send({ t: 'start' });
+  await until(() => host.start, 3000, 'início');
+  assert(host.start.players.filter((p) => p.bot).length === 3, 'start sem marcar os robôs');
+  const room = srv.rooms.get(host.code);
+  assert(room.world.humans.size === 1 && room.world.coaches.filter(Boolean).length === 3, 'robôs não ficaram com a IA');
+  await until(() => host.ended, 120000, 'fim da partida com robôs');
+  compareWithServer(host);
+  host.c.close();
+});
+
+await test('Robôs: amigo que entra com a sala cheia toma a vaga de um robô; só o anfitrião mexe; sala só de robôs fecha', async () => {
+  const host = await client('h');
+  host.c.send({ t: 'create', name: 'Ana', mode: '1v1' });
+  await until(() => host.code && host.room, 3000, 'sala');
+  host.c.send({ t: 'addBot' });
+  await until(() => host.room.players.length === 2, 3000, 'robô adicionado');
+  const g = await client('g');
+  g.c.send({ t: 'join', code: host.code, name: 'Bia' });
+  await until(() => g.code && g.room, 3000, 'amigo entrou');
+  assert(g.room.players.length === 2 && !g.room.players.some((p) => p.bot), 'o amigo não tomou a vaga do robô');
+  g.c.send({ t: 'addBot' });
+  await until(() => g.errors.length, 2000, 'recusa');
+  assert(g.errors[0].code === 'not_host', 'convidado conseguiu mexer nos robôs');
+  host.c.send({ t: 'config', mode: '2v2' });
+  await until(() => host.room.mode === '2v2', 2000, '2v2');
+  host.c.send({ t: 'addBot', seat: 1 });
+  await until(() => host.room.players.some((p) => p.bot && p.seat === 1), 2000, 'robô na vaga 1');
+  host.c.send({ t: 'config', mode: '1v1' });
+  await until(() => host.room.mode === '1v1', 2000, 'voltou a 1v1');
+  assert(host.room.players.length === 2 && !host.room.players.some((p) => p.bot), 'robô não saiu para caber no 1v1');
+  g.c.close();
+  await until(() => host.room.players.length === 1, 2000, 'amigo saiu');
+  host.c.send({ t: 'fillBots' });
+  await until(() => host.room.players.length === 2, 2000, 'robô de novo');
+  const code = host.code;
+  host.c.send({ t: 'leave' });
+  await until(() => !srv.rooms.has(code), 3000, 'sala só com robôs deveria fechar');
+  host.c.close();
+});
+
 await test('Falha ao conectar rejeita sem emitir "closed" (não é conexão perdida) e tenta o próximo endereço', async () => {
   const c = new NetClient();
   let closed = false;

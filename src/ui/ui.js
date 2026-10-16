@@ -396,11 +396,18 @@ export class UI {
     const ai = ARENA_ORDER.indexOf(room.arena);
     this.button(cx + 6 * u, y, bw, bh, `ARENA: ${arenaName}`, () => this.hooks.mpSend({ t: 'config', arena: ARENA_ORDER[(ai + 1) % ARENA_ORDER.length] }), { disabled: !isHost, color: '#46b4ff', size: 7 });
     y += bh + 6 * u;
-    if (!isHost) text(c, 'Só o anfitrião muda o modo e a arena.', cx, y + 6 * u, 5, '#887', 'center', u);
-    y += 14 * u;
+    // Robôs: dificuldade e completar as vagas livres.
+    const LV = ['easy', 'normal', 'hard'], lvl = room.botLevel || 'normal';
+    const free = room.seats - room.players.length;
+    this.button(cx - bw - 6 * u, y, bw, bh, `ROBÔS: ${DIFFICULTY[lvl].toUpperCase()}`, () => this.hooks.mpSend({ t: 'config', botLevel: LV[(LV.indexOf(lvl) + 1) % 3] }), { disabled: !isHost, color: '#b8a0ff', size: 7 });
+    this.button(cx + 6 * u, y, bw, bh, 'COMPLETAR COM ROBÔS', () => this.hooks.mpSend({ t: 'fillBots' }), { disabled: !isHost || free <= 0, color: '#b8a0ff', size: 7 });
+    y += bh + 4 * u;
+    if (!isHost) text(c, 'Só o anfitrião muda o modo, a arena e os robôs.', cx, y + 6 * u, 5, '#887', 'center', u);
+    y += 12 * u;
     // Vagas por equipe.
     const half = room.seats / 2;
     const sw = Math.min(250 * u, (W - 40 * u) / 2 - 6 * u), sh = Math.min(54 * u, (H - y - 120 * u) / half - 6 * u);
+    const small = (x0, y0, w0, label, onClick, color) => this.button(x0, y0, w0, 16 * u, label, onClick, { color, size: 5.5 });
     for (let side = 0; side < 2; side++) {
       const x = cx + (side === 0 ? -sw - 6 * u : 6 * u);
       text(c, side === 0 ? 'EQUIPE A' : 'EQUIPE B', x + sw / 2, y + 8 * u, 8, side === 0 ? '#ffd23a' : '#ff4a5a', 'center', u);
@@ -408,12 +415,27 @@ export class UI {
         const seat = side === 0 ? (room.mode === '1v1' ? 0 : k) : (room.mode === '1v1' ? 1 : half + k);
         const p = room.players.find((q) => q.seat === seat);
         const sy = y + 14 * u + k * (sh + 6 * u);
-        panel(c, x, sy, sw, sh, u, p ? (p.ready ? '#7ad84a' : '#8a7a5a') : '#3a302a');
-        if (p) {
+        panel(c, x, sy, sw, sh, u, p ? (p.bot ? '#8a70d0' : p.ready ? '#7ad84a' : '#8a7a5a') : '#3a302a');
+        if (p && p.bot) {
+          // Vaga de robô: IA do servidor. O anfitrião sorteia outro time ou remove; outros podem tomar a vaga.
+          text(c, `${p.name} · IA`, x + 8 * u, sy + 14 * u, 7, '#d8c8ff', 'left', u);
+          (p.team || []).forEach((key, i) => this.drawMonsterArt(SPECIES[key], x + 30 * u + i * 44 * u, sy + sh - 6 * u, 1, i + seat));
+          if (isHost) {
+            small(x + sw - 128 * u, sy + 5 * u, 58 * u, 'NOVO TIME', () => this.hooks.mpSend({ t: 'botTeam', seat }), '#b8a0ff');
+            small(x + sw - 66 * u, sy + 5 * u, 58 * u, 'REMOVER', () => this.hooks.mpSend({ t: 'removeBot', seat }), '#ff8a8a');
+          } else {
+            text(c, 'clique para ocupar', x + sw - 8 * u, sy + 14 * u, 5, '#998', 'right', u);
+            this.button(x, sy, sw, sh, '', () => this.hooks.mpSend({ t: 'seat', seat }), { custom: true });
+          }
+        } else if (p) {
           text(c, p.name + (p.id === room.host ? ' ★' : '') + (p.id === mp.myId ? ' (você)' : ''), x + 8 * u, sy + 14 * u, fitSize(c, p.name + ' (você) ★', 7, sw - 16 * u, u), p.connected ? '#fff' : '#888', 'left', u);
           text(c, p.ready ? 'PRONTO' : 'esperando...', x + sw - 8 * u, sy + 14 * u, 6, p.ready ? '#7ad84a' : '#bba', 'right', u);
           (p.team || []).forEach((key, i) => this.drawMonsterArt(SPECIES[key], x + 30 * u + i * 44 * u, sy + sh - 6 * u, 1, i + seat));
           if (!p.team) text(c, 'sem time', x + 8 * u, sy + sh - 10 * u, 5, '#887', 'left', u);
+        } else if (isHost) {
+          text(c, 'vaga livre', x + sw / 2, sy + sh / 2 - 6 * u, 7, '#776', 'center', u);
+          small(x + sw / 2 - 98 * u, sy + sh / 2, 92 * u, 'SENTAR AQUI', () => this.hooks.mpSend({ t: 'seat', seat }), '#ffd23a');
+          small(x + sw / 2 + 6 * u, sy + sh / 2, 92 * u, '+ ROBÔ', () => this.hooks.mpSend({ t: 'addBot', seat }), '#b8a0ff');
         } else {
           text(c, 'vaga livre', x + sw / 2, sy + sh / 2 - 2 * u, 7, '#776', 'center', u);
           text(c, 'clique para sentar aqui', x + sw / 2, sy + sh / 2 + 9 * u, 5, '#665', 'center', u);
@@ -427,7 +449,8 @@ export class UI {
     const allReady = room.players.length === room.seats && room.players.every((p) => p.team && (p.ready || p.id === room.host));
     this.button(cx + 40 * u, by, 220 * u, 28 * u, 'INICIAR PARTIDA', () => this.hooks.mpSend({ t: 'start' }), { disabled: !isHost || !allReady, color: '#ff8a3a' });
     const need = room.seats - room.players.length;
-    text(c, need > 0 ? `Aguardando ${need} jogador${need > 1 ? 'es' : ''}...` : allReady ? 'Todos prontos!' : 'Aguardando todos ficarem prontos...', cx, by - 8 * u, 6, '#ffe066', 'center', u);
+    const msg = need > 0 ? (isHost ? `Faltam ${need}: chame amigos ou use + ROBÔ` : `Aguardando ${need} jogador${need > 1 ? 'es' : ''}...`) : allReady ? 'Todos prontos!' : 'Aguardando todos ficarem prontos...';
+    text(c, msg, cx, by - 8 * u, 6, '#ffe066', 'center', u);
   }
 
   renderArena(u, W, H) {
