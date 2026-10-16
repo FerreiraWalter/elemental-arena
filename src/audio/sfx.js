@@ -46,7 +46,7 @@ export class Sfx {
     const c = this.ctx;
     if (x === undefined || !c.createStereoPanner) return this.master;
     const p = c.createStereoPanner();
-    p.pan.value = Math.max(-0.7, Math.min(0.7, (x / 640) * 1.4 - 0.7));
+    p.pan.value = Math.max(-0.7, Math.min(0.7, (x / 704) * 1.4 - 0.7));
     p.connect(this.master);
     return p;
   }

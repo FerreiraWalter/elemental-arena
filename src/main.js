@@ -1,5 +1,5 @@
 import { World } from './sim/world.js';
-import { DT } from './config.js';
+import { DT, WORLD_W, WORLD_H } from './config.js';
 import { ROSTER, DEFAULT_TEAM } from './sim/species.js';
 import { ARENAS } from './arenas/index.js';
 import { Renderer, setPerspective } from './render/renderer.js';
@@ -283,7 +283,7 @@ function resize() {
 
 function toWorld(clientX, clientY) {
   const v = renderer.view;
-  if (!v) return { x: 320, y: 180 };
+  if (!v) return { x: WORLD_W / 2, y: WORLD_H / 2 };
   return { x: (clientX * hud.dpr - v.ox) / v.S, y: (clientY * hud.dpr - v.oy) / v.S };
 }
 
@@ -384,8 +384,8 @@ function readInput() {
   inp.move.y = (k('KeyS', 'ArrowDown') ? 1 : 0) - (k('KeyW', 'ArrowUp') ? 1 : 0);
   if (mouse.inside) {
     const p = toWorld(mouse.x, mouse.y);
-    inp.aim.x = Math.max(0, Math.min(640, p.x));
-    inp.aim.y = Math.max(0, Math.min(360, p.y));
+    inp.aim.x = Math.max(0, Math.min(WORLD_W, p.x));
+    inp.aim.y = Math.max(0, Math.min(WORLD_H, p.y));
   }
 }
 

@@ -95,6 +95,8 @@ Jardim Selvagem (raízes que irrompem, espinheiros, sebes, ruínas), Abismo das 
 npm test         # trocas, evolução, monstros/2v2, MECÂNICAS PRÓPRIAS e limites do fogo, aceitação, suavização e REDE
 npm run build    # valida módulos (cliente e servidor), imports e assets; simula cada arena; gera dist/
 node tools/balance.mjs 6 1                            # matriz de vitórias IA × IA (estágio 1 ou 2) com a origem do dano
+node tools/navtest.mjs 60                            # trajetos aleatórios por arena e por tamanho de monstro (A* + direção da IA)
+node tools/stuck.mjs 6 quadra,jardim,abismo,floresta 1 # partidas IA × IA: monstros presos, períodos sem combate e energia por minuto
 node tools/duelinfo.mjs brasalisco gotapus quadra 3   # detalhe de um confronto
 ```
 Arquitetura: [docs/ARQUITETURA.md](docs/ARQUITETURA.md).

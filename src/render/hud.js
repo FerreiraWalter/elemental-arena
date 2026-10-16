@@ -1,6 +1,6 @@
 import { STATE_LABEL } from '../ai/brain.js';
 import { TEAM_COLOR, ELEMENT_COLOR, SIG_COLOR } from './renderer.js';
-import { EVOLUTION } from '../config.js';
+import { EVOLUTION, WORLD_W, WORLD_H } from '../config.js';
 import { SIG } from '../sim/signature.js';
 import { meter } from '../sim/training.js';
 
@@ -279,7 +279,7 @@ export function drawHud(c, r, world, ui) {
   const dpr = ui.dpr * (r.hudScale || 1); // unidade de interface = pixels do dispositivo × escala da janela
   const H = c.canvas.height;
   const { ox, oy, S } = r.view;
-  const aw = 640 * S, ah = 360 * S;
+  const aw = WORLD_W * S, ah = WORLD_H * S;
   const myTeam = world.playerTeam ?? 0;
   const mySide = world.teams[myTeam].side;
   const slots = world.teams.map((_, i) => i);

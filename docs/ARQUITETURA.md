@@ -16,7 +16,7 @@ src/
     signature.js        mecânicas próprias: Fornalha, Casco Reflexo, Brotos Sentinela, Ímpeto/espinhos, Ilusões de Tinta, Marcas
     abilities.js        habilidades com fases reais (preparação → ativa → recuperação) e hitboxes
     tiles.js            registro de tipos de terreno e propriedades (combustível, água, espinhos, lentidão…)
-    terrain.js          grade 80×45: fogo que se espalha, umidade, raízes, rebrota, alturas, correnteza
+    terrain.js          grade 88×50 (704×400 px): fogo que se espalha, umidade, raízes, rebrota, alturas, correnteza
     hazards.js          perigos cíclicos telegrafados (respiros de raízes, gêiseres)
   arenas/               definições data-driven (uma por arena) + helpers de construção
   ai/

@@ -1,5 +1,5 @@
 import { World, DIFFICULTY_MODS } from '../src/sim/world.js';
-import { DT } from '../src/config.js';
+import { DT, WORLD_W, WORLD_H } from '../src/config.js';
 import { ROSTER } from '../src/sim/species.js';
 import { ARENA_ORDER } from '../src/arenas/index.js';
 import { TeamCoach } from '../src/ai/coach.js';
@@ -221,7 +221,7 @@ export class Room {
     if (this.state !== 'playing' || !this.world.humans.has(player.seat)) return;
     const inp = this.world.inputs[player.seat];
     inp.move.x = num(msg.mx, -1, 1); inp.move.y = num(msg.my, -1, 1);
-    inp.aim.x = num(msg.ax, 0, 640, 320); inp.aim.y = num(msg.ay, 0, 360, 180);
+    inp.aim.x = num(msg.ax, 0, WORLD_W, WORLD_W / 2); inp.aim.y = num(msg.ay, 0, WORLD_H, WORLD_H / 2);
     inp.held = { primary: !!msg.hp, melee: !!msg.hm };
     if (Array.isArray(msg.presses)) for (const p of msg.presses.slice(0, 6)) if (PRESSES.has(p)) inp.presses.push(p);
   }

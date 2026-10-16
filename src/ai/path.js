@@ -34,8 +34,13 @@ export class PathGrid {
     }
   }
 
+  // Faixa de borda: o corpo real é barrado a r+4 px do limite (world.blocked), então a grade não traça rotas por ali.
+  static EDGE = 3;
+
   passable(i, swimmer) {
     if (i < 0 || this.blockedObs[i]) return false;
+    const ec = i % COLS, er = (i / COLS) | 0, E = PathGrid.EDGE;
+    if (ec < E || er < E || ec >= COLS - E || er >= ROWS - E) return false;
     const tr = this.w.terrain;
     const bad = (j) => { const p = props(tr.type[j]); return p.solid || (p.deep && !swimmer); };
     if (bad(i)) return false;
@@ -46,7 +51,7 @@ export class PathGrid {
   }
 
   // Caminho (lista de pontos no centro dos tiles) de (x0,y0) até (x1,y1); null se não houver.
-  find(x0, y0, x1, y1, swimmer, maxNodes = 2600) {
+  find(x0, y0, x1, y1, swimmer, maxNodes = 2600, waterCost = 0) {
     this.refresh();
     const tr = this.w.terrain;
     const start = tr.at(x0, y0), goal0 = tr.at(x1, y1);
@@ -86,7 +91,8 @@ export class PathGrid {
         if (j < 0 || closed.has(j) || (!this.passable(j, swimmer) && j !== start)) continue;
         if (Math.abs(tr.height[j] - tr.height[cur]) > 0.55) continue;
         if (dx && dy && (!this.passable(tr.idx(cc + dx, cr), swimmer) || !this.passable(tr.idx(cc, cr + dy), swimmer))) continue;
-        const step = cost * (1 + (props(tr.type[j]).water && !swimmer ? 0.8 : 0) + (tr.fire[j] > 0 ? 3 : 0));
+        // Quem evita água (a direção da IA recusa tiles aquáticos) contorna por pontes em vez de planejar pela água.
+        const step = cost * (1 + (props(tr.type[j]).water && !swimmer ? 0.8 + Math.max(0, waterCost) * 6 : 0) + (tr.fire[j] > 0 ? 3 : 0));
         const ng = g.get(cur) + step;
         if (ng < (g.get(j) ?? Infinity)) {
           g.set(j, ng);
@@ -102,7 +108,7 @@ export class PathGrid {
   }
 
   // Linha reta caminhável? (para pular o A* quando não há nada no caminho)
-  walkable(x0, y0, x1, y1, swimmer) {
+  walkable(x0, y0, x1, y1, swimmer, avoidWater = false) {
     this.refresh();
     const tr = this.w.terrain;
     const L = Math.hypot(x1 - x0, y1 - y0), n = Math.max(1, Math.ceil(L / 6));
@@ -110,6 +116,7 @@ export class PathGrid {
     for (let k = 1; k <= n; k++) {
       const i = tr.at(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n);
       if (i < 0 || !this.passable(i, swimmer)) return false;
+      if (avoidWater && !swimmer && props(tr.type[i]).water) return false;
       if (prev >= 0 && Math.abs(tr.height[i] - tr.height[prev]) > 0.55) return false;
       prev = i;
     }

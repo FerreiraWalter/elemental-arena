@@ -18,6 +18,8 @@ const OBSTACLE_DEFS = {
   bush: { flammable: true, hp: 55, blocksLOS: true, burnTime: 9, burnDps: 7 },
   pillar: { flammable: false, hp: Infinity, blocksLOS: true },
   statue: { flammable: false, hp: Infinity, blocksLOS: true },
+  root: { flammable: false, hp: Infinity, blocksLOS: true }, // raiz gigante (Jardim)
+  lighthouse: { flammable: false, hp: Infinity, blocksLOS: true }, // marco do Abismo
   hedge: { flammable: true, hp: 60, blocksLOS: true, burnTime: 8, burnDps: 9 },
   giantFlower: { flammable: true, hp: 45, blocksLOS: true, burnTime: 6, burnDps: 9 },
   tree: { flammable: false, hp: Infinity, blocksLOS: true },
@@ -35,7 +37,7 @@ export const DIFFICULTY_MODS = {
 };
 
 const makeSlot = (side) => ({ side, field: null, pending: null, cooldown: 0, deadT: 0, lastOut: null, lastOutT: -99, switches: 0 });
-const newInput = () => ({ move: { x: 0, y: 0 }, aim: { x: 320, y: 180 }, held: {}, presses: [] });
+const newInput = () => ({ move: { x: 0, y: 0 }, aim: { x: WORLD_W / 2, y: WORLD_H / 2 }, held: {}, presses: [] });
 
 let nextObsId = 1;
 let nextProjId = 1;

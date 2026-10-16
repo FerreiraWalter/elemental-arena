@@ -5,7 +5,12 @@ import { valueNoise, hash2 } from '../core/math.js';
 export function builder(world) {
   const tr = world.terrain;
   const seed = world.seed;
-  const noise = (x, y, scale, off = 0) => valueNoise(x / scale, y / scale, seed + off);
+  // Ruído simétrico por rotação de 180° em torno do centro: costas, manchas e bordas ficam iguais dos dois lados
+  // (nenhum lado ganha uma ilha maior ou um bosque mais denso). O contraste é restaurado após a média.
+  const noise = (x, y, scale, off = 0) => {
+    const a = valueNoise(x / scale, y / scale, seed + off), b = valueNoise((WORLD_W - x) / scale, (WORLD_H - y) / scale, seed + off);
+    return Math.max(0, Math.min(1, 0.5 + ((a + b) / 2 - 0.5) * 1.45));
+  };
   const cells = function* () {
     for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) yield [r * COLS + c, c * TILE + 4, r * TILE + 4, c, r];
   };

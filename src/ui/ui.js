@@ -1,7 +1,7 @@
 import { SPECIES, ROSTER, formsOf } from '../sim/species.js';
 
 import { ARENAS, ARENA_ORDER } from '../arenas/index.js';
-import { ELEMENT_MULT, EVOLUTION, SWITCH } from '../config.js';
+import { ELEMENT_MULT, EVOLUTION, SWITCH, WORLD_W, WORLD_H } from '../config.js';
 import { World } from '../sim/world.js';
 import { Renderer, ELEMENT_COLOR, SIG_COLOR } from '../render/renderer.js';
 import { makeCanvas } from '../render/pixel.js';
@@ -128,7 +128,7 @@ export class UI {
       r.art = this.art;
       r.reset(world);
       r.render(world, 1, 1 / 60, { dpr: 1, embedded: true, speed: 1 });
-      const img = makeCanvas(640, 360);
+      const img = makeCanvas(WORLD_W, WORLD_H);
       img.getContext('2d').drawImage(r.low, 0, 0);
       this.previews[id] = img;
     }
@@ -213,8 +213,8 @@ export class UI {
     if (dt > 0) for (let k = 0; k < Math.round(dt * 60); k++) d.world.step(1 / 60);
     d.renderer.render(d.world, 1, dt, { dpr, embedded: true, speed: 1 });
     c.imageSmoothingEnabled = false;
-    const S = Math.max(W / 640, H / 360);
-    c.drawImage(d.renderer.low, (W - 640 * S) / 2, (H - 360 * S) / 2, 640 * S, 360 * S);
+    const S = Math.max(W / WORLD_W, H / WORLD_H);
+    c.drawImage(d.renderer.low, (W - WORLD_W * S) / 2, (H - WORLD_H * S) / 2, WORLD_W * S, WORLD_H * S);
     const grd = c.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.9);
     grd.addColorStop(0, 'rgba(10,6,4,0.55)');
     grd.addColorStop(1, 'rgba(10,6,4,0.9)');

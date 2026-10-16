@@ -1,6 +1,6 @@
 import { PixelBuf, ramp, rgba, makeCanvas } from './pixel.js';
 import { hash2 } from '../core/math.js';
-import { TILE, COLS } from '../config.js';
+import { TILE, COLS, WORLD_W, WORLD_H } from '../config.js';
 
 // Cenário em pixel art procedural: obstáculos novos, decoração, perigos e ambientação de cada arena.
 
@@ -31,6 +31,42 @@ export function pillarSprite(r, seed) {
   pb.ellipse(cx, r + 3, r, r * 0.7, STONE, { shift: 0.15 });
   for (let k = 0; k < 3; k++) pb.line(Math.round(cx - r / 2 + hash2(k, 1, seed) * r), r + 6 + k * 3, Math.round(cx - r / 2 + hash2(k, 2, seed) * r), r + 9 + k * 3, STONE[0]);
   mossify(pb, seed, 0.8);
+  pb.outline(rgba('#16161c'));
+  return pb.commit();
+}
+
+// Raiz gigante: nó de raiz retorcido, bem mais escuro que o chão, com cristas e musgo (sólido permanente).
+export function rootSprite(r, seed) {
+  const W = Math.ceil(r * 2 + 8), H = Math.ceil(r * 2 + 12);
+  const pb = new PixelBuf(W, H);
+  const cx = W / 2, cy = H / 2 + 2;
+  pb.ellipse(cx, cy + 1, r + 1, r * 0.8, BARK, { shift: 0.05 });
+  pb.ellipse(cx, cy - 3, r, r * 0.7, BARK, { shift: 0.2 });
+  for (let k = 0; k < 4; k++) pb.line(Math.round(cx - r + 2 + k * (r * 0.6)), Math.round(cy - 4), Math.round(cx - r + 4 + k * (r * 0.6)), Math.round(cy + 3), BARK[1]);
+  mossify(pb, seed, 0.84);
+  pb.outline(rgba('#140c06'));
+  return pb.commit();
+}
+
+// Farol ancestral: torre de pedra listrada com lanterna no topo.
+export function lighthouseSprite(r, seed) {
+  const W = Math.ceil(r * 2 + 8), H = Math.ceil(r * 5 + 8);
+  const pb = new PixelBuf(W, H);
+  const cx = W / 2;
+  for (let y = 12; y < H - 3; y++) {
+    const k = (y - 12) / (H - 15), half = r * (0.62 + 0.38 * k);
+    for (let x = Math.round(cx - half); x < Math.round(cx + half); x++) {
+      const f = (x - (cx - half)) / (2 * half);
+      const stripe = Math.floor(y / 7) % 2;
+      const base = stripe ? ramp('#5a1a1a', '#8a2a2a', '#b84040', '#d86a6a', '#f09a9a') : STONE;
+      pb.set(x, y, base[Math.max(1, Math.min(4, Math.round(1 + f * 2.6 - (hash2(x, y, seed) > 0.93 ? 1 : 0))))]);
+    }
+  }
+  pb.ellipse(cx, H - 4, r + 1, r * 0.45, STONE);
+  pb.rect(Math.round(cx - r * 0.7), 6, Math.round(r * 1.4), 6, rgba('#2a2a34'));
+  pb.rect(Math.round(cx - r * 0.5), 7, Math.round(r), 4, rgba('#ffe27a'));
+  pb.ellipse(cx, 5, r * 0.8, 2.4, STONE, { shift: 0.2 });
+  mossify(pb, seed, 0.9);
   pb.outline(rgba('#16161c'));
   return pb.commit();
 }
@@ -258,10 +294,10 @@ export function drawWaterfall(d, fxT, t) {
 export function ambient(world, particles, dt) {
   const kind = world.arenaDef?.style?.ambient;
   const r = Math.random;
-  if (kind === 'pollen' && r() < dt * 6) particles.add({ ramp: 'pollen', x: r() * 640, y: r() * 360, z: 10 + r() * 20, vx: 6 + r() * 6, vy: -2, vz: -1, drag: 0, life: 4 + r() * 3 });
-  else if (kind === 'mist' && r() < dt * 5) particles.add({ ramp: 'steam', x: r() * 640, y: r() * 360, z: 2, vx: 8, drag: 0, life: 4, size: 3, grow: 2, alpha: 0.18 });
-  else if (kind === 'leaves' && r() < dt * 4) particles.add({ ramp: 'leafFall', x: r() * 640, y: r() * 360, z: 50 + r() * 30, vx: 10 + r() * 8, vy: 3, vz: -14, drag: 0, life: 5 });
-  else if (kind === 'dust' && r() < dt * 2) particles.add({ ramp: 'dust', x: r() * 640, y: r() * 360, z: 4, vx: 10, drag: 0, life: 2.5, alpha: 0.5 });
+  if (kind === 'pollen' && r() < dt * 6) particles.add({ ramp: 'pollen', x: r() * WORLD_W, y: r() * WORLD_H, z: 10 + r() * 20, vx: 6 + r() * 6, vy: -2, vz: -1, drag: 0, life: 4 + r() * 3 });
+  else if (kind === 'mist' && r() < dt * 5) particles.add({ ramp: 'steam', x: r() * WORLD_W, y: r() * WORLD_H, z: 2, vx: 8, drag: 0, life: 4, size: 3, grow: 2, alpha: 0.18 });
+  else if (kind === 'leaves' && r() < dt * 4) particles.add({ ramp: 'leafFall', x: r() * WORLD_W, y: r() * WORLD_H, z: 50 + r() * 30, vx: 10 + r() * 8, vy: 3, vz: -14, drag: 0, life: 5 });
+  else if (kind === 'dust' && r() < dt * 2) particles.add({ ramp: 'dust', x: r() * WORLD_W, y: r() * WORLD_H, z: 4, vx: 10, drag: 0, life: 2.5, alpha: 0.5 });
   if (kind === 'mist') for (const d of world.decor) if (d.kind === 'waterfall' && r() < dt * 12) particles.add({ ramp: 'steam', x: d.x + r() * d.w, y: d.y + d.h + 2, z: 4, vx: (r() - 0.5) * 16, vy: 10, vz: 10, life: 1.2, size: 2, grow: 3, alpha: 0.5 });
 }
 

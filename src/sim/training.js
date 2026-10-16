@@ -5,7 +5,7 @@
 import { Monster } from './monster.js';
 import { Brain } from '../ai/brain.js';
 import { SPECIES } from './species.js';
-import { EVOLUTION } from '../config.js';
+import { EVOLUTION, WORLD_W, WORLD_H } from '../config.js';
 
 export const MAX_DUMMIES = 3;
 
@@ -30,7 +30,7 @@ export function setup(w, opts = {}) {
 // Lugares dos bonecos: à frente de onde o jogador nasce, em leque.
 function dummySpot(w, k) {
   const sp = w.spawns[0];
-  const dir = sp.x < 320 ? 1 : -1;
+  const dir = sp.x < WORLD_W / 2 ? 1 : -1;
   const offs = [[115, 0], [95, -48], [95, 48]];
   const [dx, dy] = offs[k];
   return w.safeSpot(sp.x + dir * dx, sp.y + dy, 10, 0);
@@ -42,7 +42,7 @@ export function setDummies(w, n) {
   T.opts.dummies = n;
   if (w.dummySlot === undefined) {
     w.teams.push({ side: 1, field: null, pending: null, cooldown: 0, deadT: 0, lastOut: null, lastOutT: -99, switches: 0 });
-    w.inputs.push({ move: { x: 0, y: 0 }, aim: { x: 320, y: 180 }, held: {}, presses: [] });
+    w.inputs.push({ move: { x: 0, y: 0 }, aim: { x: WORLD_W / 2, y: WORLD_H / 2 }, held: {}, presses: [] });
     w.coaches.push(null);
     w.dummySlot = w.teams.length - 1;
   }

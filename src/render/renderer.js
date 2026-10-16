@@ -5,7 +5,7 @@ import { PixelBuf, rgba, makeCanvas } from './pixel.js';
 import { drawBrasalisco, drawHidrocasco, drawBrotossauro, drawDummy, rockSprite, crateSprite, bushSprite, stumpSprite } from './sprites.js';
 import { ArtSprites } from './artsprites.js';
 import { paintTile, paintWalls, paletteFor } from './terrainpaint.js';
-import { pillarSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient, sentrySprite } from './scenery.js';
+import { pillarSprite, rootSprite, lighthouseSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient, sentrySprite } from './scenery.js';
 import { Particles } from './particles.js';
 import { drawHud } from './hud.js';
 
@@ -107,6 +107,8 @@ export class Renderer {
       case 'rock': { const img = rockSprite(o.r, o.id); return c(img, img.height / 2 + 1); }
       case 'crate': { const img = crateSprite(char); return c(img, img.height / 2 + 4); }
       case 'pillar': { const img = pillarSprite(o.r, o.id); return c(img, img.height - 5); }
+      case 'root': { const img = rootSprite(o.r, o.id); return c(img, img.height / 2 + 1); }
+      case 'lighthouse': { const img = lighthouseSprite(o.r, o.id); return c(img, img.height - 5); }
       case 'statue': { const img = statueSprite(o.id); return c(img, img.height - 4); }
       case 'hedge': { const img = hedgeSprite(o.r, o.id, char); return c(img, img.height / 2 + 2); }
       case 'thicket': { const img = thicketSprite(o.r, o.id, char); return c(img, img.height / 2 + 3); }
@@ -434,7 +436,7 @@ export class Renderer {
           P.burst(e.x + Math.cos(e.ang) * 6, e.y + Math.sin(e.ang) * 6, 4, { ramp: 'leaf', speed: 40, life: 0.25 });
           break;
         case 'suddenDeath':
-          this.addText({ x: 320, y: 120, text: 'MORTE SÚBITA!', t: 0, color: '#ff6a6a', big: true });
+          this.addText({ x: WORLD_W / 2, y: 120, text: 'MORTE SÚBITA!', t: 0, color: '#ff6a6a', big: true });
           this.flash = 0.1; this.excite = 1;
           break;
         case 'devolve':
@@ -1040,6 +1042,17 @@ export class Renderer {
       return;
     }
     const spr = this.obsSprites.get(o.id) || this.obstacleSprite(o, 0);
+    // Anel de base = hitbox real. Contínuo e escuro: sólido permanente. Tracejado dourado: destrutível/inflamável.
+    if (!o.sentry && o.kind !== 'thicket') {
+      const perm = o.hp === Infinity, ry = o.r * 0.55, cx = Math.round(o.x), cy = Math.round(o.y + 1);
+      l.globalAlpha = perm ? 0.55 : 0.8;
+      l.fillStyle = perm ? '#0e0e14' : '#e8c860';
+      for (let k = 0; k < 28; k++) {
+        if (!perm && k % 2) continue;
+        const an = (k / 28) * Math.PI * 2;
+        l.fillRect(Math.round(cx + Math.cos(an) * o.r), Math.round(cy + Math.sin(an) * ry), 1, 1);
+      }
+    }
     l.globalAlpha = 0.3;
     l.fillStyle = '#000';
     l.beginPath();
@@ -1284,9 +1297,9 @@ export class Renderer {
     if (world.decor.some((d) => d.kind === 'lightshafts')) {
       g.globalAlpha = 1;
       for (let k = 0; k < 4; k++) {
-        const x0 = 80 + k * 150 + Math.sin(t * 0.2 + k) * 20;
+        const x0 = 80 + k * 165 + Math.sin(t * 0.2 + k) * 20;
         g.fillStyle = `rgba(255,236,170,${0.05 + 0.02 * Math.sin(t * 0.5 + k * 2)})`;
-        g.beginPath(); g.moveTo(x0, 0); g.lineTo(x0 + 40, 0); g.lineTo(x0 + 140, 360); g.lineTo(x0 + 90, 360); g.closePath(); g.fill();
+        g.beginPath(); g.moveTo(x0, 0); g.lineTo(x0 + 40, 0); g.lineTo(x0 + 140, WORLD_H); g.lineTo(x0 + 90, WORLD_H); g.closePath(); g.fill();
       }
     }
     for (const h of world.hazards) if (h.kind === 'geyser' && h.phase === 'active') { g.globalAlpha = 0.6; g.drawImage(this.glows.blue, h.x - 20, h.y - 40, 40, 50); }

@@ -1,9 +1,9 @@
 // Constantes globais da simulação. O mundo é medido em "pixels de arte" (resolução interna 640x360).
 export const TILE = 8;
-export const COLS = 80;
-export const ROWS = 45;
-export const WORLD_W = COLS * TILE; // 640
-export const WORLD_H = ROWS * TILE; // 360
+export const COLS = 88;
+export const ROWS = 50;
+export const WORLD_W = COLS * TILE; // 704
+export const WORLD_H = ROWS * TILE; // 400
 
 // Passo fixo da simulação (60 Hz). Toda a lógica de combate avança apenas por este passo.
 export const DT = 1 / 60;

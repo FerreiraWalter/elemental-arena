@@ -1,5 +1,5 @@
 import { TAU, angleDiff, pointSeg, clamp } from '../core/math.js';
-import { TILE, ELEMENT_MULT } from '../config.js';
+import { TILE, ELEMENT_MULT, WORLD_W, WORLD_H } from '../config.js';
 import { props } from '../sim/tiles.js';
 import { EVOLUTION } from '../config.js';
 import { TACTICS } from './tactics.js';
@@ -571,7 +571,7 @@ export class Brain {
       y = mem.y + mem.vy * lead * t;
       if (speed !== Infinity) t = extraT + Math.hypot(x - m.x, y - m.y) / speed;
     }
-    return { x: clamp(x, 8, 632), y: clamp(y, 8, 352) };
+    return { x: clamp(x, 8, WORLD_W - 8), y: clamp(y, 8, WORLD_H - 8) };
   }
 
   aimAt(e, speed, action) {
@@ -677,10 +677,11 @@ export class Brain {
     const m = this.m, w = this.w;
     const grid = (w.pathGrid ||= new PathGrid(w));
     const swim = m.element === 'water';
-    if (grid.walkable(m.x, m.y, goal.x, goal.y, swim)) { this.path = null; return null; }
+    const avoid = this.p.waterCost > 0.5; // fogo e Gotapus/Brotossauro não entram na água por vontade própria
+    if (grid.walkable(m.x, m.y, goal.x, goal.y, swim, avoid)) { this.path = null; return null; }
     const moved = this.pathGoal ? Math.hypot(goal.x - this.pathGoal.x, goal.y - this.pathGoal.y) : Infinity;
     if (!this.path || moved > 24 || w.time - this.pathT > 0.8) {
-      this.path = grid.find(m.x, m.y, goal.x, goal.y, swim);
+      this.path = grid.find(m.x, m.y, goal.x, goal.y, swim, 2600, this.p.waterCost);
       this.pathGoal = { x: goal.x, y: goal.y };
       this.pathT = w.time;
       this.pathIdx = 0;
@@ -691,7 +692,7 @@ export class Brain {
     // Atalho: o ponto mais adiante (até 8 tiles) ainda alcançável em linha reta.
     let k = this.pathIdx;
     for (let j = Math.min(path.length - 1, this.pathIdx + 8); j > this.pathIdx; j--) {
-      if (grid.walkable(m.x, m.y, path[j].x, path[j].y, swim)) { k = j; break; }
+      if (grid.walkable(m.x, m.y, path[j].x, path[j].y, swim, avoid)) { k = j; break; }
     }
     this.debug.path = path;
     return path[k];

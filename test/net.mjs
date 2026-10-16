@@ -1,5 +1,6 @@
 // Testes de rede: servidor real (porta aleatória) + clientes WebSocket reais + bots.
 // node test/net.mjs
+import { WORLD_W, WORLD_H } from '../src/config.js';
 import { createServer } from '../server/server.js';
 import { NetClient } from '../src/net/client.js';
 import { createMirror } from '../src/net/mirror.js';
@@ -160,7 +161,7 @@ await test('Servidor valida entradas: NaN, valores enormes e teclas inválidas n
   b.c.send({ t: 'switch', idx: -1 });
   await wait(150);
   const inp = room.world.inputs[a.start.you];
-  assert(Math.abs(inp.move.y) <= 1 && Number.isFinite(inp.move.x) && inp.aim.y <= 360, 'entrada não foi limitada');
+  assert(Math.abs(inp.move.y) <= 1 && Number.isFinite(inp.move.x) && inp.aim.y <= WORLD_H && inp.aim.x <= WORLD_W, 'entrada não foi limitada');
   const m = room.world.fieldOf(a.start.you);
   assert(!m.evolved, 'evoluiu sem energia');
   const before = JSON.stringify(room.world.inputs[a.start.you].move);
