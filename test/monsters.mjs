@@ -114,7 +114,7 @@ test('Silvamante: Salto Celeste cobre ~250 px, aterrissa causando dano e enraiza
   const { w, me, f } = setup('mantifolha', { evolved: true, gap: 245, foe: 'hidrocasco' });
   assert(me.def.key === 'silvamante', 'não evoluiu');
   const hp = f.hp;
-  assert(cast(w, me, 'skyLeap'), 'não saltou');
+  assert(cast(w, me, 'skyLeap', { aimPoint: { x: f.x, y: f.y } }), 'não saltou'); // mira no inimigo a ~245 px
   until(w, () => !me.action, 3);
   assert(me.x > 380, `salto curto (${me.x.toFixed(0)})`);
   assert(f.hp < hp, 'sem dano no pouso');

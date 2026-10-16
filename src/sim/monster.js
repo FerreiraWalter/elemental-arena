@@ -94,8 +94,21 @@ export class Monster {
     a.phase = 'active';
     a.t = 0;
     if (a.ab.kind === 'dash' || a.ab.kind === 'dodge') a.dir = a.aim;
+    if (a.ab.leap) this.aimLeap(a, true);
     if (a.ab.dash?.invuln) this.status.invuln = Math.max(this.status.invuln, a.ab.active);
     a.ab.onActiveStart?.(w, this, a);
+  }
+
+  // Saltos (Salto Longo, Salto Celeste): caem no ponto mirado quando a tecla foi apertada; o alcance da
+  // habilidade é só o máximo. O tempo de voo não muda (mesma invulnerabilidade), muda a velocidade.
+  // Fuga da IA e salto sem ponto mirado usam o alcance todo.
+  aimLeap(a, final) {
+    const ab = a.ab;
+    if (!a.aimPoint || a.purpose === 'escape') { a.leapDist = ab.range; if (final) a.leapFrom = { x: this.x, y: this.y }; return; }
+    const dx = a.aimPoint.x - this.x, dy = a.aimPoint.y - this.y, d = Math.hypot(dx, dy);
+    a.leapDist = Math.max(ab.minRange ?? 30, Math.min(ab.range, d));
+    if (final && d > 2) a.dir = a.aim = this.facing = Math.atan2(dy, dx);
+    if (final) a.leapFrom = { x: this.x, y: this.y };
   }
 
   interrupt(w) {
@@ -115,11 +128,16 @@ export class Monster {
       this.facing = a.aim;
     }
     if (a.phase === 'windup') {
+      if (ab.leap) this.aimLeap(a, false);
       if (a.t >= ab.windup) this.enterActive(w);
     } else if (a.phase === 'active') {
       ab.onActiveTick?.(w, this, a, dt);
       if (this.action !== a) return;
-      if (a.t >= ab.active) { a.phase = 'recovery'; a.t = 0; ab.onEnd?.(w, this, a); }
+      if (a.t >= ab.active) {
+        a.phase = 'recovery'; a.t = 0;
+        if (ab.leap) { this.vx = 0; this.vy = 0; } // salto finca no chão onde caiu (sem escorregar)
+        ab.onEnd?.(w, this, a);
+      }
     } else if (a.t >= ab.recovery) {
       this.action = null;
     }

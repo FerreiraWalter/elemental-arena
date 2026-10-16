@@ -487,8 +487,10 @@ export class Renderer {
     this.fxT.clear();
     this.drawTerrainFx(world, t);
     for (const h of world.hazards) drawHazard(h, this.fxG, this.fxT, t, this.dotCircle.bind(this));
+    this.toDrawn(world, alpha, true);
     this.drawTelegraphs(world, t);
     this.drawGroundAbilityFx(world, t, dt);
+    this.toDrawn(world, alpha, false);
     l.drawImage(this.fxG.commit(), 0, 0);
     this.drawGroundDecor(world);
     this.drawCrowd(t);
@@ -503,7 +505,9 @@ export class Renderer {
     this.drawSentryLinks(world, t);
     for (const e of ents) e.o ? this.drawObstacle(e.o, t) : e.d ? this.drawDecoy(e.d, alpha, dt, t) : this.drawMonster(e.m, alpha, dt, t);
     this.drawProjectiles(world, alpha, t);
+    this.toDrawn(world, alpha, true);
     this.drawAbilityFx(world, t);
+    this.toDrawn(world, alpha, false);
     for (const f of this.rootFx) { this.drawRootCage(f, t, true); f.t += dt; }
     this.rootFx = this.rootFx.filter((f) => f.t < f.dur);
     this.drawTentacles(dt, t);
@@ -719,8 +723,14 @@ export class Renderer {
           this.dotCircle(g, m.x, m.y, ab.radius * (1 - k), rgba('#e0f6ff', 220), -t * 6, 3);
         } else if (ab.kind === 'dash') {
           const c = rgba(blink ? '#ffd84a' : '#ff6a2a', 220);
-          const L = ab.range || 110;
+          const L = a.leapDist ?? ab.range ?? 110;
           for (let s = 12; s < L; s += 5) g.set(m.x + Math.cos(a.aim) * s, m.y + Math.sin(a.aim) * s, c);
+          // Salto: círculo onde vai cair (a área do impacto).
+          if (ab.leap && ab.landR) {
+            const lx = m.x + Math.cos(a.aim) * L, ly = m.y + Math.sin(a.aim) * L;
+            this.dotCircle(g, lx, ly, ab.landR, rgba(blink ? '#c8ff6a' : '#5ad84a', 210), t * 3, 3);
+            this.dotCircle(g, lx, ly, ab.landR * k, rgba('#ffffff', 150), -t * 4, 4);
+          }
           // Ponta da seta: onde a investida termina.
           for (const sg of [-1, 1]) for (let q = 1; q <= 4; q++) g.set(m.x + Math.cos(a.aim) * (L - q * 1.5) + Math.cos(a.aim + sg * 1.6) * q, m.y + Math.sin(a.aim) * (L - q * 1.5) + Math.sin(a.aim + sg * 1.6) * q, c);
         } else if (ab.kind === 'melee' && ab.reach && (ab.windup >= 0.2 || ab.superArmor)) {
@@ -753,6 +763,22 @@ export class Renderer {
       l.fillRect(p.x - 1, y, 2, 2);
       if (ex > 0.7 && jump) { l.fillRect(p.x - 2, y - 1, 1, 2); l.fillRect(p.x + 2, y - 1, 1, 2); }
       if (ex > 0.5 && (p.ph * 10 | 0) % 7 === 0) { l.fillStyle = TEAM_COLOR[p.team]; l.fillRect(p.x, y - 3 - jump, 1, 3); l.fillRect(p.x + 1, y - 3 - jump, 2, 2); }
+    }
+  }
+
+  // Online o próprio monstro é desenhado adiantado (predição): setas, áreas e efeitos das habilidades dele
+  // são desenhados a partir de onde ele aparece, não da posição atrasada do servidor.
+  toDrawn(world, alpha, on) {
+    if (on) {
+      const m = world.active;
+      if (!m || !m.lead) return;
+      const p = this.lerpPos(m, alpha);
+      this._drawnShift = { m, x: m.x, y: m.y };
+      m.x = p.x; m.y = p.y;
+    } else if (this._drawnShift) {
+      const s = this._drawnShift;
+      s.m.x = s.x; s.m.y = s.y;
+      this._drawnShift = null;
     }
   }
 
@@ -850,8 +876,12 @@ export class Renderer {
     }
     const frame = this.monsterFrame(m, st, pose);
     st.top = frame.top;
-    const faceDir = Math.cos(m.facing) >= 0 ? 1 : -1;
-    const face = faceDir * (frame.faces === -1 ? -1 : 1);
+    // Olha para a mira. Com a mira quase na vertical, mantém o lado anterior (evita o sprite piscar de lado).
+    const cf = Math.cos(m.facing);
+    if (cf > 0.12) st.faceDir = 1;
+    else if (cf < -0.12) st.faceDir = -1;
+    else st.faceDir ??= cf >= 0 ? 1 : -1;
+    const face = st.faceDir * (frame.faces === -1 ? -1 : 1);
     const x = Math.round(p.x), y = Math.round(p.y);
     let fade = 1;
     if (!m.alive) fade = Math.max(0, 1 - Math.max(0, m.deathT - 1) / 1.2);

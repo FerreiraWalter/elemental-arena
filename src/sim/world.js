@@ -845,8 +845,15 @@ export class World {
     const a = m.action;
     const spd = m.def.speed * m.speedMult(this);
     if (a && a.phase === 'active' && a.ab.dash) {
-      m.vx = Math.cos(a.dir) * a.ab.dash.speed;
-      m.vy = Math.sin(a.dir) * a.ab.dash.speed;
+      // Salto: percorre exatamente a distância mirada no tempo de voo (divide o que falta pelos ticks que faltam).
+      let sp = a.ab.dash.speed;
+      if (a.leapDist != null && a.leapFrom) {
+        const done = (m.x - a.leapFrom.x) * Math.cos(a.dir) + (m.y - a.leapFrom.y) * Math.sin(a.dir);
+        const ticks = Math.max(1, Math.ceil((a.ab.active - a.t) / dt - 1e-6));
+        sp = Math.max(0, Math.min(2 * a.leapDist / a.ab.active, (a.leapDist - done) / (ticks * dt)));
+      }
+      m.vx = Math.cos(a.dir) * sp;
+      m.vy = Math.sin(a.dir) * sp;
     } else {
       let dx = 0, dy = 0;
       if (st.stun <= 0 && st.root <= 0 && !m.locked) { dx = m.move.x * m.move.throttle * spd; dy = m.move.y * m.move.throttle * spd; }

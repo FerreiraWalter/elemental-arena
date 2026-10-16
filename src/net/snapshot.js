@@ -50,6 +50,7 @@ function monsterRec(m, idxOf) {
     rec.ac = { id: a.ab.id, ph: a.phase, t: r2(a.t), aim: r2(a.aim) };
     if (a.data?.beam) rec.ac.bm = [r1(a.data.beam.ox), r1(a.data.beam.oy), r1(a.data.beam.ex), r1(a.data.beam.ey)];
     if (a.data?.R) rec.ac.R = r1(a.data.R);
+    if (a.leapDist != null) rec.ac.ld = r1(a.leapDist);
   }
   void idxOf;
   return rec;
@@ -143,7 +144,7 @@ export function applySnapshot(world, s, ctx) {
     m.heat = r.ht || 0; m.momentum = r.mo || 0; m.charged = !!r.cg;
     if (r.mk) { m.marks.n = r.mk[0]; m.marks.by = world.roster[r.mk[1]]?.id ?? 0; } else m.marks.n = 0;
     m.ai.state = r.ai; m.human = !!r.hum;
-    m.action = r.ac ? { ab: ABILITIES[r.ac.id], phase: r.ac.ph, t: r.ac.t, aim: r.ac.aim, hit: new Set(), aimPoint: null, data: { beam: r.ac.bm ? { ox: r.ac.bm[0], oy: r.ac.bm[1], ex: r.ac.bm[2], ey: r.ac.bm[3] } : undefined, R: r.ac.R } } : null;
+    m.action = r.ac ? { ab: ABILITIES[r.ac.id], phase: r.ac.ph, t: r.ac.t, aim: r.ac.aim, hit: new Set(), aimPoint: null, data: { beam: r.ac.bm ? { ox: r.ac.bm[0], oy: r.ac.bm[1], ex: r.ac.bm[2], ey: r.ac.bm[3] } : undefined, R: r.ac.R }, leapDist: r.ac.ld } : null;
   }
   world.monsters = s.field.map((i) => world.roster[i]);
   s.teams.forEach((t, i) => {

@@ -650,7 +650,7 @@ export const ABILITIES = {
   longLeap: {
     id: 'longLeap', name: 'Salto Longo', element: 'plant', kind: 'dash', leap: true,
     cooldown: 5.5, windup: 0.22, active: 0.46, recovery: 0.2,
-    move: [0.1, 1, 0.4], turn: [8, 0], range: 155, dash: { speed: 335, invuln: true },
+    move: [0.1, 1, 0.4], turn: [8, 0], range: 155, minRange: 30, landR: 24, dash: { speed: 335, invuln: true },
     onEnd(w, m) {
       w.emit({ type: 'leapLand', x: m.x, y: m.y, r: 24, m });
       for (const t of w.enemiesOf(m)) if (Math.hypot(t.x - m.x, t.y - m.y) < 24 + t.r) w.damage(t, 10, m, { tag: 'longLeap', kb: 170, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.25, element: 'plant', leap: true });
@@ -690,7 +690,7 @@ export const ABILITIES = {
   skyLeap: {
     id: 'skyLeap', name: 'Salto Celeste', element: 'plant', kind: 'dash', leap: true,
     cooldown: 8, windup: 0.3, active: 0.6, recovery: 0.3, superArmor: true,
-    move: [0.1, 1, 0.3], turn: [8, 0], range: 250, dash: { speed: 420, invuln: true },
+    move: [0.1, 1, 0.3], turn: [8, 0], range: 250, minRange: 40, landR: 34, dash: { speed: 420, invuln: true },
     onEnd(w, m) {
       w.emit({ type: 'rootsErupt', x: m.x, y: m.y, r: 34, src: m });
       for (const t of w.enemiesOf(m)) {
@@ -834,9 +834,9 @@ ABILITIES.inkStorm.desc = 'Tinta sobre você e o inimigo, 3 cópias e camuflagem
 ABILITIES.leafBlade.desc = 'Lâmina de folha veloz; brota grama onde cai.';
 ABILITIES.scytheSlash.desc = 'Foice rápida com avanço.';
 ABILITIES.sporePuff.desc = 'Cone de esporos que enraíza quem entra.';
-ABILITIES.longLeap.desc = 'SALTO LONGO por cima de obstáculos e inimigos; aterrissa causando dano.';
+ABILITIES.longLeap.desc = 'SALTO LONGO até onde está a mira (alcance máximo), por cima de obstáculos; aterrissa causando dano.';
 ABILITIES.wingDash.desc = 'Esquiva curta batendo as asas.';
 ABILITIES.mantisClaw.desc = 'Garras longas que puxam o alvo para perto.';
 ABILITIES.bladeStorm.desc = 'Leque de três lâminas de folha.';
 ABILITIES.sporeStorm.desc = 'Tempestade de esporos: grande cone que enraíza.';
-ABILITIES.skyLeap.desc = 'Salto celeste enorme; ao cair, enraíza e arremessa quem estiver perto.';
+ABILITIES.skyLeap.desc = 'Salto celeste até onde está a mira (alcance enorme); ao cair, enraíza e arremessa quem estiver perto.';

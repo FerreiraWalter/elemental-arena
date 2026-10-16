@@ -403,6 +403,21 @@ test('Snapshot leva calor, ímpeto, marcas, camuflagem, cópias e sentinelas ao 
   void G;
 });
 
+test('Saltos (Mantifolha/Silvamante) caem onde o mouse estava; o alcance é o máximo', () => {
+  for (const [line, id, evolved] of [['mantifolha', 'longLeap', false], ['mantifolha', 'skyLeap', true]]) {
+    const ab = ABILITIES[id];
+    for (const [want, expect] of [[70, 70], [ab.range - 10, ab.range - 10], [ab.range + 200, ab.range], [5, ab.minRange]]) {
+      const { w, A } = setup(line, 'brotossauro', { gap: 400, evolved });
+      A.x = A.px = 200; A.y = A.py = 200; A.vx = A.vy = 0; A.cd[id] = 0;
+      const tx = 200 + want * 0.8, ty = 200 + want * 0.6;
+      assert(A.cast(w, ab, { aim: Math.atan2(ty - 200, tx - 200), aimPoint: { x: tx, y: ty } }), `${id}: não saltou`);
+      assert(until(w, () => A.action?.phase === 'recovery', 2), `${id}: não aterrissou`);
+      const got = Math.hypot(A.x - 200, A.y - 200);
+      assert(Math.abs(got - expect) < 4, `${id}: mirou ${want}, devia cair a ${expect}, caiu a ${got.toFixed(1)}`);
+    }
+  }
+});
+
 let failed = 0;
 console.log('\nMecânicas próprias, limites do fogo e sincronização\n');
 for (const r of results) { console.log(`${r.ok ? '[OK] ' : '[FALHOU]'} ${r.name}${r.ok ? '' : '\n       ' + r.err}`); if (!r.ok) failed++; }

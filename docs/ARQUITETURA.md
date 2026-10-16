@@ -34,7 +34,8 @@ src/
   ui/ui.js              menu, seleção de time e arena, multiplayer (criar/entrar/sala), bestiário, opções, ajuda (H), pausa/fim
   audio/sfx.js          efeitos sonoros sintetizados (WebAudio) a partir dos eventos do combate
   net/                  snapshot.js (serializa/aplica estado), client.js (WebSocket), mirror.js (mundo espelho),
-                        smooth.js (buffer de interpolação + predição do próprio monstro)
+                        smooth.js (buffer de interpolação + predição do próprio monstro: movimento,
+                        esquiva/investida/salto na hora, som e recarga na hora, virar para o mouse)
 server/                 server.js (HTTP estático + WebSocket), room.js (lobby e partida autoritativa)
 assets/monsters/        sprites extraídos (tools/extract_sprites.py)
 test/                   cenários e aceitação headless

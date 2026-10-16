@@ -9,8 +9,16 @@ import { hash2 } from '../core/math.js';
 const FLAME = [rgba('#fff7c2'), rgba('#ffd84a'), rgba('#ff9a1f'), rgba('#f2541b'), rgba('#b3200f')];
 const WHITE = rgba('#ffffff');
 
-// Direção para onde a arte original olha (-1 esquerda, 0 frente, 1 direita).
-const FACES = { fire_1: -1, fire_2: 0, fire_3: 0, water_1: 0, water_2: 0, water_3: 0, plant_1: 0, plant_2: 0, plant_3: 0 };
+// Direção para onde a arte original olha (-1 esquerda, 0 frente, 1 direita). O renderer espelha a arte
+// para que o monstro sempre olhe para a mira; sprite que olha para a esquerda precisa de -1 aqui.
+const FACES = {
+  fire_1: -1, fire_2: 0, fire_3: 0,
+  water_1: 1, water_2: 0, water_3: 0,
+  plant_1: -1, plant_2: 0, plant_3: 0,
+  hedgehog_1: 1, hedgehog_3: 1,
+  octo_1: 0, octo_3: 0,
+  mantis_1: 1, mantis_3: -1, // Silvamante: cabeça e garras à esquerda, folhas para trás
+};
 
 function classify(r, g, b) {
   const max = Math.max(r, g, b), min = Math.min(r, g, b);

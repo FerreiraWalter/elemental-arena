@@ -14,44 +14,55 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 const ROSTERS = [['brasalisco', 'hidrocasco', 'brotossauro'], ['ouriflama', 'gotapus', 'mantifolha']];
 
 // owd = latência de ida (ms); jitter = variação aleatória (ms); script(t) → direção desejada {x,y} em t segundos.
-function run({ owd, jitter, seconds = 4, script, seed = 1 }) {
+function run({ owd, jitter, seconds = 4, script, seed = 1, rosters = ROSTERS }) {
   const rnd = mulberry32(seed);
-  const server = World.match(7, ROSTERS, null, 'quadra', 'normal', { sides: [0, 1], humans: [0, 1] });
+  const server = World.match(7, rosters, null, 'quadra', 'normal', { sides: [0, 1], humans: [0, 1] });
   const sctx = makeSyncCtx(server);
-  const start = { seed: 7, rosters: ROSTERS, you: 0, arena: 'quadra', sides: [0, 1], players: [{ seat: 0 }, { seat: 1 }] };
+  const start = { seed: 7, rosters, you: 0, arena: 'quadra', sides: [0, 1], players: [{ seat: 0 }, { seat: 1 }] };
   const mirror = createMirror(start);
   const cw = mirror.world;
   const sm = new NetSmoother();
   const toClient = [], toServer = []; // { at, data }
   let lastC = 0, lastS = 0;
   const lat = () => owd + (rnd() - 0.5) * 2 * jitter;
-  const frames = [];
+  const frames = [], casts = [];
   let ticks = 0;
+  const pressed = new Set();
   const FR = 1000 / 60;
   let tms = 0;
   // Deixa a entrada do monstro e a troca inicial estabilizarem sem mexer.
   const pre = 1200;
   for (; tms < (seconds * 1000 + pre); tms += FR) {
     // servidor: entradas que chegaram
-    while (toServer.length && toServer[0].at <= tms) { const d = toServer.shift().data; server.inputs[0].move.x = d.x; server.inputs[0].move.y = d.y; }
+    while (toServer.length && toServer[0].at <= tms) {
+      const d = toServer.shift().data, si = server.inputs[0];
+      si.move.x = d.x; si.move.y = d.y;
+      if (d.aim) { si.aim.x = d.aim.x; si.aim.y = d.aim.y; }
+      if (d.press) si.presses.push(d.press);
+    }
     server.step(DT);
     if (++ticks % 3 === 0) { const s = JSON.parse(JSON.stringify(serialize(server, sctx))); const at = Math.max(lastC + 0.01, tms + lat()); lastC = at; toClient.push({ at, data: s }); }
     // cliente: snapshots que chegaram
     while (toClient.length && toClient[0].at <= tms) sm.enqueue(toClient.shift().data, toClient[0] ? tms : tms, cw);
     // cliente: entrada desta quadro (após o pré-aquecimento)
     const t = Math.max(0, (tms - pre) / 1000);
-    const dir = tms < pre ? { x: 0, y: 0 } : script(t);
+    const dir = tms < pre ? { x: 0, y: 0 } : script(t, cw);
     cw.input.move.x = dir.x; cw.input.move.y = dir.y;
-    const at = Math.max(lastS + 0.01, tms + lat()); lastS = at; toServer.push({ at, data: dir });
+    if (dir.aim) { cw.input.aim.x = dir.aim.x; cw.input.aim.y = dir.aim.y; }
     const alpha = sm.pump(tms, cw, mirror.ctx);
+    // Tecla: uma vez por rótulo (o roteiro devolve press enquanto a janela de tempo dura).
+    let press = null;
+    if (dir.press && !pressed.has(dir.key || dir.press)) { pressed.add(dir.key || dir.press); press = dir.press; sm.press(press, cw, tms, owd * 2); }
+    const at = Math.max(lastS + 0.01, tms + lat()); lastS = at; toServer.push({ at, data: { x: dir.x, y: dir.y, aim: dir.aim, press } });
     sm.lead(tms, FR / 1000, alpha, cw, false, owd * 2);
+    for (const e of cw.drainEvents()) if (e.type === 'cast' && e.m === cw.active) casts.push({ t, ab: e.ab, local: !!e.local });
     const m = cw.active;
     if (m && tms >= pre) {
       const l = m.lead || { x: 0, y: 0 };
-      frames.push({ t, x: m.px + (m.x - m.px) * alpha + l.x, y: m.py + (m.y - m.py) * alpha + l.y, sx: server.fieldOf(0).x, sy: server.fieldOf(0).y, dir });
+      frames.push({ t, x: m.px + (m.x - m.px) * alpha + l.x, y: m.py + (m.y - m.py) * alpha + l.y, sx: server.fieldOf(0).x, sy: server.fieldOf(0).y, dir, act: m.action?.ab.id, cd: { ...m.cd }, facing: m.facing });
     }
   }
-  return { frames, server };
+  return { frames, server, casts };
 }
 
 
@@ -93,6 +104,62 @@ test('Sem rede ruim: o desenho nunca se afasta mais que ~1 s de movimento do ser
   const { frames } = run({ owd: 60, jitter: 25, script: () => ({ x: 1, y: 0 }), seconds: 6 });
   const worst = Math.max(...frames.map((f) => Math.hypot(f.x - f.sx, f.y - f.sy)));
   assert(worst < 40, `distância máxima do servidor: ${worst.toFixed(1)} px`);
+});
+
+// Esquiva com ping alto: o desenho dispara no quadro do aperto e termina onde o servidor deixou.
+test('Esquiva aparece na hora com ping 250 ms e termina no lugar do servidor', () => {
+  const script = (t) => (t < 0.6 ? { x: 1, y: 0 } : t < 0.62 ? { x: 1, y: 0, press: 'dodge' } : t < 0.9 ? { x: 1, y: 0 } : { x: 0, y: 0 });
+  const { frames, server } = run({ owd: 125, jitter: 30, script, seconds: 2.5 });
+  const i0 = frames.findIndex((f) => f.t >= 0.6);
+  const step = Math.hypot(frames[i0 + 2].x - frames[i0 + 1].x, frames[i0 + 2].y - frames[i0 + 1].y);
+  assert(step > 4, `esquiva não respondeu na hora (passo de ${step.toFixed(1)} px por quadro)`);
+  assert(frames[i0 + 1].act === 'hop', 'pose da esquiva não apareceu na hora');
+  const hop = server.fieldOf(0).cd.hop;
+  assert(hop > 0 && hop < 3.4, 'o servidor não fez a esquiva');
+  const last = frames[frames.length - 1];
+  const err = Math.hypot(last.x - last.sx, last.y - last.sy);
+  assert(err < 3, `erro final em relação ao servidor: ${err.toFixed(1)} px`);
+  let maxStep = 0;
+  for (let i = 1; i < frames.length; i++) maxStep = Math.max(maxStep, Math.hypot(frames[i].x - frames[i - 1].x, frames[i].y - frames[i - 1].y));
+  assert(maxStep < 9, `salto visual de ${maxStep.toFixed(1)} px em um quadro`);
+});
+
+test('Salto do Mantifolha com ping 250 ms: sai na hora e cai no ponto do mouse', () => {
+  const rosters = [['mantifolha', 'hidrocasco', 'brotossauro'], ROSTERS[1]];
+  let target = null;
+  const script = (t, cw) => {
+    if (!target && cw.active) target = { x: cw.active.x + 90, y: cw.active.y + 20 };
+    return t >= 0.5 && t < 0.52 ? { x: 0, y: 0, press: 'f', aim: target } : { x: 0, y: 0, aim: target || { x: 320, y: 180 } };
+  };
+  const { frames, server } = run({ owd: 125, jitter: 30, script, seconds: 2.2, rosters });
+  const i0 = frames.findIndex((f) => f.t >= 0.5);
+  assert(frames[i0 + 1].act === 'longLeap', 'salto não começou na hora');
+  const me = server.fieldOf(0);
+  const land = Math.hypot(me.x - target.x, me.y - target.y);
+  assert(land < 6, `servidor caiu a ${land.toFixed(1)} px do mouse`);
+  const last = frames[frames.length - 1];
+  assert(Math.hypot(last.x - last.sx, last.y - last.sy) < 3, 'desenho não terminou no lugar do servidor');
+  // Durante o voo o desenho está à frente do servidor (já saltando), não parado esperando a confirmação.
+  const mid = frames.find((f) => f.t >= 0.5 + 0.22 + 0.2);
+  const start = frames[i0];
+  assert(Math.hypot(mid.x - start.x, mid.y - start.y) > 30, 'o desenho não saltou antes de o servidor confirmar');
+});
+
+test('Habilidade comum: recarga e som na hora, sem som repetido quando o servidor confirma', () => {
+  const script = (t) => (t >= 0.5 && t < 0.52 ? { x: 0, y: 0, press: 'e', aim: { x: 400, y: 200 } } : { x: 0, y: 0, aim: { x: 400, y: 200 } });
+  const { frames, casts, server } = run({ owd: 125, jitter: 30, script, seconds: 2 });
+  const i0 = frames.findIndex((f) => f.t >= 0.5);
+  assert(frames[i0 + 1].cd.meteor > 0, 'recarga não começou na hora');
+  assert(server.fieldOf(0).cd.meteor > 0, 'servidor não lançou');
+  const mc = casts.filter((c) => c.ab === 'meteor');
+  assert(mc.length === 1 && mc[0].local, `esperava 1 som de lançamento local, veio ${JSON.stringify(mc)}`);
+});
+
+test('Olha para o mouse na hora (sem esperar o servidor)', () => {
+  const script = (t) => ({ x: 0, y: 0, aim: t < 0.5 ? { x: 600, y: 180 } : { x: 10, y: 180 } });
+  const { frames } = run({ owd: 125, jitter: 30, script, seconds: 1 });
+  const f = frames.find((x) => x.t >= 0.52);
+  assert(Math.cos(f.facing) < 0, 'ainda olhando para o lado antigo');
 });
 
 let failed = 0;

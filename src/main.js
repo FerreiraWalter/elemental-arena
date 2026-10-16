@@ -289,8 +289,13 @@ function toWorld(clientX, clientY) {
 
 function press(slot) {
   if (mode !== 'battle' || overlay || world.over || !world.active) return;
-  if (online) netPresses.push(slot);
-  else world.input.presses.push(slot);
+  if (online) {
+    // Resposta na hora (esquiva/investida/salto, som e recarga) e a tecla vai ao servidor sem esperar o próximo quadro.
+    const now = performance.now();
+    netPresses.push(slot);
+    smooth.press(slot, world, now, net?.rtt || 60);
+    sendInput(now);
+  } else world.input.presses.push(slot);
 }
 
 // Troca o monstro em campo (1×1 por vaga). Tab procura o próximo vivo na reserva.
