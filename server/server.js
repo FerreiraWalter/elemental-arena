@@ -11,7 +11,7 @@
 // O servidor roda a simulação de cada partida (autoritativo); os navegadores só enviam entradas e desenham.
 
 import http from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
@@ -34,7 +34,7 @@ export function createServer({
   const rooms = new Map();
   const perIp = new Map();
   const stats = { started: Date.now(), connections: 0, rejected: 0 };
-  const cache = new Map(); // arquivos estáticos já lidos/comprimidos (invalidados por mtime só em dev: aqui, no-cache)
+  const cache = new Map(); // arquivos estáticos já lidos/comprimidos
 
   const ipOf = (req) => {
     if (trustProxy) { const f = req.headers['x-forwarded-for']; if (f) return String(f).split(',')[0].trim(); }
@@ -55,10 +55,12 @@ export function createServer({
       const relative = file.slice(ROOT.length + 1);
       if (!file.startsWith(ROOT + sep) || !PUBLIC.some((p) => relative === p || relative.startsWith(p))) { res.writeHead(404, SECURITY); return res.end('não encontrado'); }
       const ext = extname(file);
+      // Cache em memória (com gzip), renovado quando o arquivo muda no disco.
+      const mtime = (await stat(file)).mtimeMs;
       let entry = cache.get(file);
-      if (!entry) {
+      if (!entry || entry.mtime !== mtime) {
         const raw = await readFile(file);
-        entry = { raw, gz: COMPRESSIBLE.has(ext) && raw.length > 1024 ? gzipSync(raw) : null };
+        entry = { raw, mtime, gz: COMPRESSIBLE.has(ext) && raw.length > 1024 ? gzipSync(raw) : null };
         cache.set(file, entry);
       }
       const headers = {

@@ -5,7 +5,7 @@ import { PixelBuf, rgba, makeCanvas } from './pixel.js';
 import { drawBrasalisco, drawHidrocasco, drawBrotossauro, rockSprite, crateSprite, bushSprite, stumpSprite } from './sprites.js';
 import { ArtSprites } from './artsprites.js';
 import { paintTile, paintWalls, paletteFor } from './terrainpaint.js';
-import { pillarSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient } from './scenery.js';
+import { pillarSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient, sentrySprite } from './scenery.js';
 import { Particles } from './particles.js';
 import { drawHud } from './hud.js';
 
@@ -19,6 +19,8 @@ export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84
 const ROOT = [rgba('#4a2e16'), rgba('#6e4624'), rgba('#94653a'), rgba('#5aa83c'), rgba('#84c858')];
 const FLAME = ['#fff7c2', '#ffd84a', '#ff9a1f', '#f2541b', '#b3200f'].map((h) => rgba(h));
 const EMBER = [rgba('#7a1e0a', 200), rgba('#b3300f', 220), rgba('#e0561a', 230), rgba('#ff8a2a', 240)];
+// Cores das mecânicas próprias (usadas no mundo e no HUD).
+export const SIG_COLOR = { heat: '#ff9a3a', overheat: '#ffd84a', exhaust: '#9a8a7a', momentum: '#ffe066', guard: '#8fd8ff', sentry: '#9ae070', decoy: '#b8a0ff', marks: '#b4f08a' };
 
 
 function glowSprite(color, size = 32) {
@@ -67,6 +69,8 @@ export class Renderer {
     this.flash = 0;
     this.mon = new Map();
     this.denyFlash = 0;
+    this.denySlot = null;
+    this.decoySt = new Map();
     for (const m of world.roster) this.mon.set(m.id, { pb: new PixelBuf(48, 48), walk: 0, lagHp: m.hp, ghosts: [], ghostT: 0, seed: m.id * 7, top: 30 });
     this.palette = paletteFor(world);
     this.obsSprites = new Map();
@@ -100,6 +104,7 @@ export class Renderer {
       case 'giantFlower': { const img = giantFlowerSprite(o.r, o.id, char); return c(img, img.height / 2 + 2); }
       case 'tree': { const img = trunkSprite(o.r, o.id); return c(img, img.height / 2 + 2); }
       case 'log': return c(logSprite(12, o.id, char));
+      case 'sentry': case 'ancientSentry': { const img = sentrySprite(o.kind === 'ancientSentry', o.id, char); return c(img, img.height - 3); }
       default: { const img = bushSprite(o.r, o.id, char); return c(img, img.height / 2 + 3); }
     }
   }
@@ -126,6 +131,7 @@ export class Renderer {
   consume(events) {
     const P = this.particles;
     for (const e of events) {
+      this.sfx?.event(e, this.world);
       switch (e.type) {
         case 'shoot':
           if (e.kind === 'ember') P.burst(e.x, e.y, 6, { ramp: 'spark', speed: 50, life: 0.25, add: true });
@@ -138,7 +144,7 @@ export class Renderer {
           break;
         case 'hit': {
           const fire = e.element === 'fire';
-          if (!this.showNumbers) { if (e.dot) break; } else this.nums.push({ x: e.m.x + (Math.random() - 0.5) * 8, y: e.m.y - 22, v: e.amount, t: 0, color: fire ? '#ffb347' : e.element === 'water' ? '#8fd8ff' : e.element === 'plant' ? '#a8f080' : '#ffffff', small: e.dot });
+          if (!this.showNumbers) { if (e.dot) break; } else this.nums.push({ x: e.m.x + (Math.random() - 0.5) * 8, y: e.m.y - 22, v: e.amount, t: 0, color: e.blocked ? '#c8e8ff' : fire ? '#ffb347' : e.element === 'water' ? '#8fd8ff' : e.element === 'plant' ? '#a8f080' : '#ffffff', small: e.dot || e.blocked, big: !e.dot && e.amount >= 14 });
           if (!e.dot) {
             P.burst(e.x, e.y - 4, e.big ? 18 : 9, { ramp: fire ? 'spark' : e.element === 'plant' ? 'leaf' : 'water', speed: e.big ? 90 : 60, life: 0.35, add: fire });
             this.rings.push({ x: e.x, y: e.y - 4, r: 2, max: e.big ? 16 : 9, t: 0, color: fire ? '#fff2a0' : '#e0f6ff' });
@@ -165,7 +171,7 @@ export class Renderer {
         case 'clash':
           P.burst(e.x, e.y, 16, { ramp: 'steam', speed: 50, life: 0.7, size: 2, grow: 3, alpha: 0.8 });
           this.rings.push({ x: e.x, y: e.y, r: 2, max: 14, t: 0, color: '#ffffff' });
-          this.texts.push({ x: e.x, y: e.y - 10, text: 'VAPOR!', t: 0, color: '#e8f6ff' });
+          this.addText({ x: e.x, y: e.y - 10, text: 'VAPOR!', t: 0, color: '#e8f6ff' });
           break;
         case 'explosion':
           P.burst(e.x, e.y, 46, { ramp: 'fire', speed: 120, life: 0.7, add: true, vz: 60, size: 2 });
@@ -187,7 +193,7 @@ export class Renderer {
           this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r + 10, t: 0, color: '#ffb040', thick: true });
           this.shake = Math.max(this.shake, 7);
           this.hitstop = Math.max(this.hitstop, 0.08);
-          this.texts.push({ x: e.x, y: e.y - 30, text: 'ERUPÇÃO!', t: 0, color: '#ffb040' });
+          this.addText({ x: e.x, y: e.y - 30, text: 'ERUPÇÃO!', t: 0, color: '#ffb040' });
           break;
         case 'leapLand':
           P.burst(e.x, e.y, 14, { ramp: 'dust', speed: 70, life: 0.5, vz: 30 });
@@ -209,7 +215,7 @@ export class Renderer {
           this.shake = Math.max(this.shake, 2.5);
           break;
         case 'shield':
-          this.texts.push({ x: e.x, y: e.y - 30, text: 'BOLHA!', t: 0, color: '#8fd8ff' });
+          this.addText({ x: e.x, y: e.y - 30, text: 'BOLHA!', t: 0, color: '#8fd8ff' });
           this.rings.push({ x: e.x, y: e.y - 6, r: 4, max: 18, t: 0, color: '#8fd8ff', thick: true });
           break;
         case 'shieldHit':
@@ -217,10 +223,10 @@ export class Renderer {
           break;
         case 'shieldBreak':
           P.burst(e.x, e.y - 8, 20, { ramp: 'water', speed: 80, life: 0.5, vz: 40, g: 120 });
-          this.texts.push({ x: e.x, y: e.y - 30, text: 'BOLHA ESTOUROU', t: 0, color: '#8fd8ff' });
+          this.addText({ x: e.x, y: e.y - 30, text: 'BOLHA ESTOUROU', t: 0, color: '#8fd8ff' });
           break;
         case 'evolveStart':
-          this.texts.push({ x: e.x, y: e.y - 36, text: 'EVOLUINDO...', t: 0, color: EVO_COLOR[e.m.element] });
+          this.addText({ x: e.x, y: e.y - 36, text: 'EVOLUINDO...', t: 0, color: EVO_COLOR[e.m.element] });
           this.rings.push({ x: e.x, y: e.y - 6, r: 30, max: 2, t: 0, color: EVO_COLOR[e.m.element], thick: true });
           this.excite = 1;
           break;
@@ -228,7 +234,7 @@ export class Renderer {
           const el = e.m.element;
           P.burst(e.x, e.y - 10, 50, { ramp: el === 'fire' ? 'fire' : el === 'water' ? 'water' : 'leaf', speed: 120, life: 0.9, vz: 80, size: 2, add: el === 'fire' });
           this.rings.push({ x: e.x, y: e.y, r: 4, max: 44, t: 0, color: '#ffffff', thick: true });
-          this.texts.push({ x: e.x, y: e.y - 46, text: e.m.name.toUpperCase() + '!', t: 0, color: EVO_COLOR[el] });
+          this.addText({ x: e.x, y: e.y - 46, text: e.m.name.toUpperCase() + '!', t: 0, color: EVO_COLOR[el] });
           this.flash = 0.18;
           this.shake = Math.max(this.shake, 6);
           this.hitstop = Math.max(this.hitstop, 0.15);
@@ -248,18 +254,18 @@ export class Renderer {
           this.shake = Math.max(this.shake, 2.5);
           break;
         case 'rooted':
-          this.texts.push({ x: e.x, y: e.y - 26, text: 'ENRAIZADO!', t: 0, color: '#a8f080' });
+          this.addText({ x: e.x, y: e.y - 26, text: 'PRESO!', t: 0, color: '#a8f080' });
           break;
         case 'recall':
           this.rings.push({ x: e.x, y: e.y - 6, r: 14, max: 2, t: 0, color: TEAM_COLOR[e.m.team], thick: true });
           P.burst(e.x, e.y - 6, 10, { ramp: 'steam', speed: 30, life: 0.4, vz: 30 });
-          if (e.m.slot === this.world.playerTeam || this.world.playerTeam === null) this.texts.push({ x: e.x, y: e.y - 30, text: 'VOLTA!', t: 0, color: TEAM_COLOR[e.m.team] });
+          if (e.m.slot === this.world.playerTeam || this.world.playerTeam === null) this.addText({ x: e.x, y: e.y - 30, text: 'VOLTA!', t: 0, color: TEAM_COLOR[e.m.team] });
           break;
         case 'enter':
           this.rings.push({ x: e.x, y: e.y, r: 2, max: 20, t: 0, color: TEAM_COLOR[e.m.team], thick: true });
           P.burst(e.x, e.y, 14, { ramp: 'dust', speed: 60, life: 0.5 });
           if (e.reason !== 'start') {
-            this.texts.push({ x: e.x, y: e.y - 30, text: `VAI, ${e.m.name.toUpperCase()}!`, t: 0, color: TEAM_COLOR[e.m.team] });
+            this.addText({ x: e.x, y: e.y - 30, text: `VAI, ${e.m.name.toUpperCase()}!`, t: 0, color: TEAM_COLOR[e.m.team] });
             this.excite = Math.min(1, this.excite + 0.3);
           }
           break;
@@ -273,10 +279,11 @@ export class Renderer {
           P.burst(e.x, e.y + 4, 8, { ramp: 'dust', speed: 40, life: 0.4 });
           break;
         case 'evaded':
-          this.texts.push({ x: e.x, y: e.y - 26, text: 'ESQUIVOU!', t: 0, color: '#ffffff' });
+          this.addText({ x: e.x, y: e.y - 26, text: 'ESQUIVOU!', t: 0, color: '#ffffff' });
+          this.rings.push({ x: e.x, y: e.y - 6, r: 3, max: 14, t: 0, color: '#ffffff' });
           break;
         case 'interrupt':
-          this.texts.push({ x: e.x, y: e.y - 26, text: 'INTERROMPIDO', t: 0, color: '#ffe066' });
+          this.addText({ x: e.x, y: e.y - 26, text: 'INTERROMPIDO', t: 0, color: '#ffe066' });
           break;
         case 'slam':
           P.burst(e.x, e.y, 10, { ramp: 'dust', speed: 60, life: 0.5 });
@@ -305,9 +312,97 @@ export class Renderer {
         case 'cast':
           if (e.kind !== 'projectile' && e.kind !== 'melee' && e.kind !== 'dodge') this.excite = Math.min(1, this.excite + 0.15);
           if (e.kind === 'dodge') P.burst(e.x, e.y + 4, 6, { ramp: 'dust', speed: 30, life: 0.35 });
+          if (e.kind === 'guard') { this.rings.push({ x: e.x, y: e.y - 6, r: 4, max: 16, t: 0, color: SIG_COLOR.guard, thick: true }); }
+          break;
+        // ───── mecânicas próprias ─────
+        case 'overheat':
+          this.addText({ x: e.x, y: e.y - 34, text: 'SUPERAQUECIDO!', t: 0, color: SIG_COLOR.overheat, big: true });
+          P.burst(e.x, e.y - 8, 30, { ramp: 'fire', speed: 90, life: 0.6, add: true, vz: 60, size: 2 });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: 26, t: 0, color: SIG_COLOR.overheat, thick: true });
+          this.shake = Math.max(this.shake, 3);
+          break;
+        case 'heatNova':
+          P.burst(e.x, e.y, 40, { ramp: 'fire', speed: 150, life: 0.5, add: true, vz: 30, size: 2 });
+          this.rings.push({ x: e.x, y: e.y, r: 6, max: e.r, t: 0, color: '#ffffff', thick: true });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r - 6, t: 0, color: '#ff7a1a', thick: true });
+          this.shake = Math.max(this.shake, 6); this.flash = 0.08;
+          break;
+        case 'exhaust':
+          this.addText({ x: e.x, y: e.y - 30, text: 'EXAUSTO', t: 0, color: '#d8ccb8' });
+          P.burst(e.x, e.y - 10, 16, { ramp: 'smoke', speed: 30, life: 1.2, vz: 30, size: 2, grow: 3, alpha: 0.7 });
+          break;
+        case 'charged':
+          this.addText({ x: e.x, y: e.y - 30, text: 'DISPARADA!', t: 0, color: SIG_COLOR.momentum });
+          P.burst(e.x, e.y - 4, 14, { ramp: 'spark', speed: 70, life: 0.4, add: true });
+          break;
+        case 'empowered':
+          this.addText({ x: e.x, y: e.y - 34, text: 'GOLPE CHEIO!', t: 0, color: SIG_COLOR.momentum, big: true });
+          this.rings.push({ x: e.x, y: e.y - 4, r: 4, max: 22, t: 0, color: '#ffffff', thick: true });
+          this.hitstop = Math.max(this.hitstop, 0.09); this.shake = Math.max(this.shake, 5);
+          break;
+        case 'thorns':
+          P.burst(e.x, e.y - 6, 8, { ramp: 'spark', speed: 60, life: 0.3, add: true });
+          this.addText({ x: e.x, y: e.y - 24, text: 'ESPINHOS', t: 0, color: '#ffb070' });
+          break;
+        case 'block':
+          this.addText({ x: e.x, y: e.y - 28, text: 'BLOQUEOU', t: 0, color: SIG_COLOR.guard });
+          P.burst(e.x, e.y - 6, 8, { ramp: 'water', speed: 60, life: 0.3 });
+          break;
+        case 'counter':
+          this.addText({ x: e.x, y: e.y - 36, text: 'CONTRA-ATAQUE!', t: 0, color: '#ffffff', big: true });
+          P.burst(e.x + Math.cos(e.ang) * 12, e.y + Math.sin(e.ang) * 12, 26, { ramp: 'water', speed: 120, life: 0.5, vz: 50, g: 200, size: 2 });
+          this.rings.push({ x: e.x, y: e.y - 4, r: 6, max: 30, t: 0, color: SIG_COLOR.guard, thick: true });
+          this.hitstop = Math.max(this.hitstop, 0.1); this.shake = Math.max(this.shake, 5);
+          break;
+        case 'reflect':
+          this.addText({ x: e.x, y: e.y - 18, text: 'DEVOLVEU!', t: 0, color: SIG_COLOR.guard });
+          P.burst(e.x, e.y, 10, { ramp: 'water', speed: 70, life: 0.3 });
+          this.rings.push({ x: e.x, y: e.y, r: 2, max: 10, t: 0, color: '#ffffff' });
+          break;
+        case 'decoy':
+          P.burst(e.x, e.y - 4, 8, { ramp: 'ink', speed: 30, life: 0.5, size: 2, grow: 2, alpha: 0.7 });
+          break;
+        case 'decoyPop':
+          P.burst(e.x, e.y - 6, 22, { ramp: 'ink', speed: 70, life: 0.7, size: 3, grow: 3, alpha: 0.85 });
+          this.addText({ x: e.x, y: e.y - 26, text: 'CÓPIA!', t: 0, color: SIG_COLOR.decoy });
+          break;
+        case 'decoyFade':
+          P.burst(e.x, e.y - 6, 8, { ramp: 'ink', speed: 20, life: 0.6, size: 2, grow: 2, alpha: 0.5 });
+          break;
+        case 'cloak': case 'uncloak':
+          P.burst(e.x, e.y - 8, 10, { ramp: 'ink', speed: 40, life: 0.4, size: 2, alpha: 0.6 });
+          break;
+        case 'marked':
+          P.burst(e.x, e.y - 18, 4 + e.n * 2, { ramp: 'leaf', speed: 30, life: 0.35 });
+          break;
+        case 'execute':
+          this.addText({ x: e.x, y: e.y - 38, text: 'EXECUÇÃO!', t: 0, color: SIG_COLOR.marks, big: true });
+          P.burst(e.x, e.y - 8, 30, { ramp: 'leaf', speed: 130, life: 0.6, vz: 40, size: 2 });
+          this.slashes = this.slashes || [];
+          this.slashes.push({ x: e.x, y: e.y - 8, t: 0 });
+          this.hitstop = Math.max(this.hitstop, 0.12); this.shake = Math.max(this.shake, 6);
+          break;
+        case 'sentryGrow':
+          P.burst(e.x, e.y, e.big ? 18 : 12, { ramp: 'leaf', speed: 50, life: 0.5, vz: 40, g: 120 });
+          this.rings.push({ x: e.x, y: e.y, r: 2, max: e.big ? 14 : 10, t: 0, color: SIG_COLOR.sentry, thick: true });
+          break;
+        case 'sentryShot':
+          P.burst(e.x + Math.cos(e.ang) * 6, e.y + Math.sin(e.ang) * 6, 4, { ramp: 'leaf', speed: 40, life: 0.25 });
+          break;
+        case 'castDenied':
+          if (e.m === this.world.active) this.denySlot = { slot: e.slot, reason: e.reason, t: 0.45 };
           break;
       }
     }
+  }
+
+  // Texto flutuante sem poluir: o mesmo aviso no mesmo lugar não se repete em sequência e há no máximo 7 na tela.
+  addText(o) {
+    for (const t of this.texts) if (t.text === o.text && t.t < 0.45 && Math.abs(t.x - o.x) < 24 && Math.abs(t.y - o.y) < 24) return;
+    // Avisos próximos sobem um pouco para não sobrepor.
+    for (const t of this.texts) if (t.t < 0.4 && Math.abs(t.x - o.x) < 30 && Math.abs(t.y - o.y) < 8) o.y -= 9;
+    this.texts.push(o);
+    if (this.texts.length > 7) this.texts.shift();
   }
 
   // ───────────── Quadro ─────────────
@@ -321,6 +416,7 @@ export class Renderer {
     this.excite = Math.max(0.15, this.excite - dt * 0.25);
     this.denyFlash = Math.max(0, this.denyFlash - dt);
     this.evoDeny = Math.max(0, (this.evoDeny || 0) - dt);
+    if (this.denySlot) { this.denySlot.t -= dt; if (this.denySlot.t <= 0) this.denySlot = null; }
     if (dt > 0) ambient(world, this.particles, dt);
     this.flash = Math.max(0, this.flash - dt);
     this.updateObstacleSprites(world);
@@ -341,9 +437,11 @@ export class Renderer {
     const ents = [];
     for (const o of world.obstacles) ents.push({ y: o.y, o });
     for (const m of world.monsters) ents.push({ y: m.y + (m.alive ? 0 : -20), m });
+    for (const d of world.decoys) ents.push({ y: d.y, d });
     ents.sort((a, b) => a.y - b.y);
     for (const m of world.monsters) this.drawShadowRing(m, alpha);
-    for (const e of ents) e.o ? this.drawObstacle(e.o, t) : this.drawMonster(e.m, alpha, dt, t);
+    this.drawSentryLinks(world, t);
+    for (const e of ents) e.o ? this.drawObstacle(e.o, t) : e.d ? this.drawDecoy(e.d, alpha, dt, t) : this.drawMonster(e.m, alpha, dt, t);
     this.drawProjectiles(world, alpha, t);
     this.drawAbilityFx(world, t);
     for (const d of world.decor) if (d.kind === 'waterfall') drawWaterfall(d, this.fxT, t);
@@ -355,6 +453,8 @@ export class Renderer {
     this.particles.draw(l, true);
     this.drawRings(dt);
     for (const m of world.monsters) this.drawOverhead(m, alpha, dt);
+    for (const d of world.decoys) this.drawDecoyOverhead(d, alpha);
+    this.drawSlashes(dt);
     this.drawReticle(world, t);
     if (this.flash > 0) { l.fillStyle = `rgba(255,240,200,${this.flash * 3})`; l.fillRect(0, 0, WORLD_W, WORLD_H); }
 
@@ -362,8 +462,8 @@ export class Renderer {
     const c = this.ctx, W = this.canvas.width, H = this.canvas.height;
     const dpr = ui.dpr;
     // Escala da interface (cartões, barra de habilidades): cresce com a altura da janela para continuar legível.
-    const hs = this.hudScale = Math.max(1.15, Math.min(2, H / dpr / 500));
-    const top = 66 * dpr * hs, bottom = (world.playerTeam !== null ? 74 : 24) * dpr * hs;
+    const hs = this.hudScale = Math.max(1, Math.min(2, H / dpr / 500, W / dpr / 680));
+    const top = 66 * dpr * hs, bottom = (world.playerTeam !== null ? 80 : 24) * dpr * hs;
     let S = Math.min(W / WORLD_W, (H - top - bottom) / WORLD_H);
     if (S >= 2) S = Math.floor(S);
     const ox = Math.round((W - WORLD_W * S) / 2), oy = Math.round(top + (H - top - bottom - WORLD_H * S) / 2);
@@ -507,6 +607,7 @@ export class Renderer {
     for (const p of world.projectiles) {
       if (!p.lob) continue;
       const k = p.t / p.flight;
+      if (p.kind === 'sentrySeed') continue;
       if (p.kind === 'roots') {
         const blink = Math.floor(t * 16) % 2;
         this.dotCircle(g, p.tx, p.ty, p.radius, rgba(blink ? '#c8ff80' : '#4aa83a', 230), t * 2, 3);
@@ -549,10 +650,26 @@ export class Renderer {
           this.dotCircle(g, m.x, m.y, ab.radius * (1 - k), rgba('#e0f6ff', 220), -t * 6, 3);
         } else if (ab.kind === 'dash') {
           const c = rgba(blink ? '#ffd84a' : '#ff6a2a', 220);
-          for (let s = 12; s < 110; s += 5) g.set(m.x + Math.cos(a.aim) * s, m.y + Math.sin(a.aim) * s, c);
+          const L = ab.range || 110;
+          for (let s = 12; s < L; s += 5) g.set(m.x + Math.cos(a.aim) * s, m.y + Math.sin(a.aim) * s, c);
+          // Ponta da seta: onde a investida termina.
+          for (const sg of [-1, 1]) for (let q = 1; q <= 4; q++) g.set(m.x + Math.cos(a.aim) * (L - q * 1.5) + Math.cos(a.aim + sg * 1.6) * q, m.y + Math.sin(a.aim) * (L - q * 1.5) + Math.sin(a.aim + sg * 1.6) * q, c);
+        } else if (ab.kind === 'melee' && ab.reach && (ab.windup >= 0.2 || ab.superArmor)) {
+          // Golpe corpo a corpo forte: mostra o arco exato que vai acertar.
+          const c = rgba(ab.superArmor ? (blink ? '#ffd84a' : '#ff9a1a') : (blink ? '#ffffff' : '#c8c8c8'), 200);
+          const R = m.r + ab.reach;
+          for (let q = -ab.arc / 2; q <= ab.arc / 2; q += 0.05) g.set(m.x + Math.cos(a.aim + q) * R, m.y + Math.sin(a.aim + q) * R, c);
+          for (const sg of [-1, 1]) for (let s2 = m.r + 3; s2 < R; s2 += 3) g.set(m.x + Math.cos(a.aim + sg * ab.arc / 2) * s2, m.y + Math.sin(a.aim + sg * ab.arc / 2) * s2, c);
         }
       }
+      // Mergulho Vulcânico: tremor de aviso em volta do montinho de terra.
+      if (ab.burrow && a.phase === 'active') {
+        const pulse = 10 + Math.sin(t * 18) * 3;
+        this.dotCircle(g, m.x, m.y, pulse, rgba(Math.floor(t * 12) % 2 ? '#ff4a1a' : '#ffb040', 230), t * 3, 3);
+      }
     }
+    // Sementes de sentinela em voo: círculo verde onde vão brotar.
+    for (const p of world.projectiles) if (p.kind === 'sentrySeed') this.dotCircle(g, p.tx, p.ty, 9, rgba(Math.floor(t * 10) % 2 ? '#c8ff80' : '#4aa83a', 230), t * 2, 3);
   }
 
   drawCrowd(t) {
@@ -573,6 +690,7 @@ export class Renderer {
   lerpPos(m, alpha) { const l = m.lead; return { x: m.px + (m.x - m.px) * alpha + (l ? l.x : 0), y: m.py + (m.y - m.py) * alpha + (l ? l.y : 0) }; }
 
   drawShadowRing(m, alpha) {
+    if (m.status.cloak > 0 && this.isFoe(m)) return; // camuflado não denuncia a posição pela sombra
     const l = this.l;
     const p = this.lerpPos(m, alpha);
     const fade = m.alive ? 1 : Math.max(0, 1 - m.deathT / 1.5);
@@ -614,6 +732,9 @@ export class Renderer {
     }
     const tr = this.world.terrain;
     if (m.element === 'fire' && tr.fire[tr.at(m.x, m.y)] > 0) pose.power = Math.max(pose.power, 0.4);
+    if (m.status.overheat > 0) pose.power = Math.max(pose.power, 1);
+    if (m.status.exhaust > 0) pose.crouch = Math.max(pose.crouch, 0.5);
+    if (a?.ab.kind === 'guard' && ph === 'active') pose.crouch = 1;
     return pose;
   }
 
@@ -679,6 +800,8 @@ export class Renderer {
     }
     st.ghosts = st.ghosts.filter((g) => g.life > 0);
     l.globalAlpha = fade * (m.status.invuln > 0 && Math.floor(t * 24) % 2 ? 0.55 : 1);
+    // Camuflado (tinta): o inimigo quase não o vê; o próprio time vê translúcido.
+    if (m.status.cloak > 0) l.globalAlpha *= this.isFoe(m) ? 0.12 + (Math.floor(t * 10) % 7 === 0 ? 0.12 : 0) : 0.45;
     const lift = m.lift > 0 ? Math.sin(Math.PI * (1 - m.lift / m.liftMax)) * 18 : 0; // erguido no ar
     this.blitFrame(frame, x, y - lift, face, hScale, wScale, pose.spin ? pose.spin * 6 : 0);
     l.globalAlpha = 1;
@@ -691,6 +814,22 @@ export class Renderer {
         g.set(x + q, yy, col[Math.abs(q) >= w - 1 ? 1 : 0]);
       }
     }
+    // Casco Reflexo: domo d'água em volta durante o bloqueio.
+    if (m.alive && m.action?.ab.kind === 'guard' && m.action.phase === 'active') {
+      const g = this.fxT, R = m.r + 5;
+      const k = 1 - m.action.t / m.action.ab.active;
+      for (let q = 0; q < 56; q++) {
+        const an = (q / 56) * Math.PI * 2;
+        const c = (q + Math.floor(t * 16)) % 4 === 0 ? rgba('#ffffff', 240) : rgba('#5ab4ff', 200);
+        g.set(Math.round(x + Math.cos(an) * R), Math.round(y - frame.top * 0.4 + Math.sin(an) * R * 0.9), c);
+        if (q % 2 === 0) g.set(Math.round(x + Math.cos(an) * (R - 1)), Math.round(y - frame.top * 0.4 + Math.sin(an) * (R - 1) * 0.9), rgba('#8fd8ff', 120 + Math.round(k * 100)));
+      }
+    }
+    // Ímpeto cheio: faíscas e rastro.
+    if (m.alive && m.charged && Math.random() < 0.6) this.particles.add({ ramp: 'spark', x: x + (Math.random() - 0.5) * m.r * 2, y: y - Math.random() * 6, vz: 20, vx: -m.vx * 0.2, life: 0.35, add: true });
+    // Superaquecido: mais fogo; exausto: fumaça.
+    if (m.alive && m.status.overheat > 0 && Math.random() < 0.7) this.particles.add({ ramp: 'fire', x: x + (Math.random() - 0.5) * m.r * 2, y: y - Math.random() * frame.top * 0.6, vz: 40, life: 0.45, add: true, size: 2 });
+    if (m.alive && m.status.exhaust > 0 && Math.random() < 0.25) this.particles.add({ ramp: 'smoke', x: x + (Math.random() - 0.5) * 8, y: y - frame.top * 0.7, vz: 18, life: 1, size: 2, grow: 2, alpha: 0.55 });
     // Bolha protetora.
     if (m.alive && m.status.shield > 0 && m.shieldHp > 0) {
       const g = this.fxT, R = m.r + 7;
@@ -724,7 +863,7 @@ export class Renderer {
   // Quadro do monstro: arte do usuário (se carregada) ou sprite procedural de reserva.
   monsterFrame(m, st, pose) {
     if (this.art.has(m.def.sprite)) {
-      pose.flames = m.element === 'fire' ? (m.evolved ? 6 : 3) : 0;
+      pose.flames = m.element === 'fire' ? (m.status.exhaust > 0 ? 0 : (m.evolved ? 6 : 3) + (m.status.overheat > 0 ? 4 : 0)) : 0;
       return this.art.render(m.id, m.def.sprite, pose);
     }
     const pb = st.pb;
@@ -788,8 +927,20 @@ export class Renderer {
     l.fill();
     l.globalAlpha = o.life !== undefined && o.life < 1.5 ? Math.max(0.2, o.life / 1.5) : 1;
     if (o.hitFlash > 0) l.filter = 'brightness(2)';
+    if (o.sentry && o.team !== undefined) {
+      // Anel do time na base da sentinela (sabe-se de quem é) e vida em uma barrinha.
+      l.fillStyle = TEAM_COLOR[o.team];
+      for (let k = 0; k < 12; k++) { if (k % 2) continue; const an = (k / 12) * Math.PI * 2 + t; l.fillRect(Math.round(o.x + Math.cos(an) * (o.r + 2)), Math.round(o.y + 1 + Math.sin(an) * (o.r + 2) * 0.45), 1, 1); }
+    }
     if (o.kind === 'log') this.drawLog(o, spr);
     else l.drawImage(spr.img, Math.round(o.x - spr.ax), Math.round(o.y - spr.ay));
+    if (o.sentry && o.hp !== Infinity) {
+      const bx = Math.round(o.x - 6), by = Math.round(o.y - spr.ay - 3);
+      l.globalAlpha = 1;
+      l.fillStyle = '#140c0a'; l.fillRect(bx - 1, by - 1, 14, 3);
+      l.fillStyle = TEAM_COLOR[o.team ?? 0]; l.fillRect(bx, by, Math.round(12 * Math.max(0, o.hp) / o.maxHp), 1);
+      if (o.life !== undefined) { l.fillStyle = '#9ae070'; l.fillRect(bx, by + 1, Math.round(12 * Math.min(1, o.life / 12)), 1); }
+    }
     l.filter = 'none';
     l.globalAlpha = 1;
     if (o.burning > 0) {
@@ -966,13 +1117,16 @@ export class Renderer {
           const an = Math.random() * 6.28, r = Math.random() * ab.radius;
           this.particles.add({ ramp: 'leaf', x: m.x + Math.cos(an) * r, y: m.y + Math.sin(an) * r * 0.8, vz: 30, g: 40, life: 0.7 });
         }
-      } else if (ab.kind === 'melee' && a.phase === 'active') {
-        const k = a.t / ab.active;
+      } else if (ab.kind === 'melee' && a.phase === 'active' && !ab.vine) {
+        // O rastro do golpe cobre exatamente o alcance e o arco que acertam (sem acertar "fora do desenho").
+        const k = Math.min(1, a.t / (ab.active * 0.8));
         const fire = m.element === 'fire';
         const cols = fire ? [rgba('#ffffff'), rgba('#ffd84a'), rgba('#ff7a1a')] : m.element === 'plant' ? [rgba('#ffffff'), rgba('#b4f08a'), rgba('#3f8a38')] : [rgba('#ffffff'), rgba('#9ad8ff'), rgba('#3a9ae8')];
+        const arc = ab.arc || 2, reach = ab.reach || 16;
+        const r0 = m.r + 3, r1 = m.r + reach;
         for (let line = 0; line < 3; line++) {
-          const r = m.r + 7 + line * 3;
-          for (let q = -1; q <= -1 + 2 * k; q += 0.04) g.set(m.x + Math.cos(a.aim + q) * r, m.y + Math.sin(a.aim + q) * r - 3, cols[line]);
+          const r = r1 - line * Math.max(2, (r1 - r0) / 3);
+          for (let q = -arc / 2; q <= -arc / 2 + arc * k; q += 0.035) g.set(m.x + Math.cos(a.aim + q) * r, m.y + Math.sin(a.aim + q) * r - 3, cols[line]);
         }
       }
     }
@@ -1067,6 +1221,7 @@ export class Renderer {
     const st = this.mon.get(m.id);
     st.lagHp += (m.hp - st.lagHp) * Math.min(1, dt * 3);
     if (!m.alive) return;
+    if (m.status.cloak > 0 && this.isFoe(m)) return; // camuflado: sem barra de vida para o inimigo
     const l = this.l;
     const p = this.lerpPos(m, alpha);
     const x = Math.round(p.x) - 10, y = Math.round(p.y) - Math.max(26, st.top + 2);
@@ -1094,18 +1249,129 @@ export class Renderer {
     l.fillRect(x, y, Math.round((st.lagHp / m.maxHp) * 20), 2);
     l.fillStyle = TEAM_COLOR[m.team];
     l.fillRect(x, y, Math.round((m.hp / m.maxHp) * 20), 2);
-    // Ícones de status: chama (queimando) / gota (molhado).
+    // Ícones de status: chama (queimando) / gota (molhado) / raiz (preso) / estrelas (atordoado).
     let ix = x + 22;
     if (m.status.burn > 0) { l.fillStyle = '#ff7a1a'; l.fillRect(ix, y - 1, 2, 3); l.fillStyle = '#ffd84a'; l.fillRect(ix, y, 1, 2); ix += 3; }
-    if (m.status.wet > 0) { l.fillStyle = '#5ab4ff'; l.fillRect(ix, y, 2, 2); l.fillRect(ix, y - 1, 1, 1); }
-    // Barra de preparação de habilidades fortes (telegrafia legível).
-    const a = m.action;
-    if (a && a.phase === 'windup' && a.ab.windup >= 0.3) {
-      l.fillStyle = '#140c0a';
-      l.fillRect(x - 1, y + 3, 22, 3);
-      l.fillStyle = '#ffe066';
-      l.fillRect(x, y + 4, Math.round((a.t / a.ab.windup) * 20), 1);
+    if (m.status.wet > 0) { l.fillStyle = '#5ab4ff'; l.fillRect(ix, y, 2, 2); l.fillRect(ix, y - 1, 1, 1); ix += 3; }
+    if (m.status.root > 0) { l.fillStyle = '#7ad84a'; l.fillRect(ix, y - 1, 1, 3); l.fillRect(ix + 1, y + 1, 1, 1); ix += 3; }
+    if (m.status.stun > 0) {
+      for (let k = 0; k < 3; k++) { const an = this.time * 6 + k * 2.1; l.fillStyle = '#ffe066'; l.fillRect(Math.round(x + 10 + Math.cos(an) * 7), Math.round(y - 5 + Math.sin(an) * 2), 1, 1); }
     }
+    // Barra da mecânica própria (para os dois lados lerem): calor laranja, ímpeto amarelo.
+    const kind = m.def.sig?.kind;
+    let sy = y + 3;
+    if (kind === 'heat' && (m.heat > 0 || m.status.exhaust > 0)) {
+      l.fillStyle = '#140c0a'; l.fillRect(x - 1, sy, 22, 3);
+      const full = m.status.overheat > 0;
+      l.fillStyle = m.status.exhaust > 0 ? '#6a6058' : full ? (Math.floor(this.time * 10) % 2 ? '#ffffff' : SIG_COLOR.overheat) : SIG_COLOR.heat;
+      l.fillRect(x, sy + 1, Math.round((m.status.exhaust > 0 ? m.status.exhaust / (m.def.sig.exhaust ?? 2.2) : m.heat / 100) * 20), 1);
+      sy += 3;
+    } else if (kind === 'momentum' && m.momentum > 0) {
+      l.fillStyle = '#140c0a'; l.fillRect(x - 1, sy, 22, 3);
+      l.fillStyle = m.charged ? (Math.floor(this.time * 10) % 2 ? '#ffffff' : SIG_COLOR.momentum) : '#b89a30';
+      l.fillRect(x, sy + 1, Math.round((m.momentum / 100) * 20), 1);
+      sy += 3;
+    }
+    // Marcas de caça recebidas (Mantifolha): folhas verdes acima da vida; 3 = pronto para a execução.
+    if (m.marks?.n > 0) {
+      for (let k = 0; k < 3; k++) {
+        const on = k < m.marks.n;
+        l.fillStyle = on ? (m.marks.n >= 3 && Math.floor(this.time * 8) % 2 ? '#ffffff' : SIG_COLOR.marks) : '#2a3a20';
+        l.fillRect(x + 4 + k * 5, y - 5, 3, 2); l.fillRect(x + 5 + k * 5, y - 6, 1, 1);
+      }
+    }
+    // Barra de preparação: dourada = IMPARÁVEL (não é interrompido por dano), branca = pode ser interrompido.
+    const a = m.action;
+    if (a && a.phase === 'windup' && (a.ab.windup >= 0.25 || a.ab.superArmor)) {
+      l.fillStyle = '#140c0a';
+      l.fillRect(x - 1, sy, 22, 3);
+      l.fillStyle = a.ab.superArmor ? '#ffb020' : '#ffffff';
+      l.fillRect(x, sy + 1, Math.round((a.t / a.ab.windup) * 20), 1);
+      if (a.ab.superArmor) { l.fillStyle = '#ffb020'; l.fillRect(x - 4, sy, 2, 3); l.fillRect(x - 5, sy + 1, 4, 1); }
+    }
+    // Recuperação longa depois de um golpe forte: janela de contra-ataque (gotas de suor).
+    if (a && a.phase === 'recovery' && a.ab.recovery >= 0.4 && a.ab.kind !== 'dodge') {
+      l.fillStyle = '#c8e8ff';
+      const k = Math.floor(this.time * 6) % 2;
+      l.fillRect(x + 21, y - 8 + k, 1, 2); l.fillRect(x + 23, y - 6 - k, 1, 2);
+    }
+  }
+
+  isFoe(m) {
+    const w = this.world;
+    if (w.playerTeam === null) return false;
+    return m.team !== w.teams[w.playerTeam].side;
+  }
+
+  // ───────── Ilusões de tinta: desenhadas como o dono (o inimigo não distingue) ─────────
+  drawDecoy(d, alpha, dt, t) {
+    const owner = d.owner;
+    if (!owner || !owner.def) return;
+    let st = this.decoySt.get(d.id);
+    if (!st) { st = { walk: 0, seed: d.id * 13 }; this.decoySt.set(d.id, st); if (this.decoySt.size > 40) this.decoySt.delete(this.decoySt.keys().next().value); }
+    st.walk += Math.hypot(d.vx, d.vy) * dt * 0.28;
+    const x = Math.round((d.px ?? d.x) + (d.x - (d.px ?? d.x)) * alpha), y = Math.round((d.py ?? d.y) + (d.y - (d.py ?? d.y)) * alpha);
+    const l = this.l;
+    // Sombra + anel do time, como um monstro de verdade.
+    l.globalAlpha = 0.35; l.fillStyle = '#000';
+    l.beginPath(); l.ellipse(x, y + 2, owner.r + 1, (owner.r + 1) * 0.45, 0, 0, Math.PI * 2); l.fill();
+    const foe = this.isFoe(owner);
+    l.globalAlpha = foe ? 0.9 : 0.4;
+    l.fillStyle = TEAM_COLOR[owner.team];
+    for (let k = 0; k < 18; k++) { if (k % 3 === 0) continue; const an = (k / 18) * Math.PI * 2 + this.time * 0.8; l.fillRect(Math.round(x + Math.cos(an) * (owner.r + 3)), Math.round(y + 2 + Math.sin(an) * (owner.r + 3) * 0.45), 1, 1); }
+    const pose = { t, walk: st.walk, moving: 1, crouch: 0, lunge: 0, open: 0, dash: 0, spin: 0, dead: 0, seed: st.seed, power: 0 };
+    if (!this.art.has(owner.def.sprite)) { l.globalAlpha = 1; return; }
+    const f = this.art.render('decoy:' + (d.id % 8), owner.def.sprite, pose);
+    const face = (Math.cos(d.facing) >= 0 ? 1 : -1) * (f.faces === -1 ? -1 : 1);
+    const fade = Math.min(1, d.life / 0.3);
+    l.globalAlpha = (foe ? 1 : 0.5) * fade;
+    this.blitFrame(f, x, y, face, 1, 1, 0);
+    l.globalAlpha = 1;
+    d._top = f.top;
+  }
+
+  drawDecoyOverhead(d, alpha) {
+    const owner = d.owner;
+    if (!owner || !this.isFoe(owner)) return;
+    const l = this.l;
+    const px = (d.px ?? d.x) + (d.x - (d.px ?? d.x)) * alpha, py = (d.py ?? d.y) + (d.y - (d.py ?? d.y)) * alpha;
+    const x = Math.round(px) - 10, y = Math.round(py) - Math.max(26, (d._top || 24) + 2);
+    // A cópia mostra a mesma vida do dono: de longe, não há como saber qual é a verdadeira.
+    l.fillStyle = '#140c0a'; l.fillRect(x - 1, y - 1, 22, 4);
+    l.fillStyle = '#5a1a14'; l.fillRect(x, y, 20, 2);
+    l.fillStyle = TEAM_COLOR[owner.team]; l.fillRect(x, y, Math.round((owner.hp / owner.maxHp) * 20), 2);
+  }
+
+  // Raízes que ligam a sentinela ao dono quando ele está perto (cura).
+  drawSentryLinks(world, t) {
+    const g = this.fxT;
+    for (const o of world.obstacles) {
+      if (!o.sentry || o.destroyed || !o.owner || !o.owner.alive || !o.owner.onField) continue;
+      const m = o.owner, d = Math.hypot(m.x - o.x, m.y - o.y);
+      const R = o.def?.healR ?? 46;
+      if (d > R) continue;
+      const n = Math.floor(d / 3);
+      for (let k = 1; k < n; k++) {
+        if ((k + Math.floor(t * 8)) % 3 === 0) continue;
+        const f = k / n;
+        g.set(Math.round(o.x + (m.x - o.x) * f), Math.round(o.y + (m.y - o.y) * f + Math.sin(f * Math.PI) * 3), rgba(k % 2 ? '#9ae070' : '#5aa83c', 200));
+      }
+    }
+  }
+
+  // Corte em X da execução (Mantifolha).
+  drawSlashes(dt) {
+    if (!this.slashes?.length) return;
+    const g = this.fxT;
+    for (const s of this.slashes) {
+      s.t += dt;
+      const k = Math.min(1, s.t / 0.12), L = 16 * k;
+      for (let q = -L; q <= L; q += 0.6) {
+        g.set(Math.round(s.x + q), Math.round(s.y + q * 0.8), rgba('#ffffff'));
+        g.set(Math.round(s.x + q), Math.round(s.y - q * 0.8), rgba('#b4f08a'));
+      }
+    }
+    this.slashes = this.slashes.filter((s) => s.t < 0.3);
   }
 
   // Mira: linha pontilhada do monstro ativo até o cursor e retícula (vermelha fora do alcance do tiro principal).
@@ -1138,7 +1404,7 @@ export class Renderer {
       const k = n.t / 0.9;
       const sx = ox + n.x * S, sy = oy + (n.y - n.t * 22) * S;
       c.globalAlpha = Math.max(0, 1 - k * k);
-      c.font = `${(n.small ? 9 : 12) * dpr}px "Press Start 2P", monospace`;
+      c.font = `${(n.small ? 9 : n.big ? 15 : 12) * dpr * (this.hudScale || 1) * 0.9}px "Press Start 2P", monospace`;
       c.lineWidth = 3 * dpr;
       c.strokeStyle = '#140c0a';
       const s = Math.max(1, Math.round(n.v)).toString();
@@ -1150,7 +1416,7 @@ export class Renderer {
       n.t += dt;
       const sx = ox + n.x * S, sy = oy + (n.y - n.t * 14) * S;
       c.globalAlpha = Math.max(0, 1 - n.t / 1.1);
-      c.font = `${8 * dpr}px "Press Start 2P", monospace`;
+      c.font = `${(n.big ? 11 : 8) * dpr * (this.hudScale || 1) * 0.9}px "Press Start 2P", monospace`;
       c.lineWidth = 3 * dpr;
       c.strokeStyle = '#140c0a';
       c.strokeText(n.text, sx, sy);

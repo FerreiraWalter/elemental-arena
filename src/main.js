@@ -7,6 +7,7 @@ import { UI } from './ui/ui.js';
 import { NetClient, serverUrls, inviteCode } from './net/client.js';
 import { createMirror } from './net/mirror.js';
 import { NetSmoother } from './net/smooth.js';
+import { sfx } from './audio/sfx.js';
 
 // Fluxo: carregando → menu (time → arena | multiplayer → sala) → batalha → pausa/fim.
 // Batalha LOCAL: passo fixo de 1/60 s (a simulação roda no navegador, contra a IA).
@@ -16,6 +17,9 @@ import { NetSmoother } from './net/smooth.js';
 const canvas = document.getElementById('game');
 const params = new URLSearchParams(location.search);
 const renderer = new Renderer(canvas);
+renderer.sfx = sfx;
+const HELP_KEY = 'ea-ajuda-vista';
+let helpFirst = false; // ajuda aberta automaticamente na primeira partida
 const hud = { dpr: 1, speed: 1, paused: false, started: true };
 const keys = new Set();
 const mouse = { x: 0, y: 0, inside: false };
@@ -48,6 +52,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const ui = new UI(canvas, renderer.art, {
   startBattle, applySettings,
+  sfx: (n) => sfx.play(n),
   mpCreate: (m) => mpEnter({ t: 'create', mode: m, name: playerName }),
   mpJoin: (code) => mpEnter({ t: 'join', code, name: playerName }),
   mpSend: (o) => net && net.send(o),
@@ -161,6 +166,7 @@ function startOnline(start) {
   hud.paused = false;
   hud.speed = 1;
   window.world = world;
+  sfx.play('start');
 }
 
 function sendInput(now, neutral = false) {
@@ -180,6 +186,8 @@ function sendInput(now, neutral = false) {
 }
 
 function applySettings(s) {
+  sfx.setEnabled(s.sound !== false);
+  sfx.setVolume(s.volume ?? 0.6);
   renderer.shakeEnabled = s.shake;
   renderer.showNumbers = s.numbers;
   renderer.debug = s.debug;
@@ -202,6 +210,26 @@ function startBattle(cfg) {
   hud.paused = false;
   hud.speed = ui.settings.speed;
   window.world = world; // acesso para depuração no console
+  sfx.play('start');
+  let seen = true;
+  try { seen = !!localStorage.getItem(HELP_KEY); } catch { /* sem armazenamento */ }
+  if (!seen && !cfg.spectator && !params.has('autostart')) openHelp(true);
+}
+
+function openHelp(first = false) {
+  if (mode !== 'battle' || world.playerTeam === null) return;
+  helpFirst = first;
+  overlay = 'help';
+  ui.focus = 0;
+  if (online) sendInput(performance.now(), true);
+  else hud.paused = true;
+}
+
+function closeHelp() {
+  if (helpFirst) { try { localStorage.setItem(HELP_KEY, '1'); } catch { /* sem armazenamento */ } }
+  helpFirst = false;
+  overlay = null;
+  hud.paused = false;
 }
 
 function toMenu(screen = 'menu') {
@@ -226,6 +254,8 @@ const overlayActions = {
   leaveOnline,
   backToRoom: () => net?.send({ t: 'rematch' }),
   isHost: () => ui.mp.room && ui.mp.room.host === ui.mp.myId,
+  closeHelp: () => closeHelp(),
+  get firstTime() { return helpFirst; },
 };
 
 function resize() {
@@ -272,13 +302,16 @@ window.addEventListener('paste', (e) => {
     if (t) ui.mp.code = t;
   }
 });
+window.addEventListener('pointerdown', () => sfx.unlock(), { capture: true });
 window.addEventListener('keydown', (e) => {
+  sfx.unlock();
   if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (e.ctrlKey || e.metaKey) return;
   if (mode === 'menu') { if (!e.repeat) ui.keyDown(e.code, e.key); return; }
   if (mode !== 'battle') return;
   if (overlay) {
-    if (!e.repeat && (e.code === 'Escape' || e.code === 'KeyP') && (overlay === 'pause' || overlay === 'online')) overlayActions.resume();
+    if (!e.repeat && overlay === 'help' && (e.code === 'Escape' || e.code === 'KeyH' || e.code === 'KeyP')) closeHelp();
+    else if (!e.repeat && (e.code === 'Escape' || e.code === 'KeyP') && (overlay === 'pause' || overlay === 'online')) overlayActions.resume();
     else if (!e.repeat) ui.keyDown(e.code);
     return;
   }
@@ -295,7 +328,8 @@ window.addEventListener('keydown', (e) => {
     hud.paused = !online;
     ui.focus = 0;
     if (online) sendInput(performance.now(), true);
-  } else if (e.code === 'KeyI') renderer.debug = !renderer.debug;
+  } else if (e.code === 'KeyH' && playing) openHelp();
+  else if (e.code === 'KeyI') renderer.debug = !renderer.debug;
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -402,7 +436,7 @@ function frame(now) {
       }
       if (world.over) { overT += dt; if (overT > 1.5) { overlay = 'end'; ui.focus = 0; } }
     }
-    renderer.render(world, Math.min(1, acc / DT), overlay === 'pause' ? 0 : dt * hud.speed, hud);
+    renderer.render(world, Math.min(1, acc / DT), overlay === 'pause' || overlay === 'help' ? 0 : dt * hud.speed, hud);
     if (overlay) {
       const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
       ui.time += dt;
@@ -423,9 +457,10 @@ async function init() {
   window.__tick = (sec) => frame(last + sec * 1000); // avança um quadro manualmente (testes/depuração)
   window.__now = () => frame(performance.now()); // um quadro no tempo real (depuração com a aba em segundo plano)
   window.__state = () => ({ mode, overlay, screen: ui.screen, online });
-  // Atalhos para testes: ?arena=jardim&autostart  ·  ?watch (IA × IA)
+  // Atalhos para testes: ?arena=jardim&autostart&team=a,b,c  ·  ?watch (IA × IA)
   const arena = ARENAS[params.get('arena')] ? params.get('arena') : 'jardim';
-  if (params.has('autostart') || params.has('watch')) startBattle({ team: [...DEFAULT_TEAM], arena, spectator: params.has('watch') });
+  const qTeam = (params.get('team') || '').split(',').filter((k) => ROSTER.includes(k));
+  if (params.has('autostart') || params.has('watch')) startBattle({ team: qTeam.length === 3 ? qTeam : [...DEFAULT_TEAM], arena, spectator: params.has('watch') });
   else mode = 'menu';
   // Link de convite (?sala=ABCD): vai direto escolher o time e entrar na sala.
   const invite = inviteCode();

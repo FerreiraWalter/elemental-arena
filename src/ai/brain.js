@@ -131,6 +131,18 @@ export class Brain {
       if (e.team === m.team) continue;
       let mem = this.mem.get(e.id);
       if (!mem) { mem = { x: e.x, y: e.y, vx: 0, vy: 0, seenT: w.time, visible: true }; this.mem.set(e.id, mem); }
+      // Ilusões de Tinta: enganada, a IA "vê" a cópia no lugar do monstro de verdade até ela estourar.
+      if (this.fooled && this.fooled.owner === e.id) {
+        const d = w.decoys.find((x) => x.id === this.fooled.decoy);
+        if (d) {
+          mem.visible = w.los(m.x, m.y, d.x, d.y);
+          if (mem.visible) { mem.x = d.x; mem.y = d.y; mem.vx = d.vx; mem.vy = d.vy; mem.seenT = w.time; }
+          continue;
+        }
+        this.fooled = null;
+      }
+      // Camuflado: só é percebido muito de perto.
+      if (e.status.cloak > 0 && Math.hypot(e.x - m.x, e.y - m.y) > 30) { mem.visible = false; continue; }
       mem.visible = e.alive && w.los(m.x, m.y, e.x, e.y);
       if (mem.visible) {
         mem.x = e.x; mem.y = e.y;
@@ -260,6 +272,16 @@ export class Brain {
     if (!th || m.action) return;
     const dir = this.evadeDirection(th);
     const dodge = m.def.dodge;
+    // Casco Reflexo: contra golpe de perto ou projétil prestes a acertar, bloquear (e devolver) vale mais que fugir.
+    const guard = m.def.abilities.find((ab) => ab.kind === 'guard');
+    if (guard && th.time < 0.28 && (th.kind === 'melee' || th.kind === 'proj' || th.kind === 'beam' || th.kind === 'cone') && !this.rolled.has('g' + th.key) && m.ready(guard.id)) {
+      this.rolled.add('g' + th.key);
+      if (w.rng() < this.p.dodgeSkill * 0.95) {
+        m.cast(w, guard, { aim: m.facing, purpose: 'defend' });
+        this.setState('evade');
+        return;
+      }
+    }
     if (th.time < 0.34 && !this.rolled.has(th.key)) {
       this.rolled.add(th.key);
       if (m.ready(dodge.id) && w.rng() < this.p.dodgeSkill) {
@@ -300,7 +322,12 @@ export class Brain {
       hazardHere: this.tileCost(m.x, m.y),
       inEnemyArea: this.threats.some((th) => th.kind === 'zone' || th.kind === 'beam' || th.kind === 'cone'),
       embersIncoming: this.threats.filter((th) => th.kind === 'proj').length,
+      tGuarding: t.action?.ab.kind === 'guard' && t.action.phase === 'active',
+      heatFull: m.heat > 70,
+      mySentries: w.obstacles.filter((o) => o.sentry && o.owner === m && !o.destroyed).length,
     };
+    // Exausto (Fornalha) é janela de ataque: conta como ocupado.
+    if (t.status.exhaust > 0) c.tBusy = true;
     const away = Math.atan2(m.y - mem.y, m.x - mem.x);
     c.awayPoint = { x: m.x + Math.cos(away) * 80, y: m.y + Math.sin(away) * 80 };
     // Fogo perto de mim (para a água apagar) e vegetação perto do alvo (para o fogo incendiar).
@@ -337,15 +364,17 @@ export class Brain {
     this.ctx = c;
 
     // 1) Habilidades (o movimento continua em paralelo, limitado pela fase da habilidade).
-    if (!m.busy && !(this.evadeT > 0 && this.threats.length)) {
+    // Desviando de algo iminente (< 0,3 s) não ataca; com ameaça mais distante, revida enquanto se move.
+    const urgent = this.evadeT > 0 && this.threats.length && this.threats[0].time < 0.3;
+    if (!m.busy && !urgent) {
       const pick = this.pickAbility(c);
       if (pick) {
         const ab = pick.ab;
-        const aimPoint = pick.aimPoint || (pick.target ? this.aimAt(pick.target, ab.speed || Infinity, null) : null);
+        const aimPoint = pick.aimPoint || pick.point || (pick.target ? this.aimAt(pick.target, ab.speed || Infinity, null) : null);
         const aim = aimPoint ? Math.atan2(aimPoint.y - m.y, aimPoint.x - m.x) : m.facing;
         const ok = m.cast(w, ab, {
-          aim, aimPoint, target: pick.aimPoint ? null : pick.target, dir: aim,
-          point: pick.lob ? this.predict(pick.target, Infinity, ab.windup + ab.flight) : null,
+          aim, aimPoint, target: pick.aimPoint || pick.point ? null : pick.target, dir: aim,
+          point: pick.point || (pick.lob ? this.predict(pick.target, Infinity, ab.windup + ab.flight) : null),
           purpose: pick.purpose || 'attack',
         });
         if (ok) {
@@ -416,6 +445,18 @@ export class Brain {
   desiredRange(c) {
     const m = this.m;
     const ctl = m.def.controls;
+    const k = m.def.sig?.kind;
+    // Fornalha: exausto, recua; inimigo superaquecido ou em disparada, dá espaço.
+    if (m.status.exhaust > 0) return [80, 150];
+    if (m.element !== 'fire' && (c.t.status.overheat > 0 || c.t.charged) && c.hpF < 0.8) return [70, 140];
+    if (c.tGuarding) return [50, 110];
+    // Ímpeto: sem carga, circula de longe (correr enche a barra); carregado, entra para o golpe.
+    if (k === 'momentum') {
+      if (m.charged || c.thpF < 0.25) return [0, m.r + c.t.r + 10];
+      return [55, 115];
+    }
+    // Marca do Louva-a-deus: com 3 marcas no alvo, aproxima para executar.
+    if (k === 'marks' && c.t.marks?.by === m.id && c.t.marks.n >= 3) return [0, m.r + c.t.r + 20];
     if (m.element === 'fire') {
       if (c.tWhirl) return [62, 120];
       const meleeReady = m.cd[ctl.melee] < 0.25 || m.cd[ctl.q] <= 0;
@@ -479,6 +520,8 @@ export class Brain {
         if (s < bestS) { bestS = s; best = { x, y }; }
       }
     } else if (m.element === 'plant') {
+      const sentry = w.obstacles.find((o) => o.sentry && o.owner === m && !o.destroyed);
+      if (sentry) return { x: sentry.x + Math.sign(m.x - sentry.x || 1) * 18, y: sentry.y + 10 };
       const c0 = Math.floor(m.x / TILE), r0 = Math.floor(m.y / TILE);
       for (let r = r0 - 14; r <= r0 + 14; r += 2) for (let cc = c0 - 14; cc <= c0 + 14; cc += 2) {
         const i = tr.idx(cc, r);

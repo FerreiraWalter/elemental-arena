@@ -266,3 +266,28 @@ export function ambient(world, particles, dt) {
 }
 
 export { makeCanvas };
+
+// Broto Sentinela (Brotossauro): bulbo com folhas e uma vagem-canhão; o Guardião Ancestral é maior e espinhoso.
+const POD = ramp('#1c3a14', '#2c5a1e', '#3f7e2a', '#5aa83c', '#84d058');
+export function sentrySprite(big, seed, char = 0) {
+  const W = big ? 22 : 16, H = big ? 26 : 20;
+  const pb = new PixelBuf(W, H);
+  const cx = W / 2, base = H - 3;
+  // Bulbo/raiz na base.
+  pb.ellipse(cx, base - 1, big ? 6 : 4.5, big ? 3 : 2.4, BARK, { shift: 0.1 });
+  // Caule.
+  for (let y = base - 3; y > base - (big ? 13 : 9); y--) { pb.set(Math.round(cx), y, POD[1]); pb.set(Math.round(cx) - 1, y, POD[2]); }
+  // Folhas laterais.
+  const lf = big ? 6 : 4;
+  for (let k = 0; k < lf; k++) { pb.set(Math.round(cx) - 2 - k, base - 5 - Math.round(k * 0.5), POD[3 - (k > lf / 2 ? 1 : 0)]); pb.set(Math.round(cx) + 1 + k, base - 6 - Math.round(k * 0.4), POD[3]); }
+  // Cabeça: vagem com boca escura.
+  const hy = base - (big ? 16 : 11), hr = big ? 5.5 : 4;
+  pb.ellipse(cx, hy, hr, hr * 0.85, POD, { shift: 0.2 });
+  pb.ellipse(cx + hr * 0.5, hy + 0.5, hr * 0.4, hr * 0.4, ramp('#0a1406', '#122a0c', '#183a10', '#1c4012', '#20461a'));
+  pb.set(Math.round(cx - hr * 0.3), Math.round(hy - hr * 0.4), rgba('#e8ffd0'));
+  if (big) for (let k = 0; k < 6; k++) { const a = -2.6 + k * 0.55; pb.set(Math.round(cx + Math.cos(a) * (hr + 1)), Math.round(hy + Math.sin(a) * (hr + 1)), rgba('#e8dcc0')); }
+  if (char > 0) pb.tint('#3a2a1a', Math.min(0.8, char * 1.1));
+  pb.outline(rgba('#0c1a0a'));
+  void seed;
+  return pb.commit();
+}

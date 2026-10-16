@@ -3,20 +3,33 @@ import { SPECIES, ROSTER, formsOf } from '../sim/species.js';
 import { ARENAS, ARENA_ORDER } from '../arenas/index.js';
 import { ELEMENT_MULT, EVOLUTION, SWITCH } from '../config.js';
 import { World } from '../sim/world.js';
-import { Renderer, ELEMENT_COLOR } from '../render/renderer.js';
+import { Renderer, ELEMENT_COLOR, SIG_COLOR } from '../render/renderer.js';
 import { makeCanvas } from '../render/pixel.js';
+import { abilityIcon, statusIcon } from '../render/hud.js';
 
 // Telas fora da batalha (menu, time, arena, bestiário, opções) e menus sobre a batalha (pausa, fim).
 // Tudo desenhado no canvas no mesmo estilo pixel art; mouse e teclado funcionam em todas as telas.
 
 const FONT = '"Press Start 2P", monospace';
 const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta' };
-const KEY_LABEL = { primary: 'BOT. ESQ', melee: 'BOT. DIR', q: 'Q', e: 'E', f: 'F', dodge: 'ESPAÇO' };
+const KEY_LABEL = { primary: 'MOUSE E', melee: 'MOUSE D', q: 'Q', e: 'E', f: 'F', dodge: 'ESPAÇO' };
+const DIFF_NAME = ['', 'fácil de jogar', 'médio', 'exige prática'];
+// Dificuldade em losangos de pixel (a fonte não tem estrelas). Retorna a largura desenhada.
+function diffMarks(c, n, x, y, u, align = 'left') {
+  const s = 5 * u, gap = 2 * u, w = 3 * s + 2 * gap;
+  let x0 = align === 'right' ? x - w : x;
+  for (let k = 0; k < 3; k++) {
+    const cx = x0 + s / 2 + k * (s + gap), cy = y - s / 2;
+    c.beginPath(); c.moveTo(cx, cy - s / 2); c.lineTo(cx + s / 2, cy); c.lineTo(cx, cy + s / 2); c.lineTo(cx - s / 2, cy); c.closePath();
+    c.fillStyle = k < n ? '#ffd23a' : '#3a302a'; c.fill();
+  }
+  return w;
+}
 const DIFFICULTY = { easy: 'Fácil', normal: 'Normal', hard: 'Difícil' };
 const SETTINGS_KEY = 'elemental-arena-opcoes';
 
 export function loadSettings() {
-  const def = { shake: true, numbers: true, difficulty: 'normal', speed: 1, debug: false };
+  const def = { shake: true, numbers: true, difficulty: 'normal', speed: 1, debug: false, sound: true, volume: 0.6 };
   try { return { ...def, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch { return def; }
 }
 function saveSettings(s) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* armazenamento indisponível */ } }
@@ -126,7 +139,7 @@ export class UI {
   pointerDown(x, y) {
     this.mouse = { x, y };
     for (const b of this.buttons) {
-      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { if (!b.disabled) b.onClick(); return true; }
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { if (!b.disabled) { this.hooks.sfx?.('click'); b.onClick(); } else this.hooks.sfx?.('deny'); return true; }
     }
     return false;
   }
@@ -140,7 +153,7 @@ export class UI {
     if (!list.length) return false;
     if (code === 'ArrowDown' || code === 'ArrowRight' || code === 'KeyS' || code === 'KeyD' || code === 'Tab') { this.focus = (this.focus + 1) % list.length; return true; }
     if (code === 'ArrowUp' || code === 'ArrowLeft' || code === 'KeyW' || code === 'KeyA') { this.focus = (this.focus - 1 + list.length) % list.length; return true; }
-    if (code === 'Enter' || code === 'Space') { list[Math.min(this.focus, list.length - 1)].onClick(); return true; }
+    if (code === 'Enter' || code === 'Space') { this.hooks.sfx?.('click'); list[Math.min(this.focus, list.length - 1)].onClick(); return true; }
     if (code === 'Escape' || code === 'Backspace') {
       const back = this.buttons.find((b) => b.back);
       if (back) { back.onClick(); return true; }
@@ -288,7 +301,12 @@ export class UI {
       text(c, def.name.toUpperCase(), x + cw / 2, ly, fitSize(c, def.name.toUpperCase(), 8, cw - 14 * u, u), ELEMENT_COLOR[def.element], 'center', u);
       ly += 11 * u;
       text(c, `${ELEMENT_NAME[def.element]} · ${def.profile.personality}`, x + cw / 2, ly, fitSize(c, `${ELEMENT_NAME[def.element]} · ${def.profile.personality}`, 5, cw - 14 * u, u), '#bba', 'center', u);
-      ly += 11 * u;
+      ly += 10 * u;
+      if (def.sig) {
+        const lbl = `MECÂNICA: ${def.sig.name.toUpperCase()}`;
+        text(c, lbl, x + cw / 2, ly, fitSize(c, lbl, 5, cw - 14 * u, u), SIG_COLOR[def.sig.kind] || '#fff', 'center', u);
+        ly += 10 * u;
+      }
       for (const tr of def.traits) for (const line of wrap(c, '· ' + tr, 4.5, cw - 16 * u, u)) {
         if (ly > y + ch - 16 * u) break;
         text(c, line, x + 8 * u, ly, 4.5, '#e8dcc0', 'left', u);
@@ -299,6 +317,13 @@ export class UI {
         c.fillStyle = '#ffd23a';
         c.fillRect(x + 6 * u, y + 6 * u, 20 * u, 20 * u);
         text(c, String(idx + 1), x + 16 * u, y + 21 * u, 10, '#140c08', 'center', u, false);
+      }
+      if (def.difficulty) diffMarks(c, def.difficulty, x + cw - 8 * u, y + 14 * u, u, 'right');
+      if (hover && def.tips) {
+        // Dica ao passar o mouse: como jogar contra (e com) este monstro.
+        const lines = wrap(c, def.tips, 4.5, cw - 16 * u, u).slice(0, 3);
+        c.fillStyle = 'rgba(10,6,4,0.92)'; c.fillRect(x + 4 * u, y + ch - 14 * u - lines.length * 8 * u, cw - 8 * u, lines.length * 8 * u + 4 * u);
+        lines.forEach((ln, j) => text(c, ln, x + 8 * u, y + ch - 10 * u - (lines.length - 1 - j) * 8 * u - 2 * u, 4.5, '#ffe066', 'left', u));
       }
       this.button(x, y, cw, ch, '', () => {
         if (idx >= 0) this.team.splice(idx, 1);
@@ -455,7 +480,7 @@ export class UI {
       const def = SPECIES[key];
       const bw = Math.min(112 * u, (W - 40 * u) / 6 - 4 * u);
       const b = this.button(cx + (k - 2.5) * (bw + 4 * u) - bw / 2, 44 * u, bw, 22 * u, def.name.toUpperCase(), () => { this.bestiaryLine = key; }, { color: ELEMENT_COLOR[def.element], size: 6 });
-      if (this.bestiaryLine === key) b.label = '★ ' + b.label;
+      if (this.bestiaryLine === key) b.label = '» ' + b.label + ' «';
     });
     const [base, evo] = formsOf(this.bestiaryLine);
     const pw = Math.min(360 * u, (W - 40 * u) / 2 - 6 * u), ph = H - 130 * u;
@@ -477,21 +502,31 @@ export class UI {
         const diff = v - ov;
         text(c, `${v}${k === 1 && diff ? (diff > 0 ? ' +' : ' ') + diff : ''}`, bx + bw + 4 * u, sy + 6 * u, 5, k === 1 && diff ? (diff > 0 ? '#7ae07a' : '#ff8a8a') : '#fff', 'left', u);
       });
-      let ly = y + 98 * u;
-      for (const tr of def.traits) for (const line of wrap(c, '· ' + tr, 5, pw - 20 * u, u)) { text(c, line, x + 10 * u, ly, 5, '#f4ead0', 'left', u); ly += 9 * u; }
-      ly += 4 * u;
+      let ly = y + 120 * u; // abaixo da arte do monstro
+      if (def.sig) {
+        const sz = fitSize(c, def.sig.name.toUpperCase(), 6, pw - 120 * u, u);
+        text(c, def.sig.name.toUpperCase(), x + 10 * u, ly, sz, SIG_COLOR[def.sig.kind] || '#fff', 'left', u);
+        if (def.difficulty) { c.font = `${sz * u}px ${FONT}`; const dx = x + 16 * u + c.measureText(def.sig.name.toUpperCase()).width; const wd = diffMarks(c, def.difficulty, dx, ly, u); text(c, DIFF_NAME[def.difficulty], dx + wd + 4 * u, ly, 4.5, '#bba', 'left', u); }
+        ly += 9 * u;
+        for (const line of wrap(c, def.sig.desc, 4.5, pw - 20 * u, u)) { text(c, line, x + 10 * u, ly, 4.5, '#f4ead0', 'left', u); ly += 8 * u; }
+        ly += 2 * u;
+      }
+      for (const tr of def.traits.slice(1)) for (const line of wrap(c, '· ' + tr, 4.5, pw - 20 * u, u)) { text(c, line, x + 10 * u, ly, 4.5, '#d8ccb0', 'left', u); ly += 8 * u; }
+      ly += 3 * u;
       text(c, 'HABILIDADES', x + 10 * u, ly, 6, '#ffe9b0', 'left', u);
       ly += 12 * u;
       const otherIds = new Set(other.abilities.map((a) => a.id));
       for (const [slot, id] of Object.entries(def.controls)) {
         const ab = def.abilities.find((a) => a.id === id);
         const tag = k === 1 && !otherIds.has(id) ? ' [NOVA]' : '';
-        text(c, `${KEY_LABEL[slot]}`, x + 10 * u, ly, 5, '#ffd23a', 'left', u);
+        abilityIcon(c, ab.kind, x + 10 * u, ly - 6 * u, 7 * u, ELEMENT_COLOR[def.element]);
+        text(c, `${KEY_LABEL[slot]}`, x + 20 * u, ly, 5, '#ffd23a', 'left', u);
         text(c, ab.name + tag, x + 66 * u, ly, 5, tag ? '#e8b8ff' : '#fff', 'left', u);
         ly += 8 * u;
         for (const line of wrap(c, ab.desc || '', 4.5, pw - 76 * u, u)) { if (ly < y + ph - 24 * u) text(c, line, x + 66 * u, ly, 4.5, '#bba', 'left', u); ly += 8 * u; }
         ly += 2 * u;
       }
+      if (def.tips) text(c, def.tips, x + pw / 2, y + ph - 20 * u, fitSize(c, def.tips, 4.5, pw - 16 * u, u), '#ffe066', 'center', u);
       text(c, matchText(def.element), x + pw / 2, y + ph - 10 * u, 5, '#9ae070', 'center', u);
     });
     text(c, `Evolução: energia por dano causado/recebido, esquivas e interações com o terreno. Ao chegar a ${EVOLUTION.threshold}, aperte G (uma vez por partida; a vida mantém a porcentagem).`, cx, H - 44 * u, fitSize(c, 'Evolução: energia por dano causado/recebido, esquivas e interações com o terreno. Ao chegar a 150, aperte G (uma vez por partida; a vida mantém a porcentagem).', 5, W - 30 * u, u), '#e8b8ff', 'center', u);
@@ -518,13 +553,18 @@ export class UI {
     const speeds = [0.5, 1, 1.5];
     row('Velocidade do jogo', `${S.speed}x`, () => set('speed', speeds[(speeds.indexOf(S.speed) + 1) % speeds.length]));
     row('Visão da IA (depuração)', S.debug ? 'LIGADA' : 'DESLIGADA', () => set('debug', !S.debug));
-    text(c, 'Esta versão ainda não tem áudio.', x, y + 8 * u, 5, '#998', 'left', u);
-    y += 22 * u;
+    const vols = [0, 0.3, 0.6, 1];
+    row('Som', !S.sound || S.volume <= 0 ? 'DESLIGADO' : `${Math.round(S.volume * 100)}%`, () => {
+      const i = S.sound ? vols.indexOf(S.volume) : 0;
+      const v = vols[(Math.max(0, i) + 1) % vols.length];
+      S.sound = v > 0; set('volume', v);
+    });
+    y += 4 * u;
     panel(c, x, y, pw, H - y - 50 * u, u);
     const ctl = [
       ['WASD / setas', 'mover'], ['Mouse', 'mirar'], ['Botão esquerdo', 'ataque à distância'], ['Botão direito', 'corpo a corpo'],
       ['Q / E / F', 'poderes especiais'], ['Espaço / Shift', 'esquiva'], ['1 2 3 / Tab', `trocar monstro (recarga ${SWITCH.cooldown}s)`],
-      ['G', 'evoluir (com a energia cheia)'], ['P / Esc', 'pausar'], ['I', 'visão da IA'],
+      ['G', 'evoluir (com a energia cheia)'], ['H', 'ajuda do monstro em campo'], ['P / Esc', 'pausar'], ['I', 'visão da IA'],
     ];
     let ly = y + 18 * u;
     for (const [k, v] of ctl) {
@@ -534,6 +574,60 @@ export class UI {
       ly += 13 * u;
     }
     this.button(cx - 75 * u, H - 40 * u, 150 * u, 28 * u, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
+  }
+
+  // Ajuda durante a batalha (tecla H): mecânica do monstro em campo, cada botão e como ler a tela.
+  renderHelp(u, W, H, world, actions) {
+    const c = this.c, cx = W / 2;
+    c.fillStyle = 'rgba(8,4,2,0.86)';
+    c.fillRect(0, 0, W, H);
+    const m = world.active || (world.playerTeam !== null ? world.fieldOf(world.playerTeam) : null);
+    const pw = Math.min(W - 30 * u, 720 * u), x = cx - pw / 2;
+    let y = 30 * u;
+    text(c, actions.firstTime ? 'COMO JOGAR' : 'AJUDA', cx, y, 13, '#ffe9b0', 'center', u);
+    y += 16 * u;
+    text(c, 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva · 1/2/3 troca · G evolui', cx, y, fitSize(c, 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva · 1/2/3 troca · G evolui', 5.5, pw, u), '#e8dcc0', 'center', u);
+    y += 14 * u;
+    if (m) {
+      const def = m.def;
+      panel(c, x, y, pw, 1, u, ELEMENT_COLOR[def.element]);
+      y += 12 * u;
+      text(c, `${def.name.toUpperCase()} · ${ELEMENT_NAME[def.element]}`, x + 8 * u, y, 8, ELEMENT_COLOR[def.element], 'left', u);
+      if (def.sig) {
+        y += 13 * u;
+        text(c, def.sig.name.toUpperCase(), x + 8 * u, y, 7, SIG_COLOR[def.sig.kind] || '#fff', 'left', u);
+        y += 4 * u;
+        for (const ln of wrap(c, def.sig.desc, 5.5, pw - 16 * u, u)) { y += 9 * u; text(c, ln, x + 8 * u, y, 5.5, '#f4ead0', 'left', u); }
+      }
+      y += 12 * u;
+      const colW = (pw - 16 * u) / 2;
+      let k = 0, y0 = y;
+      for (const [slot, id] of Object.entries(def.controls)) {
+        const ab = def.abilities.find((a) => a.id === id);
+        const col = k % 2, row = Math.floor(k / 2);
+        const bx = x + 8 * u + col * colW, by = y0 + row * 30 * u;
+        abilityIcon(c, ab.kind, bx, by - 7 * u, 9 * u, ELEMENT_COLOR[def.element]);
+        text(c, `${KEY_LABEL[slot]} · ${ab.name}`, bx + 13 * u, by, fitSize(c, `${KEY_LABEL[slot]} · ${ab.name}`, 5.5, colW - 18 * u, u), '#ffd23a', 'left', u);
+        wrap(c, ab.desc || '', 4.5, colW - 18 * u, u).slice(0, 2).forEach((ln, j) => text(c, ln, bx + 13 * u, by + (9 + j * 8) * u, 4.5, '#d8ccb0', 'left', u));
+        k++;
+      }
+      y = y0 + Math.ceil(k / 2) * 30 * u;
+      if (def.tips) { text(c, def.tips, x + 8 * u, y, fitSize(c, def.tips, 5, pw - 16 * u, u), '#ffe066', 'left', u); y += 12 * u; }
+    }
+    // Como ler a tela.
+    y += 4 * u;
+    const legend = [['stun', 'atordoado'], ['root', 'preso'], ['burn', 'queimando'], ['wet', 'molhado'], ['exhaust', 'exausto'], ['cloak', 'camuflado']];
+    let lx = x + 8 * u;
+    for (const [k2, name] of legend) { statusIcon(c, k2, lx, y - 6 * u, 8 * u); text(c, name, lx + 10 * u, y, 5, '#e8dcc0', 'left', u); lx += 64 * u; if (lx > x + pw - 60 * u) { lx = x + 8 * u; y += 12 * u; } }
+    y += 14 * u;
+    for (const ln of [
+      'Barra DOURADA sobre a cabeça = golpe IMPARÁVEL (não é interrompido). Branca = acerte para interromper.',
+      'Gotas azuis depois de um golpe forte = janela para contra-atacar. Arcos e setas no chão mostram onde o golpe vai pegar.',
+      'Triângulo: Fogo > Planta > Água > Fogo (mais dano contra quem você vence). Troque de monstro para virar o confronto.',
+    ]) { for (const l2 of wrap(c, ln, 5, pw - 16 * u, u)) { text(c, l2, x + 8 * u, y, 5, '#bba', 'left', u); y += 9 * u; } y += 2 * u; }
+    const bw = 200 * u, bh = 28 * u;
+    this.button(cx - bw / 2, Math.min(H - bh - 10 * u, y + 6 * u), bw, bh, actions.firstTime ? 'ENTENDI, LUTAR!' : 'VOLTAR (H)', actions.closeHelp, { color: '#7ad84a' });
+    this.drawButtons(u);
   }
 
   // Menus sobre a batalha (pausa / fim de partida). Retorna true se algo foi desenhado.
@@ -556,6 +650,9 @@ export class UI {
       let y = H * 0.4;
       this.button(cx - bw / 2, y, bw, bh, 'CONTINUAR', actions.resume); y += bh + 10 * u;
       this.button(cx - bw / 2, y, bw, bh, 'SAIR DA PARTIDA', actions.leaveOnline, { color: '#ff8a3a' });
+    } else if (kind === 'help') {
+      this.renderHelp(u, W, H, world, actions);
+      return;
     } else if (kind === 'end') {
       const y = H * 0.66;
       if (actions.online) {

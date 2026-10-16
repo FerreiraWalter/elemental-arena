@@ -1,4 +1,4 @@
-import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION } from '../config.js';
+import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION, FIRE, CONTROL } from '../config.js';
 import { mulberry32, segCircle, segAabb, clamp } from '../core/math.js';
 import { Terrain, IGNITE, T, props } from './terrain.js';
 import { ARENAS } from '../arenas/index.js';
@@ -9,6 +9,7 @@ import { Brain } from '../ai/brain.js';
 import { PlayerController } from '../control/player.js';
 import { TeamCoach } from '../ai/coach.js';
 import { DEFAULT_TEAM } from './species.js';
+import * as Sig from './signature.js';
 
 const OBSTACLE_DEFS = {
   rock: { flammable: false, hp: Infinity, blocksLOS: true },
@@ -21,6 +22,9 @@ const OBSTACLE_DEFS = {
   tree: { flammable: false, hp: Infinity, blocksLOS: true },
   log: { flammable: true, hp: 60, blocksLOS: true, burnTime: 10, burnDps: 7 },
   thicket: { flammable: true, hp: 40, blocksLOS: true, burnTime: 4, burnDps: 12 }, // barreira temporária da planta
+  // Brotos Sentinela (Brotossauro): torres vivas; o fogo as derruba rápido.
+  sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 1, healR: 46, shot: { kind: 'seed', dmg: 3.5, every: 1.3, range: 100, speed: 240 } },
+  ancientSentry: { flammable: true, hp: 50, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 1.4, healR: 50, shot: { kind: 'thorn', dmg: 6, every: 1.4, range: 118, speed: 235 } },
 };
 
 const DIFFICULTY_MODS = {
@@ -47,6 +51,7 @@ export class World {
     this.roster = []; // todos os monstros da partida (instâncias persistentes)
     this.monsters = []; // somente os que estão em campo (1 por time, mais corpos de derrotados sumindo)
     this.projectiles = [];
+    this.decoys = []; // ilusões de tinta (Gotapus)
     this.steam = [];
     this.events = [];
     this.feed = [];
@@ -307,6 +312,8 @@ export class World {
       if (m.onField || !m.alive) continue;
       for (const k in m.cd) if (m.cd[k] > 0) m.cd[k] = Math.max(0, m.cd[k] - dt);
       const st = m.status;
+      Sig.bench(m, dt);
+      st.overheat = 0; st.exhaust = 0; st.cloak = 0;
       if (st.burn > 0 && m.element !== 'fire') {
         const d = Math.min(m.hp, SWITCH.benchBurnDps * dt);
         m.hp -= d;
@@ -521,7 +528,15 @@ export class World {
       return 0;
     }
     let mult = ELEMENT_MULT[o.element || src?.element]?.[t.element] ?? 1;
-    if (src && src.element === 'fire' && src.status.wet > 0) mult *= 0.85;
+    const out = Sig.outgoing(this, src, t, o);
+    mult *= out.mult * Sig.incoming(t);
+    o = out.o;
+    // Casco Reflexo: bloqueio ativo reduz o dano e anula empurrões, atordoamento e queimadura.
+    const guarding = Sig.isGuarding(t);
+    if (guarding) {
+      mult *= o.dot ? Sig.SIG.guard.blockDot : Sig.SIG.guard.block;
+      o = { ...o, kb: 0, push: 0, stun: 0, burn: 0, root: 0, lift: 0 };
+    }
     if (t.evolveT > 0) { mult *= EVOLUTION.damageTaken; o = { ...o, kb: 0, push: 0, stun: 0 }; }
     let dmg = amount * mult;
     // Bolha protetora absorve dano (e impede queimadura enquanto existir).
@@ -545,9 +560,12 @@ export class World {
     }
     t.stats.dmgTaken += dmg;
     t.lastHitBy = src;
-    if (o.burn && t.element !== 'fire' && t.status.wet <= 0) t.status.burn = Math.max(t.status.burn, o.burn * (t.element === 'water' ? 0.6 : t.element === 'plant' ? 0.7 : 1) * (t.def.burnResist ?? 1));
+    if (o.burn && t.element !== 'fire' && t.status.wet <= 0) {
+      const dur = Math.min(FIRE.burnMax, o.burn) * (FIRE.burnTaken[t.element] ?? 1) * (t.def.burnResist ?? 1);
+      if (dur > t.status.burn) t.status.burn = dur;
+    }
     if (o.wet) { t.status.wet = Math.max(t.status.wet, o.wet); t.status.burn = 0; }
-    if (o.root) { t.status.root = Math.max(t.status.root, o.root); this.emit({ type: 'rooted', m: t, x: t.x, y: t.y }); }
+    if (o.root) this.applyRoot(t, o.root);
     if (o.lift) { t.lift = t.liftMax = o.lift; }
     if (o.kb) {
       const k = o.kb / t.def.mass;
@@ -563,13 +581,38 @@ export class World {
       }
     } else {
       t.hitFlash = 0.14;
-      if (o.stun) t.status.stun = Math.max(t.status.stun, o.stun);
-      this.emit({ type: 'hit', m: t, src, amount: dmg, element: o.element || src?.element, x: o.x ?? t.x, y: o.y ?? t.y, big: dmg >= 14 });
-      if (t.action && t.action.phase === 'windup' && !t.action.ab.superArmor && dmg >= 6) t.interrupt(this);
-      else if (t.action && t.action.phase !== 'active' && o.stun && !t.action.ab.superArmor) t.interrupt(this);
+      if (o.stun) this.applyStun(t, o.stun);
+      this.emit({ type: 'hit', m: t, src, amount: dmg, element: o.element || src?.element, x: o.x ?? t.x, y: o.y ?? t.y, big: o.big || dmg >= 14, tag: o.tag, blocked: guarding });
+      if (!guarding) {
+        if (t.action && t.action.phase === 'windup' && !t.action.ab.superArmor && dmg >= 6) t.interrupt(this);
+        else if (t.action && t.action.phase !== 'active' && o.stun && !t.action.ab.superArmor) t.interrupt(this);
+      }
     }
+    if (guarding) Sig.blocked(this, t, src, o);
+    Sig.afterDamage(this, t, src, dmg, o);
     if (t.hp <= 0) this.kill(t, src);
     return dmg;
+  }
+
+  // Atordoar/enraizar seguidos perde força: depois de um controle, o próximo dura menos por um instante.
+  applyStun(t, time) {
+    const k = t.ccGuard > 0 ? CONTROL.chainMult : 1;
+    const s = time * k;
+    if (s > t.status.stun) t.status.stun = s;
+    t.ccGuard = Math.max(t.ccGuard, s + CONTROL.guardTime);
+  }
+  applyRoot(t, time) {
+    if (Sig.isGuarding(t) || t.status.invuln > 0) return false;
+    const k = t.rootGuard > 0 ? CONTROL.chainMult : 1;
+    const s = time * k;
+    if (s > t.status.root) t.status.root = s;
+    t.rootGuard = Math.max(t.rootGuard, s + CONTROL.guardTime);
+    this.emit({ type: 'rooted', m: t, x: t.x, y: t.y });
+    return true;
+  }
+
+  popDecoysIn(x, y, r, team) {
+    for (const d of [...this.decoys]) if (d.team !== team && Math.hypot(d.x - x, d.y - y) < r + d.owner.r) Sig.popDecoy(this, d);
   }
 
   kill(t, src) {
@@ -640,6 +683,17 @@ export class World {
     m.stage = def.stage;
     for (const ab of def.abilities) if (m.cd[ab.id] === undefined) m.cd[ab.id] = 0;
     m.ai.applyProfile();
+    // A forma nova é maior: se não couber onde está (beira d'água, parede), vai para o ponto válido mais próximo.
+    if (!this.mirror && (!this.standable(m, m.x, m.y) || this.blocked(m.x, m.y, m.r * 0.8))) {
+      for (let d = 2; d <= 48; d += 2) {
+        let found = false;
+        for (let k = 0; k < 16 && !found; k++) {
+          const a = (k / 16) * Math.PI * 2, x = m.x + Math.cos(a) * d, y = m.y + Math.sin(a) * d;
+          if (this.standable(m, x, y) && !this.blocked(x, y, m.r * 0.8)) { m.x = m.px = x; m.y = m.py = y; found = true; }
+        }
+        if (found) break;
+      }
+    }
   }
 
   updateEvolution(m, dt) {
@@ -708,6 +762,7 @@ export class World {
     for (const m of this.monsters) if (m.alive) this.constrainToTerrain(m);
     for (const h of this.hazards) h.update(this, dt);
     this.updateProjectiles(dt);
+    Sig.updateDecoys(this, dt);
     this.updateObstacles(dt);
     this.terrainAcc += dt;
     while (this.terrainAcc >= TERRAIN_DT) { this.terrainAcc -= TERRAIN_DT; this.terrain.update(TERRAIN_DT); }
@@ -733,8 +788,12 @@ export class World {
       const p = props(tr.type[i]);
       if (tr.fire[i] > 0) {
         m.stats.timeOnFire += dt;
-        if (m.element === 'fire') m.hp = Math.min(m.maxHp, m.hp + 1.5 * dt);
-        else { this.damage(m, 5 * (m.def.burnResist ?? 1) * dt, null, { dot: true, element: 'fire', burn: 1.2 }); }
+        if (m.element === 'fire') m.hp = Math.min(m.maxHp, m.hp + FIRE.selfHeal * dt);
+        else {
+          // Vegetação em chamas arde mais que o chão em brasa deixado por ataques.
+          const dps = p.fuel ? FIRE.fuelDps : FIRE.groundDps;
+          this.damage(m, dps * (m.def.burnResist ?? 1) * dt, null, { dot: true, element: 'fire', burn: FIRE.groundBurn, tag: 'chao' });
+        }
       }
       if (m.element === 'plant' && p.vegetation && tr.fire[i] <= 0) m.hp = Math.min(m.maxHp, m.hp + 1 * dt);
       if (p.thorns && m.element !== 'plant' && tr.fire[i] <= 0) this.damage(m, p.thorns * dt, null, { dot: true, element: 'plant', tag: 'espinhos' });
@@ -750,8 +809,9 @@ export class World {
         m.y += tr.flowY[i] * k * dt;
       }
     }
-    if (st.burn > 0 && m.element !== 'fire') this.damage(m, 3 * dt, null, { dot: true, element: 'fire' });
+    if (st.burn > 0 && m.element !== 'fire') this.damage(m, FIRE.burnDps * dt, null, { dot: true, element: 'fire', tag: 'queimadura' });
     if (!m.alive) return;
+    Sig.update(this, m, dt);
 
     this.updateEvolution(m, dt);
     if (!m.alive) return;
@@ -833,37 +893,45 @@ export class World {
         p.y = p.sy + (p.ty - p.sy) * k;
         p.h = Math.sin(Math.PI * k) * 70;
         if (p.flat) p.h = 0;
-        if (k >= 1) { p.dead = true; if (p.kind === 'roots') this.eruptRoots(p); else this.explodeMeteor(p); }
+        if (k >= 1) { p.dead = true; if (p.kind === 'roots') this.eruptRoots(p); else if (p.kind === 'sentrySeed') Sig.plantSentry(this, p); else this.explodeMeteor(p); }
         continue;
       }
       const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
-      let best = 2, hitM = null, hitO = null, hitWall = false;
+      let best = 2, hitM = null, hitO = null, hitWall = false, hitGuard = null, hitDecoy = null;
       for (const m of this.monsters) {
         if (!m.alive || m.team === p.team) continue;
         const dd = Math.hypot(m.x - p.x, m.y - p.y);
         if (dd < p.closest) { p.closest = dd; p.closestM = m; }
-        const t = segCircle(p.x, p.y, nx, ny, m.x, m.y, m.r + p.r);
+        // Área atingível: o corpo do monstro, não só os pés (pés + parte de cima do sprite).
+        const t = hurtT(p.x, p.y, nx, ny, m, p.r);
         if (t < 0) continue;
         if (m.status.invuln > 0) {
           if (!p.evadedBy) { p.evadedBy = m; m.stats.evaded++; this.gainEnergy(m, EVOLUTION.dodge); this.emit({ type: 'evaded', m, x: m.x, y: m.y }); }
           continue;
         }
+        if (Sig.isGuarding(m) && !p.pierce) { if (t < best) { best = t; hitGuard = m; hitM = null; } continue; }
         if (p.pierce) {
           // Onda: atravessa, atinge cada monstro uma vez e continua.
           p.hitSet ||= new Set();
           if (!p.hitSet.has(m.id)) { p.hitSet.add(m.id); this.projectileHitMonster(p, m); }
           continue;
         }
-        if (t < best) { best = t; hitM = m; }
+        if (t < best) { best = t; hitM = m; hitGuard = null; }
+      }
+      for (const d of this.decoys) {
+        if (d.team === p.team) continue;
+        const t = segCircle(p.x, p.y, nx, ny, d.x, d.y, d.owner.r + p.r);
+        if (t >= 0 && t < best) { best = t; hitDecoy = d; hitM = null; hitGuard = null; }
       }
       for (const o of this.obstacles) {
         if (o.destroyed || !o.solid) continue;
+        if (o.team !== undefined && o.team === p.team) continue; // não acerta a própria sentinela
         const t = segCircle(p.x, p.y, nx, ny, o.x, o.y, o.r + p.r * 0.5);
-        if (t >= 0 && t < best) { best = t; hitO = o; hitM = null; }
+        if (t >= 0 && t < best) { best = t; hitO = o; hitM = null; hitGuard = null; hitDecoy = null; }
       }
       for (const w of this.walls) {
         const t = segAabb(p.x, p.y, nx, ny, w.x, w.y, w.w, w.h);
-        if (t >= 0 && t < best) { best = t; hitWall = true; hitM = null; hitO = null; }
+        if (t >= 0 && t < best) { best = t; hitWall = true; hitM = null; hitO = null; hitGuard = null; hitDecoy = null; }
       }
       // Penhasco mais alto que o nível do disparo: o projétil bate na encosta.
       if (this.arena.heights && this.terrain.heightAt(nx, ny) > p.level + 1.01) {
@@ -871,7 +939,7 @@ export class World {
         for (let s = 0; s <= segL; s += 2) {
           const t = s / (segL || 1);
           if (this.terrain.heightAt(p.x + (nx - p.x) * t, p.y + (ny - p.y) * t) > p.level + 1.01) {
-            if (t < best) { best = t; hitWall = true; hitM = null; hitO = null; }
+            if (t < best) { best = t; hitWall = true; hitM = null; hitO = null; hitGuard = null; hitDecoy = null; }
             break;
           }
         }
@@ -889,6 +957,8 @@ export class World {
       }
       p.traveled += seg;
       const out = p.x < 0 || p.y < 0 || p.x > WORLD_W || p.y > WORLD_H;
+      if (hitGuard) { Sig.reflect(this, p, hitGuard); continue; }
+      if (hitDecoy) { p.dead = true; p.hitTarget = hitDecoy; Sig.popDecoy(this, hitDecoy); this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y }); continue; }
       if (hitM) { p.dead = true; p.hitTarget = hitM; this.projectileHitMonster(p, hitM); }
       else if (hitO || hitWall || out) { p.dead = true; this.projectileHitSolid(p, hitO); }
       else if (p.traveled >= p.range) { p.dead = true; this.projectileExpire(p); }
@@ -904,28 +974,35 @@ export class World {
       if (a.dead || b.dead || a.team === b.team) continue;
       if (Math.hypot(a.x - b.x, a.y - b.y) >= a.r + b.r + 3) continue;
       if ((a.kind === 'wave' && fireK(b)) || (b.kind === 'wave' && fireK(a))) this.clash(a.kind === 'wave' ? b : a, null);
-      else if ((fireK(a) && b.kind === 'waterBolt') || (a.kind === 'waterBolt' && fireK(b))) this.clash(a, b);
+      else if ((a.kind === 'magma' && b.kind === 'waterBolt') || (a.kind === 'waterBolt' && b.kind === 'magma')) {
+        // Lava é quente demais para um jato d'água: o jato vira vapor e a lava segue, mais fraca.
+        const lava = a.kind === 'magma' ? a : b, jet = lava === a ? b : a;
+        this.clash(jet, null);
+        lava.dmg = Math.max(4, lava.dmg * 0.7);
+      } else if ((fireK(a) && b.kind === 'waterBolt') || (a.kind === 'waterBolt' && fireK(b))) this.clash(a, b);
     }
     this.projectiles = this.projectiles.filter((p) => !p.dead);
   }
 
   projectileHitMonster(p, m) {
     this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y, target: m });
+    const ang = Math.atan2(p.vy, p.vx);
+    const base = { ang, x: p.x, y: p.y, proj: true };
     if (p.kind === 'ember') {
-      this.damage(m, p.dmg, p.owner, { tag: 'ember', burn: 2.5, kb: 70, ang: Math.atan2(p.vy, p.vx), stun: 0.12, element: 'fire', x: p.x, y: p.y });
-      this.igniteArea(p.x, p.y, 5, 1.2, p.owner);
+      this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'ember', burn: 1.5, kb: 70, stun: 0.1, element: 'fire' });
+      this.igniteTile(this.terrain.at(p.x, p.y), 1, p.owner);
     } else if (p.kind === 'magma') {
-      this.damage(m, p.dmg, p.owner, { tag: 'magmaBall', burn: 3, kb: 90, ang: Math.atan2(p.vy, p.vx), stun: 0.15, element: 'fire', x: p.x, y: p.y });
-      this.igniteArea(p.x, p.y, 16, 4.5, p.owner);
+      this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'magmaBall', burn: 1.8, kb: 90, stun: 0.12, element: 'fire' });
+      this.igniteArea(p.x, p.y, 8, 2, p.owner);
     } else if (p.kind === 'wave') {
-      this.damage(m, p.dmg, p.owner, { tag: 'tidalWave', wet: 4, kb: 330, ang: Math.atan2(p.vy, p.vx), stun: 0.35, element: 'water', x: p.x, y: p.y });
+      this.damage(m, p.dmg, p.owner, { ...base, tag: 'tidalWave', wet: 4, kb: 330, stun: 0.35, element: 'water' });
     } else if (p.kind === 'thorn') {
-      this.damage(m, p.dmg, p.owner, { tag: 'thornShot', kb: 70, ang: Math.atan2(p.vy, p.vx), stun: 0.12, element: 'plant', x: p.x, y: p.y });
+      this.damage(m, p.dmg, p.owner, { ...base, tag: p.fromSentry ? 'sentinela' : 'thornShot', kb: 70, stun: p.fromSentry ? 0 : 0.12, element: 'plant' });
       this.sprout(p.x, p.y, T.THORNS, p.owner);
     } else if (p.kind === 'seed') {
-      this.damage(m, p.dmg, p.owner, { tag: 'seedShot', kb: 60, ang: Math.atan2(p.vy, p.vx), stun: 0.1, element: 'plant', x: p.x, y: p.y });
+      this.damage(m, p.dmg, p.owner, { ...base, tag: p.fromSentry ? 'sentinela' : p.tag || 'seedShot', kb: 60, stun: p.fromSentry ? 0 : 0.1, element: 'plant' });
     } else if (p.kind === 'waterBolt') {
-      this.damage(m, p.dmg, p.owner, { tag: 'waterBolt', wet: 3, kb: 80, ang: Math.atan2(p.vy, p.vx), stun: 0.12, element: 'water', x: p.x, y: p.y });
+      this.damage(m, p.dmg, p.owner, { ...base, tag: p.reflected ? 'reflexo' : p.tag || 'waterBolt', wet: 3, kb: 80, stun: 0.12, element: 'water' });
       this.douseArea(p.x, p.y, 12, 6, p.owner);
     }
   }
@@ -934,10 +1011,10 @@ export class World {
     this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y, obstacle: o });
     if (p.kind === 'ember') {
       if (o) { this.hurtObstacle(o, p.dmg); if (o.flammable && !o.destroyed) this.igniteObstacle(o, p.owner); }
-      this.igniteArea(p.x, p.y, 6, 1.5, p.owner);
+      this.igniteArea(p.x, p.y, 4, 1.3, p.owner);
     } else if (p.kind === 'magma') {
       if (o) { this.hurtObstacle(o, p.dmg); if (o.flammable && !o.destroyed) this.igniteObstacle(o, p.owner); }
-      this.igniteArea(p.x, p.y, 16, 4.5, p.owner);
+      this.igniteArea(p.x, p.y, 9, 2.2, p.owner);
     } else if (p.kind === 'seed' || p.kind === 'thorn') {
       if (o) this.hurtObstacle(o, p.dmg * 0.5);
       this.sprout(p.x - Math.cos(Math.atan2(p.vy, p.vx)) * 6, p.y - Math.sin(Math.atan2(p.vy, p.vx)) * 6, p.kind === 'thorn' ? T.THORNS : T.GRASS, p.owner);
@@ -951,8 +1028,8 @@ export class World {
 
   projectileExpire(p) {
     this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y, ground: true });
-    if (p.kind === 'ember') this.igniteArea(p.x, p.y, 7, 2.2, p.owner);
-    else if (p.kind === 'magma') this.igniteArea(p.x, p.y, 16, 4.5, p.owner);
+    if (p.kind === 'ember') this.igniteArea(p.x, p.y, 4, 1.4, p.owner);
+    else if (p.kind === 'magma') this.igniteArea(p.x, p.y, 9, 2.2, p.owner);
     else if (p.kind === 'seed') this.sprout(p.x, p.y, T.GRASS, p.owner);
     else if (p.kind === 'thorn') this.sprout(p.x, p.y, T.THORNS, p.owner);
     else this.douseArea(p.x, p.y, p.kind === 'wave' ? 18 : 12, 6, p.owner);
@@ -965,14 +1042,15 @@ export class World {
       const d = Math.hypot(m.x - p.tx, m.y - p.ty);
       if (d > p.radius + m.r) continue;
       const f = 1 - 0.5 * Math.min(1, d / p.radius);
-      this.damage(m, p.dmg * f, p.owner, { tag: 'meteor', kb: 230, ang: Math.atan2(m.y - p.ty, m.x - p.tx), stun: 0.35, burn: 3, element: 'fire' });
+      this.damage(m, p.dmg * f, p.owner, { tag: 'meteor', kb: 230, ang: Math.atan2(m.y - p.ty, m.x - p.tx), stun: 0.3, burn: 1.8, element: 'fire', proj: true });
     }
+    this.popDecoysIn(p.tx, p.ty, p.radius, p.team);
     for (const o of this.obstacles) {
       if (o.destroyed || Math.hypot(o.x - p.tx, o.y - p.ty) > p.radius + o.r) continue;
       this.hurtObstacle(o, 20);
       if (o.flammable && !o.destroyed) this.igniteObstacle(o, p.owner);
     }
-    this.igniteArea(p.tx, p.ty, p.radius - 4, 3, p.owner);
+    this.igniteArea(p.tx, p.ty, p.radius * 0.6, 2, p.owner);
   }
 
   // Semente que cai no chão brota um tufo de grama (ou espinheiro, na forma ancestral).
@@ -994,10 +1072,8 @@ export class World {
     for (const m of this.monsters) {
       if (!m.alive || m.team === p.team) continue;
       if (Math.hypot(m.x - p.tx, m.y - p.ty) > p.radius + m.r) continue;
-      if (this.damage(m, p.dmg, p.owner, { tag: p.owner?.def.controls.q || 'rootSnare', element: 'plant', stun: 0.15 }) > 0) {
-        m.status.root = Math.max(m.status.root, p.rootTime || 1.6);
-        m.vx = m.vy = 0;
-        this.emit({ type: 'rooted', m, x: m.x, y: m.y });
+      if (this.damage(m, p.dmg, p.owner, { tag: p.owner?.def.controls.q || 'rootSnare', element: 'plant', stun: 0.15, proj: true }) > 0) {
+        if (this.applyRoot(m, p.rootTime || 1.6)) { m.vx = m.vy = 0; }
       }
     }
     const tr = this.terrain;
@@ -1016,6 +1092,7 @@ export class World {
         o.life -= dt;
         if (o.life <= 0) { o.destroyed = true; o.solid = false; o.burning = 0; this.obstacleVersion++; this.emit({ type: 'wither', o, x: o.x, y: o.y }); continue; }
       }
+      if (o.sentry && !o.destroyed) Sig.updateSentry(this, o, dt);
       if (o.destroyed || o.burning <= 0) continue;
       o.burning -= dt;
       this.hurtObstacle(o, o.def.burnDps * dt);
@@ -1026,10 +1103,20 @@ export class World {
         this.igniteTile(this.terrain.at(o.x + Math.cos(a) * d, o.y + Math.sin(a) * d), 0, null);
       }
       for (const m of this.monsters) {
-        if (m.alive && m.element !== 'fire' && Math.hypot(m.x - o.x, m.y - o.y) < m.r + o.r + 3) this.damage(m, 4 * dt, null, { dot: true, burn: 1, element: 'fire' });
+        if (m.alive && m.element !== 'fire' && Math.hypot(m.x - o.x, m.y - o.y) < m.r + o.r + 3) this.damage(m, FIRE.obstacleDps * dt, null, { dot: true, burn: FIRE.groundBurn, element: 'fire', tag: 'chao' });
       }
     }
   }
+}
+
+// Momento (0..1) em que o projétil (x0,y0)→(x1,y1) encosta no corpo do monstro, ou -1.
+// O corpo é uma cápsula: dos pés até ~metade da altura do sprite (visão 3/4: o tiro que passa "atrás" da cabeça acerta).
+function hurtT(x0, y0, x1, y1, m, pr) {
+  const R = m.r + pr;
+  let best = segCircle(x0, y0, x1, y1, m.x, m.y, R);
+  const t2 = segCircle(x0, y0, x1, y1, m.x, m.y - m.r * 0.9, R * 0.85);
+  if (t2 >= 0 && (best < 0 || t2 < best)) best = t2;
+  return best;
 }
 
 function turnTo(cur, target, step) {

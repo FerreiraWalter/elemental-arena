@@ -24,7 +24,16 @@ export class PlayerController {
     m.move.throttle = l ? 1 : 0;
     m.lookAt = Math.atan2(inp.aim.y - m.y, inp.aim.x - m.x);
 
-    for (const slot of inp.presses) this.buffer.push({ slot, t: BUFFER });
+    for (const slot of inp.presses) {
+      this.buffer.push({ slot, t: BUFFER });
+      // Avisa quando o botão não vai funcionar tão cedo (recarga longa ou exausto): o HUD pisca o botão.
+      const id = m.def.controls[slot];
+      if (id && slot !== 'evolve') {
+        const cd = m.cd[id] || 0;
+        const reason = m.status.exhaust > 0 && m.isSpecial(id) ? 'exhaust' : cd > BUFFER ? 'cooldown' : m.status.root > 0 && m.ability(id)?.dash ? 'root' : null;
+        if (reason) w.emit({ type: 'castDenied', m, slot, reason, cd });
+      }
+    }
     // Segurar o botão do mouse repete o ataque assim que ele recarrega.
     for (const slot of ['primary', 'melee']) {
       if (inp.held[slot] && !this.buffer.some((b) => b.slot === slot)) this.buffer.push({ slot, t: 0.05 });

@@ -1,6 +1,7 @@
 import { turnToward, angleTo } from '../core/math.js';
 import { props } from './tiles.js';
-import { EVOLUTION } from '../config.js';
+import { EVOLUTION, FIRE } from '../config.js';
+import { onCast, SIG } from './signature.js';
 
 let nextId = 1;
 
@@ -22,7 +23,15 @@ export class Monster {
     this.action = null;
     this.cd = {};
     for (const ab of def.abilities) this.cd[ab.id] = 0;
-    this.status = { burn: 0, wet: 0, stun: 0, invuln: 0, root: 0, shield: 0 };
+    // overheat/exhaust: Fornalha (Brasalisco); cloak: camuflagem de tinta (Gotapus).
+    this.status = { burn: 0, wet: 0, stun: 0, invuln: 0, root: 0, shield: 0, overheat: 0, exhaust: 0, cloak: 0 };
+    this.heat = 0; // Fornalha (0..100)
+    this.heatIdle = 0;
+    this.momentum = 0; // Ímpeto do Ouriflama (0..100)
+    this.charged = false; // em disparada: próximo golpe fortalecido
+    this.marks = { n: 0, by: 0, t: 0, last: -9 }; // marcas de caça recebidas de uma Mantifolha
+    this.ccGuard = 0; // atordoamentos seguidos perdem força enquanto > 0
+    this.rootGuard = 0;
     this.shieldHp = 0;
     this.line = def.line;
     this.energy = 0; // energia de evolução (persiste no banco)
@@ -53,7 +62,10 @@ export class Monster {
   ready(id) {
     if (!this.alive || !this.onField || this.locked || this.action || this.status.stun > 0 || !(this.cd[id] <= 0)) return false;
     if (this.status.root > 0 && this.ability(id)?.dash) return false; // enraizado não consegue investir/esquivar
+    if (this.status.exhaust > 0 && this.isSpecial(id)) return false; // exausto: sem poderes especiais
     return true;
+  }
+  isSpecial(id) { const c = this.def.controls; return id === c.q || id === c.e || id === c.f;
   }
   get busy() { return !!this.action || this.status.stun > 0; }
 
@@ -71,6 +83,7 @@ export class Monster {
     if (ab.kind === 'dodge') { this.stats.dodges++; this.action.aim = this.action.dir; }
     if (ab.kind === 'dash') this.action.aim = this.action.dir;
     w.emit({ type: 'cast', m: this, ab: ab.id, kind: ab.kind, purpose: this.action.purpose, x: this.x, y: this.y });
+    onCast(w, this, ab);
     if (ab.windup <= 0) this.enterActive(w);
     return true;
   }
@@ -119,12 +132,15 @@ export class Monster {
       const p = props(tr.type[i]);
       if (p.water) k *= this.element === 'water' ? (this.def.waterSpeed || 1.25) : 0.65;
       else if (tr.wet[i] > 0) k *= this.element === 'water' ? (this.def.wetSpeed || 1.15) : 0.88;
-      if (tr.fire[i] > 0 && this.element === 'fire') k *= 1.15;
+      if (tr.fire[i] > 0 && this.element === 'fire') k *= FIRE.selfSpeed;
       if (tr.roots[i] > 0 && this.element !== 'plant') k *= 0.55;
       if (p.slow && this.element !== 'plant') k *= p.slow;
       if (p.vegetation && this.element === 'plant') k *= 1.1;
     }
-    if (this.status.wet > 0 && this.element === 'fire') k *= 0.85;
+    if (this.status.wet > 0 && this.element === 'fire') k *= 0.9; // molhado, o fogo fica um pouco mais lento
+    if (this.status.overheat > 0) k *= SIG.heat.speed;
+    if (this.status.exhaust > 0) k *= SIG.heat.exhaustSpeed;
+    if (this.charged) k *= SIG.momentum.chargedSpeed;
     if (this.action) {
       const ph = this.action.phase === 'windup' ? 0 : this.action.phase === 'active' ? 1 : 2;
       k *= this.action.ab.move[ph];

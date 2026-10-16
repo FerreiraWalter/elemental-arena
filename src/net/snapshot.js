@@ -7,6 +7,7 @@
 //   field – índices dos monstros presentes na arena (em campo ou corpos sumindo)
 //   teams – por vaga: monstro em campo, recarga de troca, troca pendente
 //   proj, obs, haz, steam – projéteis, obstáculos, perigos e nuvens
+//   dec   – ilusões de tinta (cópias do Gotapus); obstáculos dinâmicos incluem sentinelas (lado e dono)
 //   terr  – deltas do terreno (fogo, umidade, raízes, tipo, fuligem), quantizados
 //   events, feed – eventos visuais/sonoros e mensagens novas desde o snapshot anterior
 
@@ -34,9 +35,11 @@ function terrKey(tr, i) {
 
 function monsterRec(m, idxOf) {
   const a = m.action;
+  const idxOfId = (id) => { for (const [mm, i] of idxOf) if (mm.id === id) return i; return -1; };
   const rec = {
     h: r1(m.hp), M: m.maxHp, a: +m.alive, f: +m.onField, d: m.def.key, e: r1(m.energy), ev: +m.evolved,
-    st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield) },
+    st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield), overheat: r2(m.status.overheat), exhaust: r2(m.status.exhaust), cloak: r2(m.status.cloak) },
+    ht: r1(m.heat), mo: r1(m.momentum), cg: +m.charged, mk: m.marks.n ? [m.marks.n, idxOfId(m.marks.by)] : 0,
     cd: Object.fromEntries(Object.entries(m.cd).map(([k, v]) => [k, r2(v)])),
     x: r1(m.x), y: r1(m.y), vx: r1(m.vx), vy: r1(m.vy), fc: r2(m.facing),
     sw: m.switchState || 0, swT: r2(m.switchT), evT: r2(m.evolveT), hf: r2(m.hitFlash), dT: r2(m.deathT),
@@ -82,7 +85,7 @@ export function serialize(world, ctx) {
   const obs = [], dyn = [];
   world.obstacles.forEach((o, i) => {
     if (i < ctx.nInit) obs.push([o.hp === Infinity ? -1 : r1(o.hp), r1(o.burning), +o.destroyed, +(o.hitFlash > 0), o.life === undefined ? -1 : r1(o.life)]);
-    else dyn.push([o.kind, r1(o.x), r1(o.y), o.r, o.hp === Infinity ? -1 : r1(o.hp), r1(o.burning), +o.destroyed, o.life === undefined ? -1 : r1(o.life)]);
+    else dyn.push([o.kind, r1(o.x), r1(o.y), o.r, o.hp === Infinity ? -1 : r1(o.hp), r1(o.burning), +o.destroyed, o.life === undefined ? -1 : r1(o.life), o.team ?? -1, o.owner ? idxOf.get(o.owner) ?? -1 : -1]);
   });
   const snap = {
     t: 'snap', seq, time: Math.round(world.time * 1000) / 1000,
@@ -95,6 +98,7 @@ export function serialize(world, ctx) {
     obs, dyn,
     haz: world.hazards.map((h) => [PH.indexOf(h.phase), r2(h.t)]),
     steam: world.steam.map((s) => [r1(s.x), r1(s.y), r1(s.r), r2(s.density), r2(s.life), +!!s.ink]),
+    dec: world.decoys.map((d) => [d.id, idxOf.get(d.owner), r1(d.x), r1(d.y), r2(d.life), r2(d.max), r2(d.facing), r1(d.vx), r1(d.vy)]),
     terr,
     feed: world.feed.filter((f) => f.seq > ctx.lastFeed).map((f) => [f.text, f.color]),
     events: world.drainEvents().filter((e) => !SKIP_EVENTS.has(e.type)).map((e) => eventRec(e, idxOf, world)),
@@ -136,6 +140,8 @@ export function applySnapshot(world, s, ctx) {
     m.x = r.x; m.y = r.y; m.vx = r.vx; m.vy = r.vy; m.facing = r.fc; m.lookAt = r.fc;
     m.switchState = r.sw || null; m.switchT = r.swT; m.evolveT = r.evT; m.hitFlash = r.hf; m.deathT = r.dT;
     m.shieldHp = r.sh; m.level = r.lv; m.lift = r.lf; m.liftMax = r.lfM || 1;
+    m.heat = r.ht || 0; m.momentum = r.mo || 0; m.charged = !!r.cg;
+    if (r.mk) { m.marks.n = r.mk[0]; m.marks.by = world.roster[r.mk[1]]?.id ?? 0; } else m.marks.n = 0;
     m.ai.state = r.ai; m.human = !!r.hum;
     m.action = r.ac ? { ab: ABILITIES[r.ac.id], phase: r.ac.ph, t: r.ac.t, aim: r.ac.aim, hit: new Set(), aimPoint: null, data: { beam: r.ac.bm ? { ox: r.ac.bm[0], oy: r.ac.bm[1], ex: r.ac.bm[2], ey: r.ac.bm[3] } : undefined, R: r.ac.R } } : null;
   }
@@ -178,7 +184,21 @@ export function applySnapshot(world, s, ctx) {
     if (!ob) ob = world.addObstacle(o[0], o[1], o[2], o[3]);
     ob.hp = o[4] < 0 ? Infinity : o[4]; ob.burning = o[5]; ob.destroyed = !!o[6]; ob.solid = !o[6];
     if (o[7] >= 0) ob.life = o[7];
+    if (o[8] >= 0) { ob.team = o[8]; ob.sentry = ob.kind === 'sentry' || ob.kind === 'ancientSentry'; }
+    if (o[9] >= 0) ob.owner = world.roster[o[9]];
   });
+  // Ilusões de tinta (interpoladas como os projéteis).
+  ctx.decMap ||= new Map();
+  const decs = new Map();
+  for (const [id, oi, x, y, life, max, facing, vx, vy] of s.dec || []) {
+    let d = ctx.decMap.get(id);
+    if (!d) d = { id, px: x, py: y, x, y };
+    else { d.px = d.x; d.py = d.y; d.x = x; d.y = y; }
+    d.owner = world.roster[oi]; d.team = d.owner?.team; d.life = life; d.max = max; d.facing = facing; d.vx = vx; d.vy = vy;
+    decs.set(id, d);
+  }
+  ctx.decMap = decs;
+  world.decoys = [...decs.values()];
   s.haz.forEach((h, i) => { if (world.hazards[i]) { world.hazards[i].phase = PH[h[0]]; world.hazards[i].t = h[1]; } });
   world.steam = s.steam.map(([x, y, r, density, life, ink]) => ({ x, y, r, density, life, ink: !!ink }));
 

@@ -1,10 +1,11 @@
 import { STATE_LABEL } from '../ai/brain.js';
-import { TEAM_COLOR, ELEMENT_COLOR } from './renderer.js';
+import { TEAM_COLOR, ELEMENT_COLOR, SIG_COLOR } from './renderer.js';
 import { EVOLUTION } from '../config.js';
+import { SIG } from '../sim/signature.js';
 
 const FONT = '"Press Start 2P", monospace';
 const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta' };
-const SLOTS = [['primary', 'BOTÃO ESQ'], ['melee', 'BOTÃO DIR'], ['q', 'Q'], ['e', 'E'], ['f', 'F'], ['dodge', 'ESPAÇO']];
+const SLOTS = [['primary', 'MOUSE E'], ['melee', 'MOUSE D'], ['q', 'Q'], ['e', 'E'], ['f', 'F'], ['dodge', 'ESPAÇO']];
 
 function text(c, s, x, y, size, color, align = 'left', dpr = 1) {
   c.font = `${size * dpr}px ${FONT}`;
@@ -34,6 +35,57 @@ function bar(c, x, y, w, h, frac, lag, color, dpr) {
   c.fillRect(x, y, w * Math.max(0, frac), h);
   c.fillStyle = 'rgba(255,255,255,0.25)';
   c.fillRect(x, y, w * Math.max(0, frac), Math.max(1, h / 4));
+}
+
+// Ícone de cada tipo de habilidade, desenhado em pixel (s = tamanho em px do dispositivo).
+export function abilityIcon(c, kind, x, y, s, color) {
+  const u = s / 10;
+  c.save();
+  c.translate(x, y);
+  c.fillStyle = color; c.strokeStyle = color; c.lineWidth = Math.max(1, u * 1.4); c.lineCap = 'round';
+  const P = (px, py, w = 1, h = 1) => c.fillRect(px * u, py * u, w * u, h * u);
+  c.beginPath();
+  switch (kind) {
+    case 'projectile': c.arc(6.5 * u, 5 * u, 2.2 * u, 0, 7); c.fill(); P(0.5, 4.5, 3, 1); P(1.5, 2.5, 2, 1); P(1.5, 6.5, 2, 1); break;
+    case 'melee': for (let k = 0; k < 3; k++) { c.moveTo((2 + k * 2.5) * u, 1.5 * u); c.quadraticCurveTo((5 + k * 2.5) * u, 5 * u, (2 + k * 2.5) * u, 8.5 * u); } c.stroke(); break;
+    case 'cone': c.moveTo(1 * u, 5 * u); c.lineTo(9 * u, 1 * u); c.lineTo(9 * u, 9 * u); c.closePath(); c.globalAlpha = 0.85; c.fill(); break;
+    case 'beam': P(3, 4, 7, 2); c.arc(2 * u, 5 * u, 1.8 * u, 0, 7); c.fill(); break;
+    case 'aoe': c.arc(5 * u, 5 * u, 4 * u, 0, 7); c.stroke(); c.beginPath(); c.arc(5 * u, 5 * u, 1.6 * u, 0, 7); c.fill(); break;
+    case 'dash': c.moveTo(1 * u, 5 * u); c.lineTo(8 * u, 5 * u); c.moveTo(5.5 * u, 2 * u); c.lineTo(8.5 * u, 5 * u); c.lineTo(5.5 * u, 8 * u); c.stroke(); break;
+    case 'lob': c.moveTo(1 * u, 8.5 * u); c.quadraticCurveTo(5 * u, -2 * u, 9 * u, 8.5 * u); c.stroke(); c.beginPath(); c.arc(9 * u, 8.5 * u, 1.4 * u, 0, 7); c.fill(); break;
+    case 'guard': c.arc(5 * u, 7 * u, 4.2 * u, Math.PI, 0); c.lineTo(9.2 * u, 8.5 * u); c.lineTo(0.8 * u, 8.5 * u); c.closePath(); c.globalAlpha = 0.9; c.fill(); break;
+    case 'dodge': c.moveTo(1 * u, 7.5 * u); c.quadraticCurveTo(4 * u, 1 * u, 9 * u, 3 * u); c.stroke(); P(7, 6, 2, 1); P(5, 8, 2, 1); break;
+    case 'buff': c.moveTo(5 * u, 0.5 * u); c.lineTo(6.4 * u, 3.6 * u); c.lineTo(9.5 * u, 5 * u); c.lineTo(6.4 * u, 6.4 * u); c.lineTo(5 * u, 9.5 * u); c.lineTo(3.6 * u, 6.4 * u); c.lineTo(0.5 * u, 5 * u); c.lineTo(3.6 * u, 3.6 * u); c.closePath(); c.fill(); break;
+    case 'evolve': c.moveTo(5 * u, 0.5 * u); c.lineTo(9 * u, 5 * u); c.lineTo(6.5 * u, 5 * u); c.lineTo(6.5 * u, 9.5 * u); c.lineTo(3.5 * u, 9.5 * u); c.lineTo(3.5 * u, 5 * u); c.lineTo(1 * u, 5 * u); c.closePath(); c.fill(); break;
+    default: P(3, 3, 4, 4);
+  }
+  c.restore();
+}
+
+// Ícones de status em pixel (queimando, molhado, preso, atordoado, bolha, superaquecido, exausto, camuflado).
+export function statusIcon(c, kind, x, y, s) {
+  const u = s / 6;
+  const P = (px, py, w, h, col) => { c.fillStyle = col; c.fillRect(x + px * u, y + py * u, w * u, h * u); };
+  P(0, 0, 6, 6, 'rgba(10,6,4,0.85)');
+  switch (kind) {
+    case 'burn': P(2, 1, 2, 4, '#ff7a1a'); P(1, 3, 4, 2, '#ff7a1a'); P(2, 3, 2, 2, '#ffd84a'); break;
+    case 'wet': P(2.5, 1, 1, 1, '#8fd8ff'); P(2, 2, 2, 1, '#5ab4ff'); P(1.5, 3, 3, 2, '#5ab4ff'); break;
+    case 'root': P(1, 1, 1, 4, '#7ad84a'); P(3, 2, 1, 3, '#5a3a1a'); P(4.5, 1, 1, 4, '#7ad84a'); P(1, 4, 4.5, 1, '#5a3a1a'); break;
+    case 'stun': P(1, 1, 1, 1, '#ffe066'); P(4, 2, 1, 1, '#ffe066'); P(2, 4, 1, 1, '#ffe066'); P(3, 3, 1, 1, '#ffffff'); break;
+    case 'shield': P(1, 1, 4, 4, '#8fd8ff'); P(2, 2, 2, 2, 'rgba(10,6,4,0.9)'); break;
+    case 'overheat': P(1, 1, 1, 4, '#ffd84a'); P(4, 1, 1, 4, '#ffd84a'); P(2.5, 2, 1, 3, '#ff7a1a'); break;
+    case 'exhaust': P(1, 1, 4, 1, '#c8b8a0'); P(3, 2, 1, 1, '#c8b8a0'); P(2, 3, 1, 1, '#c8b8a0'); P(1, 4, 4, 1, '#c8b8a0'); break;
+    case 'cloak': P(1, 2, 4, 3, '#6a5aa0'); P(2, 3, 1, 1, '#ffffff'); P(3.5, 3, 1, 1, '#ffffff'); break;
+    case 'charged': P(3, 0.5, 1, 2, '#ffe066'); P(2, 2.5, 2, 1, '#ffe066'); P(2, 3.5, 1, 2, '#ffe066'); break;
+  }
+}
+
+export const STATUS_NAME = { burn: 'queimando', wet: 'molhado', root: 'preso', stun: 'atordoado', shield: 'bolha', overheat: 'superaquecido', exhaust: 'exausto', cloak: 'camuflado', charged: 'em disparada' };
+export function statusList(m) {
+  const st = m.status, out = [];
+  for (const k of ['stun', 'root', 'burn', 'wet', 'shield', 'overheat', 'exhaust', 'cloak']) if (st[k] > 0 && (k !== 'shield' || m.shieldHp > 0)) out.push(k);
+  if (m.charged) out.push('charged');
+  return out;
 }
 
 // Pode trocar para `m` agora? (mesmas regras de World.requestSwitch)
@@ -85,14 +137,9 @@ function card(c, r, world, m, idx, x, y, w, dpr) {
   else label = STATE_LABEL[m.status.root > 0 ? 'rooted' : m.ai.state] || m.ai.state;
   const lsz = fit(c, label, 5, w - pad * 2 - 20 * dpr, dpr);
   text(c, label, x + pad, y + 49 * dpr, lsz, lc, 'left', dpr);
-  // Status persistentes (continuam no banco).
-  let ix = x + w - pad - 5 * dpr;
-  for (const [on, col] of [[m.status.burn > 0, '#ff8a3a'], [m.status.wet > 0, '#5ab4ff'], [m.status.root > 0, '#9ae070'], [m.status.stun > 0, '#ffe066'], [m.status.shield > 0, '#ffffff']]) {
-    if (!on || !m.alive) continue;
-    c.fillStyle = col;
-    c.fillRect(ix, y + 43 * dpr, 5 * dpr, 6 * dpr);
-    ix -= 7 * dpr;
-  }
+  // Status (continuam no banco): ícones em pixel, da direita para a esquerda.
+  let ix = x + w - pad - 7 * dpr;
+  if (m.alive) for (const k of statusList(m).slice(0, 4)) { statusIcon(c, k, ix, y + 42 * dpr, 7 * dpr); ix -= 8 * dpr; }
   c.globalAlpha = 1;
   if (!m.alive) {
     c.strokeStyle = 'rgba(255,74,90,0.85)';
@@ -104,8 +151,43 @@ function card(c, r, world, m, idx, x, y, w, dpr) {
   }
 }
 
+// Texto e preenchimento do medidor da mecânica própria do monstro controlado.
+function sigGauge(world, m) {
+  const sig = m.def.sig;
+  if (!sig) return null;
+  const st = m.status;
+  switch (sig.kind) {
+    case 'heat':
+      if (st.exhaust > 0) return { label: `EXAUSTO ${st.exhaust.toFixed(1)}s`, k: st.exhaust / (sig.exhaust ?? SIG.heat.exhaust), color: SIG_COLOR.exhaust, warn: true };
+      if (st.overheat > 0) return { label: `SUPERAQUECIDO ${st.overheat.toFixed(1)}s`, k: st.overheat / SIG.heat.overheat, color: SIG_COLOR.overheat, blink: true };
+      return { label: `CALOR ${Math.round(m.heat)}%`, k: m.heat / 100, color: SIG_COLOR.heat, warn: m.heat > 75 };
+    case 'momentum':
+      return m.charged ? { label: 'EM DISPARADA!', k: 1, color: SIG_COLOR.momentum, blink: true } : { label: `ÍMPETO ${Math.round(m.momentum)}%`, k: m.momentum / 100, color: '#c8a838' };
+    case 'guard': {
+      const id = m.def.controls.f, cd = m.cd[id] || 0;
+      const on = m.action?.ab.kind === 'guard' && m.action.phase === 'active';
+      return { label: on ? 'BLOQUEANDO!' : cd > 0 ? `CASCO ${cd.toFixed(1)}s` : 'CASCO PRONTO (F)', k: on ? 1 : 1 - cd / (m.ability(id)?.cooldown || 1), color: SIG_COLOR.guard, blink: on };
+    }
+    case 'sentry': {
+      const n = world.obstacles.filter((o) => o.sentry && o.owner === m && !o.destroyed).length;
+      return { label: `SENTINELAS ${n}/${SIG.sentry.max}`, k: n / SIG.sentry.max, color: SIG_COLOR.sentry };
+    }
+    case 'decoy': {
+      const n = world.decoys.filter((d) => d.owner === m).length;
+      if (st.cloak > 0) return { label: `CAMUFLADO ${st.cloak.toFixed(1)}s`, k: st.cloak / 2.2, color: SIG_COLOR.decoy, blink: true };
+      return { label: n ? `CÓPIAS EM CAMPO: ${n}` : 'CÓPIAS: esquive ou use Q', k: Math.min(1, n / 3), color: SIG_COLOR.decoy };
+    }
+    case 'marks': {
+      const foe = world.monsters.find((o) => o.alive && o.marks?.by === m.id && o.marks.n > 0);
+      const n = foe ? foe.marks.n : 0;
+      return { label: n >= 3 ? 'EXECUTE! (foice ou salto)' : `MARCAS NO ALVO ${n}/3`, k: n / 3, color: SIG_COLOR.marks, blink: n >= 3 };
+    }
+  }
+  return null;
+}
+
 // Barra de habilidades do monstro controlado.
-function abilityBar(c, world, ox, aw, y, dpr) {
+function abilityBar(c, world, ox, aw, y, dpr, r) {
   const m = world.active;
   if (!m) {
     if (!world.over) text(c, 'Próximo monstro entrando...', ox + aw / 2, y + 24 * dpr, 7, '#ffe066', 'center', dpr);
@@ -114,24 +196,45 @@ function abilityBar(c, world, ox, aw, y, dpr) {
   const slots = SLOTS.filter(([k]) => m.def.controls[k]);
   const evoSlot = !!m.def.evolvesTo && !m.evolved;
   const nSlots = slots.length + (evoSlot ? 1 : 0);
-  const bw = Math.min(64 * dpr, (aw - 140 * dpr) / nSlots - 4 * dpr), bh = 42 * dpr, gap = 4 * dpr;
+  const bw = Math.min(64 * dpr, (aw - 150 * dpr) / nSlots - 4 * dpr), bh = 42 * dpr, gap = 4 * dpr;
   const total = nSlots * bw + (nSlots - 1) * gap;
-  let x = ox + aw / 2 - total / 2 + 60 * dpr;
-  const px = x - 124 * dpr;
-  text(c, m.name.toUpperCase(), px, y + 14 * dpr, 7, ELEMENT_COLOR[m.element], 'left', dpr);
-  bar(c, px, y + 20 * dpr, 112 * dpr, 8 * dpr, m.hp / m.maxHp, m.hp / m.maxHp, TEAM_COLOR[m.team], dpr);
-  text(c, `${Math.ceil(m.hp)}/${m.maxHp}`, px, y + 40 * dpr, 6, '#fff', 'left', dpr);
+  let x = ox + aw / 2 - total / 2 + 66 * dpr;
+  const px = x - 132 * dpr, lw = 120 * dpr;
+  text(c, m.name.toUpperCase(), px, y + 9 * dpr, fit(c, m.name.toUpperCase(), 7, lw, dpr), ELEMENT_COLOR[m.element], 'left', dpr);
+  bar(c, px, y + 13 * dpr, lw, 7 * dpr, m.hp / m.maxHp, m.hp / m.maxHp, TEAM_COLOR[m.team], dpr);
+  text(c, `${Math.ceil(m.hp)}/${m.maxHp}`, px + lw, y + 9 * dpr, 5, '#fff', 'right', dpr);
+  // Medidor da mecânica própria (Fornalha, Ímpeto, Casco, Sentinelas, Cópias, Marcas).
+  const gge = sigGauge(world, m);
+  if (gge) {
+    const blink = gge.blink && Math.floor(performance.now() / 160) % 2;
+    text(c, gge.label, px, y + 30 * dpr, fit(c, gge.label, 5.5, lw, dpr), blink ? '#ffffff' : gge.color, 'left', dpr);
+    c.fillStyle = '#100a08'; c.fillRect(px - dpr, y + 33 * dpr, lw + 2 * dpr, 6 * dpr);
+    c.fillStyle = '#2a201a'; c.fillRect(px, y + 34 * dpr, lw, 4 * dpr);
+    c.fillStyle = blink ? '#ffffff' : gge.color; c.fillRect(px, y + 34 * dpr, lw * Math.max(0, Math.min(1, gge.k)), 4 * dpr);
+  }
+  // Status atuais do seu monstro, com nome (fácil de ler).
+  const sts = statusList(m);
+  let sx = px;
+  for (const k of sts.slice(0, 3)) {
+    statusIcon(c, k, sx, y + 42 * dpr, 7 * dpr);
+    text(c, STATUS_NAME[k], sx + 9 * dpr, y + 48 * dpr, 4.5, '#e8dcc0', 'left', dpr);
+    sx += 42 * dpr;
+  }
+  const deny = r.denySlot;
   for (const [slot, key] of slots) {
     const ab = m.ability(m.def.controls[slot]);
     const cd = m.cd[ab.id];
     const using = m.action?.ab === ab;
-    c.fillStyle = using ? '#5a4a1a' : 'rgba(20,14,12,0.92)';
+    const locked = m.status.exhaust > 0 && m.isSpecial?.(ab.id);
+    const denied = deny && deny.slot === slot && Math.floor(deny.t * 14) % 2 === 0;
+    c.fillStyle = using ? '#5a4a1a' : denied ? '#5a1414' : 'rgba(20,14,12,0.92)';
     c.fillRect(x, y, bw, bh);
-    c.strokeStyle = using ? '#ffe066' : cd > 0 ? '#3a302a' : ELEMENT_COLOR[m.element];
+    c.strokeStyle = denied ? '#ff4a4a' : using ? '#ffe066' : cd > 0 || locked ? '#3a302a' : ELEMENT_COLOR[m.element];
     c.lineWidth = 2 * dpr;
     c.strokeRect(x + dpr, y + dpr, bw - 2 * dpr, bh - 2 * dpr);
-    const ksz = fit(c, key, 6, bw - 6 * dpr, dpr);
-    text(c, key, x + bw / 2, y + 11 * dpr, ksz, '#ffe9b0', 'center', dpr);
+    abilityIcon(c, ab.kind, x + 4 * dpr, y + 4 * dpr, 9 * dpr, cd > 0 || locked ? '#776a5a' : ELEMENT_COLOR[m.element]);
+    const ksz = fit(c, key, 6, bw - 18 * dpr, dpr);
+    text(c, key, x + bw / 2 + 5 * dpr, y + 11 * dpr, ksz, '#ffe9b0', 'center', dpr);
     const words = ab.name.split(' ');
     const l1 = words.length > 1 ? words.slice(0, Math.ceil(words.length / 2)).join(' ') : ab.name;
     const l2 = words.length > 1 ? words.slice(Math.ceil(words.length / 2)).join(' ') : '';
@@ -144,6 +247,12 @@ function abilityBar(c, world, ox, aw, y, dpr) {
       c.fillRect(x + 2 * dpr, y + 2 * dpr + (bh - 4 * dpr) * (1 - f), bw - 4 * dpr, (bh - 4 * dpr) * f);
       if (cd >= 0.95) text(c, cd.toFixed(0), x + bw / 2, y + bh / 2 + 5 * dpr, 9, '#fff', 'center', dpr);
     }
+    if (locked) {
+      c.fillStyle = 'rgba(40,30,24,0.75)';
+      c.fillRect(x + 2 * dpr, y + 2 * dpr, bw - 4 * dpr, bh - 4 * dpr);
+      text(c, 'EXAUSTO', x + bw / 2, y + bh / 2 + 3 * dpr, fit(c, 'EXAUSTO', 5.5, bw - 6 * dpr, dpr), '#d8ccb8', 'center', dpr);
+    }
+    if (denied) text(c, deny.reason === 'exhaust' ? 'EXAUSTO' : deny.reason === 'root' ? 'PRESO' : 'RECARGA', x + bw / 2, y - 4 * dpr, 5, '#ff8a8a', 'center', dpr);
     x += bw + gap;
   }
   // Botão de evolução: enche com a energia; pisca quando está pronto.
@@ -158,9 +267,10 @@ function abilityBar(c, world, ox, aw, y, dpr) {
     c.strokeStyle = ready ? '#e8b8ff' : '#5a4a6a';
     c.lineWidth = 2 * dpr;
     c.strokeRect(x + dpr, y + dpr, bw - 2 * dpr, bh - 2 * dpr);
-    text(c, 'G', x + bw / 2, y + 11 * dpr, 6, '#ffe9b0', 'center', dpr);
-    text(c, 'EVOLUIR', x + bw / 2, y + 25 * dpr, Math.min(5, bw / dpr / 9), '#fff', 'center', dpr);
-    text(c, ready ? 'PRONTO!' : `${Math.floor(k * 100)}%`, x + bw / 2, y + 35 * dpr, 5, ready ? '#e8b8ff' : '#bba', 'center', dpr);
+    abilityIcon(c, 'evolve', x + 4 * dpr, y + 4 * dpr, 9 * dpr, ready ? '#ffffff' : '#a080c0');
+    text(c, 'G', x + bw / 2 + 5 * dpr, y + 11 * dpr, 6, '#ffe9b0', 'center', dpr);
+    text(c, 'EVOLUIR', x + bw / 2, y + 25 * dpr, Math.min(6, bw / dpr / 9), '#fff', 'center', dpr);
+    text(c, ready ? 'PRONTO!' : `${Math.floor(k * 100)}%`, x + bw / 2, y + 35 * dpr, 5.5, ready ? '#e8b8ff' : '#bba', 'center', dpr);
   }
 }
 
@@ -230,9 +340,9 @@ export function drawHud(c, r, world, ui) {
   }
   c.globalAlpha = 1;
 
-  if (world.playerTeam !== null) abilityBar(c, world, ox, aw, oy + ah + 8 * dpr, dpr);
+  if (world.playerTeam !== null) abilityBar(c, world, ox, aw, oy + ah + 8 * dpr, dpr, r);
   const help = world.playerTeam !== null
-    ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 ou Tab trocar · G evoluir · P pausar'
+    ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 trocar · G evoluir · H ajuda · P pausar'
     : 'MODO ESPECTADOR · P pausar · I visão da IA';
   const hsz = fit(c, help, 5, aw, dpr);
   text(c, help, mid, H - 6 * dpr, hsz, '#887', 'center', dpr);

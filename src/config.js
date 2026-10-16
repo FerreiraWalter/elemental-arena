@@ -17,7 +17,7 @@ export const SWITCH = {
   entryInvulnerable: false, // true = invulnerável durante a entrada
   cooldown: 3, // recarga de troca voluntária, por time
   replaceDelay: 0.9, // tempo entre a derrota e a entrada automática do substituto
-  benchBurnDps: 3, // queimadura continua no banco (efeito persistente)
+  benchBurnDps: 2, // queimadura continua no banco (efeito persistente)
 };
 
 // Evolução: energia ganha em combate; ao encher, o monstro pode evoluir uma vez por partida.
@@ -36,9 +36,26 @@ export const EVOLUTION = {
 
 // Triângulo elemental: fogo > planta > água > fogo.
 export const ELEMENT_MULT = {
-  // Valores ajustados por simulação (test/pairs.mjs): o fogo já tem vantagem ambiental (queimadura,
-  // grama inflamável) contra a planta, por isso seu multiplicador é menor.
-  water: { fire: 1.15, plant: 0.9 },
-  fire: { plant: 1.05, water: 0.9 },
-  plant: { water: 1.1, fire: 0.95 },
+  // Valores ajustados por simulação (tools/balance.mjs). O fogo ainda tem a vantagem ambiental (queimadura,
+  // grama inflamável) contra a planta, por isso o bônus dele é um pouco menor que o dos outros.
+  water: { fire: 1.12, plant: 0.9 },
+  fire: { plant: 1.1, water: 0.9 },
+  plant: { water: 1.12, fire: 0.9 },
 };
+
+// Fogo: queimadura (status) e chão em chamas. Valores revistos para que o fogo pressione sem prender o
+// adversário: a queimadura não acumula, dura pouco e o chão criado por ataques arde menos que vegetação.
+export const FIRE = {
+  burnDps: 2, // dano por segundo da queimadura (status)
+  burnMax: 2.5, // duração máxima aplicada por um golpe (s)
+  burnTaken: { water: 0.5, plant: 1, fire: 0 }, // multiplicador da duração por elemento do alvo
+  fuelDps: 3.5, // pisar em vegetação em chamas
+  groundDps: 2.5, // pisar em chão em brasa criado por ataques (sem combustível)
+  groundBurn: 0.6, // queimadura aplicada por estar sobre o fogo
+  selfHeal: 0.8, // monstros de fogo se curam (vida/s) pisando no fogo
+  selfSpeed: 1.1, // e ficam um pouco mais rápidos
+  obstacleDps: 3, // encostar em objeto em chamas
+};
+
+// Controle: atordoamento e enraizamento seguidos perdem força (evita sequências inevitáveis).
+export const CONTROL = { guardTime: 1.2, chainMult: 0.4 };
