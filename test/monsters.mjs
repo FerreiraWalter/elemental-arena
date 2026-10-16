@@ -77,16 +77,25 @@ test('Gotapus: Nuvem de Tinta bloqueia a visão e depois some', () => {
   assert(w.los(me.x, me.y, f.x, f.y) && w.steam.length === 0, 'tinta não se dissipou');
 });
 
-test('Leviapus: Abraço do Kraken puxa e prende o inimigo', () => {
-  const { w, me, f } = setup('gotapus', { evolved: true, gap: 40 });
+test('Leviapus: Ilusão de Tinta cria 3 cópias; a Maré Esmagadora carrega o inimigo e arrebenta', () => {
+  const { w, me, f } = setup('gotapus', { evolved: true, gap: 60 });
   assert(me.def.key === 'leviapus', 'não evoluiu');
-  const d0 = Math.hypot(me.x - f.x, me.y - f.y), hp = f.hp;
-  assert(cast(w, me, 'krakenGrip'), 'não iniciou o agarrão');
-  step(w, 0.9);
-  assert(f.status.root > 0 || f.hp < hp, 'sem efeito');
-  assert(f.hp < hp, 'sem dano');
-  assert(Math.hypot(me.x - f.x, me.y - f.y) < d0 + 2, 'inimigo não foi puxado');
-  assert(f.status.root > 0.2, 'inimigo não ficou preso');
+  assert(cast(w, me, 'krakenIllusion'), 'não lançou a ilusão');
+  step(w, 0.25);
+  assert(w.decoys.filter((d) => d.owner === me).length === 3 && me.status.cloak > 0, 'ilusão sem 3 cópias/camuflagem');
+  for (const k in me.cd) me.cd[k] = 0; me.action = null;
+  f.x = me.x + 50; f.y = me.y; f.kx = f.ky = 0;
+  const x0 = f.x, hp = f.hp;
+  assert(cast(w, me, 'tidalWave'), 'não lançou a onda');
+  let crash = false, maxR = 0;
+  for (let k = 0; k < 2 / DT; k++) {
+    w.step(DT);
+    for (const p of w.projectiles) if (p.kind === 'wave') maxR = Math.max(maxR, p.r);
+    for (const e of w.drainEvents()) if (e.type === 'waveCrash') crash = true;
+  }
+  assert(maxR > 20, `a onda não cresceu (${maxR.toFixed(1)})`);
+  assert(f.x - x0 > 60, `a onda não carregou o inimigo (${(f.x - x0).toFixed(0)} px)`);
+  assert(crash && f.hp < hp - 14, 'a onda não arrebentou / dano fraco');
 });
 
 test('Mantifolha: Salto Longo atravessa obstáculos e inimigos (invulnerável no ar)', () => {

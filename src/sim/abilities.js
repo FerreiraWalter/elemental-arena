@@ -334,12 +334,14 @@ export const ABILITIES = {
     onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 130; m.ky += Math.sin(a.aim) * 130; },
     ...melee({ reach: 18, arc: 1.9, dmg: 15, kb: 240, stun: 0.25, extra: { wet: 3 } }),
   },
+  // Maré Esmagadora: uma onda de verdade. Nasce do tamanho do monstro, CRESCE enquanto avança, CARREGA quem
+  // pega (arrastando junto, inclusive contra paredes) e ARREBENTA no fim do caminho num estouro de água.
   tidalWave: {
     id: 'tidalWave', name: 'Maré Esmagadora', element: 'water', kind: 'projectile',
-    cooldown: 7, windup: 0.45, active: 0.05, recovery: 0.35, superArmor: true,
-    move: [0.2, 0.2, 0.6], turn: [5, 0], range: 200, speed: 170, wave: true,
+    cooldown: 8.5, windup: 0.45, active: 0.05, recovery: 0.4, superArmor: true,
+    move: [0.2, 0.2, 0.6], turn: [5, 0], range: 250, speed: 235, wave: true,
     onActiveStart(w, m, a) {
-      w.spawnProjectile({ kind: 'wave', owner: m, ang: a.aim, speed: 170, r: 12, range: 200, dmg: 12, pierce: true, x: m.x + Math.cos(a.aim) * (m.r + 6), y: m.y + Math.sin(a.aim) * (m.r + 6), aimPoint: a.aimPoint });
+      w.spawnProjectile({ kind: 'wave', owner: m, ang: a.aim, speed: 235, r: 14, r0: 14, rMax: 25, carryMax: 0.4, range: 250, dmg: 11, pierce: true, x: m.x + Math.cos(a.aim) * (m.r + 6), y: m.y + Math.sin(a.aim) * (m.r + 6), aimPoint: a.aimPoint });
     },
   },
   bubbleShield: {
@@ -710,6 +712,11 @@ ABILITIES.quillStorm = {
   ...ABILITIES.infernoBreath, id: 'quillStorm', name: 'Tempestade de Espinhos', len: 78, range: 78, heat: 0,
   onActiveTick(w, m, a, dt) { ABILITIES.flameWave.coneTick.call(this, w, m, a, dt, 1.8); },
 };
+// Ilusão de Tinta do Leviapus: três cópias que atiram e camuflagem um pouco maior.
+ABILITIES.krakenIllusion = {
+  ...ABILITIES.inkCloud, id: 'krakenIllusion', name: 'Ilusão de Tinta', cooldown: 12,
+  onActiveStart(w, m) { illusion(w, m, 32, 3, 1.8); },
+};
 ABILITIES.volcanoRush = {
   ...ABILITIES.blazeRush, id: 'volcanoRush', name: 'Investida Vulcânica', cooldown: 9, dash: { speed: 380 }, range: 150, recovery: 0.5,
   onEnd(w, m, a) { eruption(w, m, a, 30, 12); },
@@ -788,7 +795,7 @@ const DESC = {
   heavyHop: 'Esquiva mais lenta de recarregar (pouca defesa).',
   abyssBolt: 'Jato mais rápido e de maior alcance.',
   abyssPincer: 'Pinçada que empurra longe e encharca.',
-  tidalWave: 'Onda larga que atravessa e arrasta o inimigo.',
+  tidalWave: 'ONDA que cresce enquanto avança, CARREGA quem pegar (até contra paredes) e arrebenta no fim.',
   bubbleShield: 'Bolha que absorve 30 de dano por 5 s.',
   abyssCurrent: 'Esquiva longa que molha o caminho.',
   thornShot: 'Espinho que faz brotar espinheiro onde cai.',
@@ -819,6 +826,7 @@ ABILITIES.volcanoRush.desc = 'Investida com rastro de fogo que explode ao termin
 ABILITIES.bubbleShot.desc = 'Bolhas que molham o alvo e apagam o fogo.';
 ABILITIES.tentacleSlap.desc = 'Chicotada larga com tentáculos; encharca.';
 ABILITIES.inkCloud.desc = 'Nuvem de tinta + 2 CÓPIAS falsas; você fica camuflado até atacar.';
+ABILITIES.krakenIllusion.desc = 'Nuvem de tinta + 3 CÓPIAS que correm e atiram; você fica camuflado até atacar.';
 ABILITIES.jetDash.desc = 'Esquiva a jato que deixa uma cópia sua seguindo o caminho antigo.';
 ABILITIES.tentacleSweep.desc = 'Varredura ampla que empurra longe.';
 ABILITIES.krakenGrip.desc = 'Agarra o inimigo, puxa e o prende por 1,5 s.';

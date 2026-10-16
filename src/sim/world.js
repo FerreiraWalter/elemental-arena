@@ -971,6 +971,17 @@ export class World {
       const seg = Math.hypot(p.x - ox, p.y - oy);
       if (p.kind === 'wave') {
         for (let s = 0; s <= seg; s += 4) this.douseArea(ox + (p.x - ox) * (s / (seg || 1)), oy + (p.y - oy) * (s / (seg || 1)), 9, 6, p.owner);
+        // Cresce enquanto avança e carrega quem já pegou (enquanto o alvo estiver na frente dela).
+        if (p.rMax) p.r = p.r0 + (p.rMax - p.r0) * Math.min(1, (p.traveled + seg) / 110);
+        if (p.hitSet) for (const m of this.monsters) {
+          if (!m.alive || m.team === p.team || !p.hitSet.has(m.id) || m.status.invuln > 0 || Sig.isGuarding(m)) continue;
+          p.carry ||= {};
+          const ct = p.carry[m.id] || 0;
+          if (ct > (p.carryMax || 0) || Math.hypot(m.x - p.x, m.y - p.y) > p.r + m.r + 4) continue;
+          p.carry[m.id] = ct + dt;
+          const k = 0.92 / Math.max(1, m.def.mass * 0.8);
+          m.kx = p.vx * k; m.ky = p.vy * k;
+        }
       }
       if (p.kind === 'waterBolt') {
         for (let s = 0; s <= seg; s += 4) this.douseTile(this.terrain.at(ox + (p.x - ox) * (s / (seg || 1)), oy + (p.y - oy) * (s / (seg || 1))), 4, p.owner);
@@ -1039,7 +1050,7 @@ export class World {
       if (o) this.hurtObstacle(o, p.dmg * 0.5);
       this.sprout(p.x - Math.cos(Math.atan2(p.vy, p.vx)) * 6, p.y - Math.sin(Math.atan2(p.vy, p.vx)) * 6, p.kind === 'thorn' ? T.THORNS : T.GRASS, p.owner);
     } else if (p.kind === 'wave') {
-      this.douseArea(p.x, p.y, 18, 8, p.owner);
+      this.waveCrash(p);
     } else {
       if (o) { this.hurtObstacle(o, p.dmg * 0.5); if (o.burning > 0) this.douseObstacle(o, p.owner); }
       this.douseArea(p.x, p.y, 12, 6, p.owner);
@@ -1052,7 +1063,20 @@ export class World {
     else if (p.kind === 'magma') this.igniteArea(p.x, p.y, 9, 2.2, p.owner);
     else if (p.kind === 'seed') this.sprout(p.x, p.y, T.GRASS, p.owner);
     else if (p.kind === 'thorn') this.sprout(p.x, p.y, T.THORNS, p.owner);
-    else this.douseArea(p.x, p.y, p.kind === 'wave' ? 18 : 12, 6, p.owner);
+    else if (p.kind === 'wave') this.waveCrash(p);
+    else this.douseArea(p.x, p.y, 12, 6, p.owner);
+  }
+
+  // A onda arrebenta: estouro de água que atinge quem estiver perto (inclusive quem ela carregou).
+  waveCrash(p) {
+    const ang = Math.atan2(p.vy, p.vx), R = p.r + 10;
+    this.emit({ type: 'waveCrash', x: p.x, y: p.y, r: R, ang, src: p.owner });
+    for (const m of this.monsters) {
+      if (!m.alive || m.team === p.team || Math.hypot(m.x - p.x, m.y - p.y) > R + m.r) continue;
+      this.damage(m, 5, p.owner, { tag: 'tidalWave', element: 'water', wet: 3, kb: 240, ang, stun: 0.2, proj: true });
+    }
+    this.popDecoysIn(p.x, p.y, R, p.team);
+    this.douseArea(p.x, p.y, R, 8, p.owner);
   }
 
   explodeMeteor(p) {

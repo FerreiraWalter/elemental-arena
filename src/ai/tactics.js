@@ -162,7 +162,7 @@ export const TACTICS = {
     return { score: 0.7 + (c.tBusy ? 0.2 : 0), target: c.t };
   },
   tidalWave(c) {
-    if (!c.vis || c.d < 25 || c.d > 190) return null;
+    if (!c.vis || c.d < 25 || c.d > 240) return null;
     return { score: 0.62 + (c.d < 70 ? 0.2 : 0) + (c.tBusy ? 0.2 : 0) + (c.embersIncoming ? 0.15 : 0), target: c.t };
   },
   bubbleShield(c) {
@@ -221,6 +221,7 @@ export const TACTICS = {
   },
   jetDash(c) { return TACTICS.shellRoll(c); },
   krakenJet(c) { return TACTICS.shellRoll(c); },
+  krakenIllusion(c) { return TACTICS.inkCloud(c); },
   // Bolha Prisão: como as raízes, melhor em alvo lento, parado ou canalizando.
   bubbleTrap(c) {
     if (c.d < 40 || c.d > 190 || c.sinceSeen > 0.8 || c.t.status.root > 0 || c.tGuarding) return null;

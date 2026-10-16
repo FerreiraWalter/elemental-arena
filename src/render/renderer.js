@@ -265,6 +265,13 @@ export class Renderer {
           this.shake = Math.max(this.shake, e.big ? 6 : 3);
           if (e.big) this.hitstop = Math.max(this.hitstop, 0.06);
           break;
+        case 'waveCrash':
+          P.burst(e.x, e.y, 44, { ramp: 'water', speed: 150, life: 0.7, vz: 120, g: 240, size: 2 });
+          P.burst(e.x + Math.cos(e.ang) * 10, e.y + Math.sin(e.ang) * 10, 16, { ramp: 'steam', speed: 60, life: 0.8, size: 3, grow: 3, alpha: 0.7 });
+          this.rings.push({ x: e.x, y: e.y, r: 6, max: e.r + 6, t: 0, color: '#e8f8ff', thick: true });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r - 4, t: 0, color: '#5ab4ff', thick: true });
+          this.shake = Math.max(this.shake, 5);
+          break;
         case 'whirlBurst':
           P.burst(e.x, e.y, 34, { ramp: 'water', speed: 140, life: 0.5, vz: 50, g: 200, size: 2 });
           this.rings.push({ x: e.x, y: e.y, r: 8, max: e.r + 8, t: 0, color: '#e8f8ff', thick: true });
@@ -1065,16 +1072,7 @@ export class Renderer {
         this.particles.add({ ramp: 'fire', x, y, vx: -p.vx * 0.1 + (Math.random() - 0.5) * 20, vy: -p.vy * 0.1 + (Math.random() - 0.5) * 20, life: 0.4, add: true, size: 2 });
         if (Math.random() < 0.3) this.particles.add({ ramp: 'smoke', x, y, z: 2, vz: 10, life: 0.8, size: 2, grow: 2, alpha: 0.4 });
       } else if (p.kind === 'wave') {
-        const ang = Math.atan2(p.vy, p.vx), ca = Math.cos(ang), sa = Math.sin(ang);
-        const W = [rgba('#ffffff'), rgba('#c8f0ff'), rgba('#5ab4ff'), rgba('#1f62c0')];
-        for (let q = -p.r; q <= p.r; q += 0.6) {
-          const curl = Math.round(Math.cos((q / p.r) * Math.PI * 0.5) * 6);
-          for (let s = -3; s <= curl; s++) {
-            const ci = s >= curl - 1 ? 0 : s > curl - 3 ? 1 : s > 0 ? 2 : 3;
-            g.set(x + ca * s - sa * q, y + sa * s + ca * q - 2, W[ci]);
-          }
-        }
-        if (Math.random() < 0.8) this.particles.add({ ramp: 'water', x: x - sa * (Math.random() - 0.5) * p.r * 2, y: y + ca * (Math.random() - 0.5) * p.r * 2, vz: 40, g: 160, life: 0.4 });
+        this.drawWave(g, p, x, y, t);
       } else if (p.kind === 'thorn') {
         const an = Math.atan2(p.vy, p.vx), ca = Math.cos(an), sa = Math.sin(an);
         const S = [rgba('#2a1a0a'), rgba('#5a3a1a'), rgba('#c8b890'), rgba('#7ad84a')];
@@ -1247,7 +1245,8 @@ export class Renderer {
     for (const h of world.hazards) if (h.kind === 'geyser' && h.phase === 'active') { g.globalAlpha = 0.6; g.drawImage(this.glows.blue, h.x - 20, h.y - 40, 40, 50); }
     for (const p of world.projectiles) {
       g.globalAlpha = 0.9;
-      if (p.kind === 'waterBolt' || p.kind === 'wave') g.drawImage(this.glows.blue, p.x - 9, p.y - 9, 18, 18);
+      if (p.kind === 'wave') { g.globalAlpha = 0.6; g.drawImage(this.glows.blue, p.x - p.r * 1.6, p.y - p.r * 1.6 - 6, p.r * 3.2, p.r * 3.2); }
+      else if (p.kind === 'waterBolt') g.drawImage(this.glows.blue, p.x - 9, p.y - 9, 18, 18);
       else if (p.kind === 'seed' || p.kind === 'thorn' || p.kind === 'roots') continue;
       else g.drawImage(this.glows.fire, p.x - 10, (p.lob ? p.y - p.h : p.y) - 10, 20, 20);
     }
@@ -1574,6 +1573,42 @@ export class Renderer {
       if (Math.random() < 0.08) this.particles.add({ ramp: 'leafFall', x: cx + (Math.random() - 0.5) * 10, y: cy, z: 4, vz: -6, vx: 6, life: 1 });
     }
     if (Math.random() < 0.5) this.particles.add({ ramp: 'dust', x: x + (Math.random() - 0.5) * mw * 2, y, z: 1, vz: 20, vx: (Math.random() - 0.5) * 20, life: 0.35, g: 90 });
+  }
+
+  // Maré Esmagadora: onda alta em 3/4. Corpo em degradê (fundo escuro → crista clara), lábio de espuma que
+  // enrola para a frente, sombra molhada no chão e borrifos. Cresce junto com o raio da onda.
+  drawWave(g, p, x, y, t) {
+    const ang = Math.atan2(p.vy, p.vx), ca = Math.cos(ang), sa = Math.sin(ang);
+    const R = p.r, bend = R * 0.85, thick = 6 + R * 0.45;
+    const DEEP = rgba('#174e9e'), MID = rgba('#2f7fd0'), LIGHT = rgba('#6cc0f0'), PALE = rgba('#bfe8ff'), FOAM = rgba('#ffffff');
+    const P = (s2, q, c, lift = 0) => g.set(x + ca * s2 - sa * q, y + sa * s2 + ca * q - lift, c);
+    for (let q = -R; q <= R; q += 0.5) {
+      const a2 = Math.abs(q) / R, taper = Math.sqrt(Math.max(0, 1 - a2 * a2));
+      // Meia-lua bem curvada: o centro vai na frente; a espessura afina até zero nas pontas.
+      const front = bend * taper - bend * 0.4, th = thick * Math.pow(taper, 0.7), back = front - th;
+      // Esteira: água espalhada atrás da onda, sumindo aos poucos.
+      for (let s2 = back - R * 0.9; s2 < back; s2 += 1) {
+        const f = (back - s2) / (R * 0.9);
+        if (hash2((s2 * 2) | 0, (q * 2) | 0, Math.floor(t * 10)) < 0.55 * (1 - f) * taper) P(s2, q, f < 0.4 ? rgba('#3a8ad8', 170) : rgba('#7cc8f0', 110));
+      }
+      for (let s2 = back; s2 <= front; s2 += 0.5) {
+        const k = (s2 - back) / (th || 1);
+        const stripe = Math.sin(s2 * 0.6 + q * 0.35 - t * 14);
+        let c;
+        if (k > 0.82) c = FOAM;
+        else if (k > 0.62) c = stripe > 0.1 ? FOAM : PALE;
+        else if (k > 0.35) c = stripe > 0 ? LIGHT : MID;
+        else c = stripe > 0.45 ? MID : DEEP;
+        P(s2, q, c, Math.round(taper * 2 * Math.sin(k * Math.PI)));
+      }
+      // Espuma estourando logo à frente da crista.
+      for (let d = 1; d <= 3; d++) if (hash2((q * 5) | 0, d, Math.floor(t * 16)) > 0.6 - d * 0.08) P(front + d, q, d === 1 ? FOAM : PALE);
+    }
+    // Borrifos da crista.
+    for (let k = 0; k < 2; k++) {
+      const q = (Math.random() - 0.5) * R * 1.4;
+      this.particles.add({ ramp: 'water', x: x + ca * bend * 0.5 - sa * q, y: y + sa * bend * 0.5 + ca * q, z: 4, vx: ca * 70 + (Math.random() - 0.5) * 30, vy: sa * 70 + (Math.random() - 0.5) * 20, vz: 30 + Math.random() * 40, g: 200, life: 0.45 });
+    }
   }
 
   // Tentáculo do abismo: sobe rápido, balança curvando a ponta e afunda.
