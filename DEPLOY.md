@@ -51,3 +51,11 @@ O link "Copiar link" da sala preserva esse parâmetro. No servidor, restrinja qu
 - Sem predição no cliente: o atraso dos comandos é o ping até o servidor (+ ~50 ms). Hospede perto dos jogadores (ex.: região de São Paulo).
 - Sem contas: o nome é apenas um apelido e a reconexão usa um token efêmero guardado só na memória da página (recarregar a aba o descarta).
 - Use sempre **HTTPS** em produção (páginas `https://` só abrem `wss://`; o jogo já escolhe sozinho).
+
+## Jogar com amigos pelo seu PC (Tailscale)
+Menor ping possível quando os amigos moram perto de você: o servidor roda na sua máquina e a conexão é direta.
+1. Todos instalam o **Tailscale** (tailscale.com/download) e entram na **mesma rede**: você convida cada amigo pelo painel do Tailscale (*Users* → *Invite*) ou compartilha o seu PC com eles (*Machines* → seu PC → *Share*).
+2. No seu PC, dê dois cliques em `jogar-local.bat` (ou `npm start`). Ele mostra o endereço, do tipo `http://100.x.y.z:8140`.
+3. Os amigos abrem esse endereço no navegador, escolhem o time e entram na sala (o link de convite da sala também funciona).
+4. O PC precisa ficar ligado com a janela aberta. Na primeira vez, permita o Node no Firewall do Windows (rede privada).
+O `ws://` sobre `http://` funciona normalmente dentro do Tailscale; não precisa de HTTPS nem de abrir portas no roteador.
