@@ -7,6 +7,7 @@ import { ABILITIES } from '../src/sim/abilities.js';
 import { SIG } from '../src/sim/signature.js';
 import { serialize, makeSyncCtx, applySnapshot } from '../src/net/snapshot.js';
 import { createMirror } from '../src/net/mirror.js';
+import * as Training from '../src/sim/training.js';
 
 const results = [];
 const test = (name, fn) => { try { fn(); results.push({ name, ok: true }); } catch (e) { results.push({ name, ok: false, err: e.stack?.split('\n').slice(0, 2).join(' | ') }); } };
@@ -347,6 +348,37 @@ test('Erupção: quem levou a investida recebe só metade da explosão (sem dano
 
 test('Golpes corpo a corpo têm alcance e arco declarados (o desenho usa os mesmos números)', () => {
   for (const ab of Object.values(ABILITIES)) if (ab.kind === 'melee') assert(ab.reach > 0 && ab.arc > 0, `${ab.id} sem alcance/arco`);
+});
+
+// ───────────── Modo Treinamento ─────────────
+test('Treinamento: bonecos, vida infinita, evolução e opções', () => {
+  const w = World.training(4, ['brasalisco', 'gotapus'], 'quadra', { dummies: 3 });
+  assert(w.training.dummies.length === 3, 'não criou 3 bonecos');
+  Training.setDummies(w, 9);
+  assert(w.training.dummies.length === 3, 'passou de 3 bonecos');
+  Training.setDummies(w, 1);
+  assert(w.training.dummies.length === 1 && w.monsters.filter((m) => m.dummy).length === 1, 'não removeu bonecos');
+  step(w, 0.8);
+  const me = w.fieldOf(0), d = w.training.dummies[0];
+  w.damage(d, 99999, me, { element: 'fire' });
+  assert(d.alive && d.hp >= 1, 'boneco morreu');
+  step(w, 1.5);
+  assert(d.hp === d.maxHp, 'boneco não recuperou a vida');
+  assert(Training.meter(w).sum > 0, 'medidor não registrou o dano');
+  w.damage(me, 99999, d, { element: 'plant' });
+  assert(me.alive && me.hp >= 1, 'seu monstro caiu no treino');
+  step(w, 0.2);
+  assert(me.energy >= EVOLUTION.threshold && w.requestEvolve(me), 'energia não fica cheia para evoluir');
+  step(w, 1.5);
+  assert(me.evolved && Training.devolve(w, me) && !me.evolved && me.def.key === 'brasalisco', 'não voltou à forma base');
+  w.training.opts.noCd = true; me.cd.meteor = 9; step(w, 0.05);
+  assert(me.cd.meteor === 0, 'recarga instantânea não funcionou');
+  w.training.opts.shoot = true;
+  let shots = 0;
+  for (let k = 0; k < 4 / DT; k++) { w.step(DT); for (const e of w.drainEvents()) if (e.type === 'dummyShot') shots++; }
+  assert(shots >= 1, 'boneco não atirou');
+  step(w, 200);
+  assert(!w.over && !w.suddenDeath, 'o treino terminou ou entrou em morte súbita');
 });
 
 // ───────────── Rede ─────────────

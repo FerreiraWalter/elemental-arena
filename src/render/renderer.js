@@ -2,20 +2,20 @@ import { WORLD_W, WORLD_H, TILE, COLS, SWITCH, EVOLUTION } from '../config.js';
 import { hash2, valueNoise, clamp } from '../core/math.js';
 import { props } from '../sim/tiles.js';
 import { PixelBuf, rgba, makeCanvas } from './pixel.js';
-import { drawBrasalisco, drawHidrocasco, drawBrotossauro, rockSprite, crateSprite, bushSprite, stumpSprite } from './sprites.js';
+import { drawBrasalisco, drawHidrocasco, drawBrotossauro, drawDummy, rockSprite, crateSprite, bushSprite, stumpSprite } from './sprites.js';
 import { ArtSprites } from './artsprites.js';
 import { paintTile, paintWalls, paletteFor } from './terrainpaint.js';
 import { pillarSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient, sentrySprite } from './scenery.js';
 import { Particles } from './particles.js';
 import { drawHud } from './hud.js';
 
-const SPRITE_FN = { brasalisco: drawBrasalisco, hidrocasco: drawHidrocasco, brotossauro: drawBrotossauro };
+const SPRITE_FN = { brasalisco: drawBrasalisco, hidrocasco: drawHidrocasco, brotossauro: drawBrotossauro, dummy: drawDummy };
 export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3'];
 const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070' };
 export const TEAM_COLOR = ['#ffd23a', '#ff4a5a'];
 // Cor do seu lado é sempre dourada (no online, quem joga no lado B vê as cores trocadas).
 export function setPerspective(side) { TEAM_COLOR[0] = side === 0 ? '#ffd23a' : '#ff4a5a'; TEAM_COLOR[1] = side === 0 ? '#ff4a5a' : '#ffd23a'; }
-export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a' };
+export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', neutral: '#d8c08a' };
 const ROOT = [rgba('#4a2e16'), rgba('#6e4624'), rgba('#94653a'), rgba('#5aa83c'), rgba('#84c858')];
 const FLAME = ['#fff7c2', '#ffd84a', '#ff9a1f', '#f2541b', '#b3200f'].map((h) => rgba(h));
 const EMBER = [rgba('#7a1e0a', 200), rgba('#b3300f', 220), rgba('#e0561a', 230), rgba('#ff8a2a', 240)];
@@ -54,6 +54,13 @@ export class Renderer {
     this.showNumbers = true;
   }
 
+  // Estado visual de cada monstro (criado sob demanda: bonecos de treino entram depois do início).
+  ms(m) {
+    let st = this.mon.get(m.id);
+    if (!st) { st = { pb: new PixelBuf(48, 48), walk: 0, lagHp: m.hp, ghosts: [], ghostT: 0, seed: m.id * 7, top: 30, wob: 0 }; this.mon.set(m.id, st); }
+    return st;
+  }
+
   // Carrega a arte dos monstros (assets/monsters). Se falhar, usa os sprites procedurais.
   loadArt() { return this.art.load(ART_NAMES); }
 
@@ -73,7 +80,7 @@ export class Renderer {
     this.decoySt = new Map();
     this.rootFx = []; // jaulas de raízes (Brotossauro)
     this.tentFx = []; // tentáculos do abismo (Leviapus)
-    for (const m of world.roster) this.mon.set(m.id, { pb: new PixelBuf(48, 48), walk: 0, lagHp: m.hp, ghosts: [], ghostT: 0, seed: m.id * 7, top: 30 });
+    for (const m of world.roster) this.ms(m);
     this.palette = paletteFor(world);
     this.obsSprites = new Map();
     this.stump = stumpSprite();
@@ -146,6 +153,7 @@ export class Renderer {
           break;
         case 'hit': {
           const fire = e.element === 'fire';
+          if (e.m?.dummy) { const st = this.ms(e.m); st.wob = Math.min(1.4, st.wob + (e.dot ? 0.05 : e.big ? 1 : 0.6)); }
           if (!this.showNumbers) { if (e.dot) break; } else this.nums.push({ x: e.m.x + (Math.random() - 0.5) * 8, y: e.m.y - 22, v: e.amount, t: 0, color: e.blocked ? '#c8e8ff' : fire ? '#ffb347' : e.element === 'water' ? '#8fd8ff' : e.element === 'plant' ? '#a8f080' : '#ffffff', small: e.dot || e.blocked, big: !e.dot && e.amount >= 14 });
           if (!e.dot) {
             P.burst(e.x, e.y - 4, e.big ? 18 : 9, { ramp: fire ? 'spark' : e.element === 'plant' ? 'leaf' : 'water', speed: e.big ? 90 : 60, life: 0.35, add: fire });
@@ -428,6 +436,13 @@ export class Renderer {
         case 'suddenDeath':
           this.addText({ x: 320, y: 120, text: 'MORTE SÚBITA!', t: 0, color: '#ff6a6a', big: true });
           this.flash = 0.1; this.excite = 1;
+          break;
+        case 'devolve':
+          this.addText({ x: e.x, y: e.y - 34, text: 'FORMA BASE', t: 0, color: '#e8b8ff' });
+          this.rings.push({ x: e.x, y: e.y, r: 20, max: 4, t: 0, color: '#e8b8ff', thick: true });
+          break;
+        case 'dummyShot':
+          P.burst(e.x, e.y - 8, 4, { ramp: 'dust', speed: 30, life: 0.3 });
           break;
         case 'castDenied':
           if (e.m === this.world.active) this.denySlot = { slot: e.slot, reason: e.reason, t: 0.45 };
@@ -787,16 +802,18 @@ export class Renderer {
     const tr = this.world.terrain;
     if (m.element === 'fire' && tr.fire[tr.at(m.x, m.y)] > 0) pose.power = Math.max(pose.power, 0.4);
     if (m.status.overheat > 0) pose.power = Math.max(pose.power, 1);
+    if (m.dummy) pose.wobble = st.wob;
     if (m.status.exhaust > 0) pose.crouch = Math.max(pose.crouch, 0.5);
     if (a?.ab.kind === 'guard' && ph === 'active') pose.crouch = 1;
     return pose;
   }
 
   drawMonster(m, alpha, dt, t) {
-    const st = this.mon.get(m.id);
+    const st = this.ms(m);
     const l = this.l;
     const p = this.lerpPos(m, alpha);
     st.walk += Math.hypot(m.vx, m.vy) * dt * 0.28;
+    if (st.wob > 0) st.wob = Math.max(0, st.wob - dt * 1.6);
     const pose = this.pose(m, st, t);
     // Evolução: brilho pulsante antes da troca de forma; depois a forma nova cresce do clarão.
     let evoK = -1;
@@ -943,7 +960,7 @@ export class Renderer {
     SPRITE_FN[m.def.line || m.def.key](pb, pose);
     if (pose.flash) pb.fill(rgba('#ffffff'));
     if (pose.tint) pb.tint(pose.tint[0], pose.tint[1]);
-    return { canvas: pb.commit(), w: 48, h: 48, ax: 24, ay: 38, faces: 1, top: 26 };
+    return { canvas: pb.commit(), w: 48, h: 48, ax: 24, ay: 38, faces: 1, top: m.dummy ? 32 : 26 };
   }
 
   blitFrame(f, x, y, face, hScale, wScale, rot) {
@@ -1292,7 +1309,7 @@ export class Renderer {
   }
 
   drawOverhead(m, alpha, dt) {
-    const st = this.mon.get(m.id);
+    const st = this.ms(m);
     st.lagHp += (m.hp - st.lagHp) * Math.min(1, dt * 3);
     if (!m.alive) return;
     if (m.status.cloak > 0 && this.isFoe(m)) return; // camuflado: sem barra de vida para o inimigo

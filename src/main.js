@@ -8,6 +8,7 @@ import { NetClient, serverUrls, inviteCode } from './net/client.js';
 import { createMirror } from './net/mirror.js';
 import { NetSmoother } from './net/smooth.js';
 import { sfx } from './audio/sfx.js';
+import * as Training from './sim/training.js';
 
 // Fluxo: carregando → menu (time → arena | multiplayer → sala) → batalha → pausa/fim.
 // Batalha LOCAL: passo fixo de 1/60 s (a simulação roda no navegador, contra a IA).
@@ -20,6 +21,7 @@ const renderer = new Renderer(canvas);
 renderer.sfx = sfx;
 const HELP_KEY = 'ea-ajuda-vista';
 let helpFirst = false; // ajuda aberta automaticamente na primeira partida
+let trainingOpts = null; // opções do treino (bonecos, tiros, recargas) mantidas entre sessões
 const hud = { dpr: 1, speed: 1, paused: false, started: true };
 const keys = new Set();
 const mouse = { x: 0, y: 0, inside: false };
@@ -200,7 +202,9 @@ function startBattle(cfg) {
   online = false;
   const enemy = [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3);
   const seed = (Math.random() * 1e6) | 0;
-  world = World.match(seed, [cfg.team, enemy], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty);
+  // Treinamento: seus monstros contra bonecos de pano (mantém as opções da sessão anterior de treino).
+  if (cfg.training) world = World.training(seed, cfg.team, cfg.arena, trainingOpts || {});
+  else world = World.match(seed, [cfg.team, enemy], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty);
   setPerspective(0);
   renderer.reset(world);
   mode = 'battle';
@@ -215,6 +219,14 @@ function startBattle(cfg) {
   try { seen = !!localStorage.getItem(HELP_KEY); } catch { /* sem armazenamento */ }
   if (!seen && !cfg.spectator && !params.has('autostart')) openHelp(true);
 }
+
+function trainingPanel() {
+  if (mode !== 'battle' || !world.training) return;
+  overlay = 'training';
+  ui.focus = 0;
+  hud.paused = true;
+}
+function saveTrainingOpts() { if (world?.training) trainingOpts = { ...world.training.opts }; }
 
 function openHelp(first = false) {
   if (mode !== 'battle' || world.playerTeam === null) return;
@@ -255,6 +267,11 @@ const overlayActions = {
   backToRoom: () => net?.send({ t: 'rematch' }),
   isHost: () => ui.mp.room && ui.mp.room.host === ui.mp.myId,
   closeHelp: () => closeHelp(),
+  trainingPanel: () => trainingPanel(),
+  trainingDummies: (n) => { Training.setDummies(world, n); saveTrainingOpts(); },
+  trainingToggle: (k) => { world.training.opts[k] = !world.training.opts[k]; saveTrainingOpts(); },
+  trainingEvolve: () => { const m = world.active; if (m && world.requestEvolve(m)) { overlay = null; hud.paused = false; } },
+  trainingDevolve: () => { const m = world.active; if (m) Training.devolve(world, m); },
   get firstTime() { return helpFirst; },
 };
 
@@ -311,6 +328,7 @@ window.addEventListener('keydown', (e) => {
   if (mode !== 'battle') return;
   if (overlay) {
     if (!e.repeat && overlay === 'help' && (e.code === 'Escape' || e.code === 'KeyH' || e.code === 'KeyP')) closeHelp();
+    else if (!e.repeat && overlay === 'training' && (e.code === 'Escape' || e.code === 'KeyT' || e.code === 'KeyP')) overlayActions.resume();
     else if (!e.repeat && (e.code === 'Escape' || e.code === 'KeyP') && (overlay === 'pause' || overlay === 'online')) overlayActions.resume();
     else if (!e.repeat) ui.keyDown(e.code);
     return;
@@ -329,6 +347,8 @@ window.addEventListener('keydown', (e) => {
     ui.focus = 0;
     if (online) sendInput(performance.now(), true);
   } else if (e.code === 'KeyH' && playing) openHelp();
+  else if (e.code === 'KeyT' && world.training) trainingPanel();
+  else if (e.code === 'KeyB' && world.training) { Training.setDummies(world, (world.training.opts.dummies % 3) + 1); saveTrainingOpts(); }
   else if (e.code === 'KeyI') renderer.debug = !renderer.debug;
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
@@ -436,7 +456,7 @@ function frame(now) {
       }
       if (world.over) { overT += dt; if (overT > 1.5) { overlay = 'end'; ui.focus = 0; } }
     }
-    renderer.render(world, Math.min(1, acc / DT), overlay === 'pause' || overlay === 'help' ? 0 : dt * hud.speed, hud);
+    renderer.render(world, Math.min(1, acc / DT), overlay === 'pause' || overlay === 'help' || overlay === 'training' ? 0 : dt * hud.speed, hud);
     if (overlay) {
       const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
       ui.time += dt;

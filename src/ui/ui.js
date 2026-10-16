@@ -267,10 +267,12 @@ export class UI {
       text(c, base.name.toUpperCase(), mx, my + 14 * u, fitSize(c, base.name.toUpperCase(), 6, gap - 4 * u, u), ELEMENT_COLOR[base.element], 'center', u);
     });
     const bw = 230 * u, bh = 28 * u;
-    let by = H * 0.56;
+    let by = H * 0.53;
     this.button(cx - bw / 2, by, bw, bh, 'JOGAR CONTRA A IA', () => { this.team = []; this.flow = 'local'; this.go('team'); }, { size: 10 });
     by += bh + 8 * u;
     this.button(cx - bw / 2, by, bw, bh, 'MULTIPLAYER ONLINE', () => { this.team = this.team.length === 3 ? this.team : []; this.flow = 'mp'; this.go('team'); }, { color: '#ff8a3a', size: 10 });
+    by += bh + 8 * u;
+    this.button(cx - bw / 2, by, bw, bh, 'TREINAMENTO', () => { this.team = []; this.flow = 'training'; this.go('team'); }, { color: '#d8c08a' });
     by += bh + 8 * u;
     this.button(cx - bw / 2, by, bw, bh, 'MONSTROS', () => this.go('bestiary'), { color: '#7ad84a' });
     by += bh + 8 * u;
@@ -280,8 +282,9 @@ export class UI {
 
   renderTeam(u, W, H) {
     const c = this.c, cx = W / 2;
-    text(c, this.flow === 'mp' ? 'SEU TIME PARA O ONLINE' : 'MONTE SEU TIME', cx, 30 * u, 13, '#ffe9b0', 'center', u);
-    text(c, 'Escolha 3 dos 6 monstros, na ordem em que vão entrar (o 1º começa em campo).', cx, 46 * u, 6, '#d8ccb0', 'center', u);
+    const training = this.flow === 'training';
+    text(c, this.flow === 'mp' ? 'SEU TIME PARA O ONLINE' : training ? 'TREINAMENTO' : 'MONTE SEU TIME', cx, 30 * u, 13, '#ffe9b0', 'center', u);
+    text(c, training ? 'Escolha de 1 a 3 monstros para treinar contra bonecos de pano (troque com 1/2/3).' : 'Escolha 3 dos 6 monstros, na ordem em que vão entrar (o 1º começa em campo).', cx, 46 * u, 6, '#d8ccb0', 'center', u);
     const gap = 8 * u, top = 56 * u, btnH = 28 * u, btnY = H - btnH - 10 * u, orderH = 30 * u;
     const avail = btnY - orderH - 10 * u - top;
     const ch = Math.floor((avail - gap) / 2);
@@ -340,7 +343,7 @@ export class UI {
     }
     this.button(cx - 250 * u, btnY, 150 * u, btnH, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
     this.button(cx - 75 * u, btnY, 150 * u, btnH, 'ALEATÓRIO', () => { this.team = [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3); }, { color: '#e8b8ff' });
-    this.button(cx + 100 * u, btnY, 150 * u, btnH, 'CONTINUAR', () => this.go(this.flow === 'mp' ? 'mp' : 'arena'), { disabled: this.team.length !== 3 });
+    this.button(cx + 100 * u, btnY, 150 * u, btnH, 'CONTINUAR', () => this.go(this.flow === 'mp' ? 'mp' : 'arena'), { disabled: training ? this.team.length < 1 : this.team.length !== 3 });
   }
 
   // ───────────── Multiplayer: criar / entrar em sala ─────────────
@@ -469,7 +472,8 @@ export class UI {
     const desc = A ? A.description : 'Clique em uma arena para selecioná-la.';
     wrap(c, desc, 5.5, Math.min(W - 40 * u, 700 * u), u).slice(0, 2).forEach((ln, k) => text(c, ln, cx, bottom + 16 * u + k * 10 * u, 5.5, '#e8dcc0', 'center', u));
     this.button(cx - 170 * u, btnY, 150 * u, btnH, 'VOLTAR', () => this.go('team'), { back: true, color: '#aa9' });
-    this.button(cx + 20 * u, btnY, 150 * u, btnH, 'LUTAR!', () => this.hooks.startBattle({ team: [...this.team], arena: this.arena }), { disabled: !this.arena, color: '#ff8a3a' });
+    const tr = this.flow === 'training';
+    this.button(cx + 20 * u, btnY, 150 * u, btnH, tr ? 'TREINAR!' : 'LUTAR!', () => this.hooks.startBattle({ team: [...this.team], arena: this.arena, training: tr }), { disabled: !this.arena, color: tr ? '#d8c08a' : '#ff8a3a' });
   }
 
   renderBestiary(u, W, H) {
@@ -577,6 +581,38 @@ export class UI {
     this.button(cx - 75 * u, H - 40 * u, 150 * u, 28 * u, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
   }
 
+  // Painel do treino (tecla T): bonecos, bonecos que atiram, recargas, evolução e saída.
+  renderTrainingPanel(u, W, H, world, actions) {
+    const c = this.c, cx = W / 2;
+    c.fillStyle = 'rgba(8,4,2,0.78)';
+    c.fillRect(0, 0, W, H);
+    const T = world.training, o = T.opts;
+    const m = world.active;
+    text(c, 'PAINEL DE TREINO', cx, H * 0.2, 14, '#ffe9b0', 'center', u);
+    text(c, 'A partida fica pausada enquanto o painel está aberto.', cx, H * 0.2 + 16 * u, 5.5, '#bba', 'center', u);
+    const bw = 300 * u, bh = 26 * u, x = cx - bw / 2;
+    let y = H * 0.2 + 30 * u;
+    // Bonecos: − n +
+    text(c, `BONECOS DE PANO: ${o.dummies} / 3`, cx, y + 17 * u, 8, '#d8c08a', 'center', u);
+    this.button(x, y, 40 * u, bh, '−', () => actions.trainingDummies(o.dummies - 1), { disabled: o.dummies <= 1, color: '#d8c08a' });
+    this.button(x + bw - 40 * u, y, 40 * u, bh, '+', () => actions.trainingDummies(o.dummies + 1), { disabled: o.dummies >= 3, color: '#d8c08a' });
+    y += bh + 8 * u;
+    this.button(x, y, bw, bh, `BONECOS ATIRAM: ${o.shoot ? 'SIM' : 'NÃO'}`, () => actions.trainingToggle('shoot'), { color: '#46b4ff', size: 8 });
+    y += bh + 8 * u;
+    this.button(x, y, bw, bh, `RECARGAS: ${o.noCd ? 'INSTANTÂNEAS' : 'NORMAIS'}`, () => actions.trainingToggle('noCd'), { color: '#46b4ff', size: 8 });
+    y += bh + 8 * u;
+    if (m && m.def.evolvesTo && !m.evolved) this.button(x, y, bw, bh, `EVOLUIR ${m.name.toUpperCase()} (G)`, actions.trainingEvolve, { color: '#e8b8ff', size: 8, disabled: m.evolveT > 0 || !!m.switchState });
+    else this.button(x, y, bw, bh, 'VOLTAR À FORMA BASE', actions.trainingDevolve, { color: '#e8b8ff', size: 8, disabled: !m || m.evolveT > 0 || !!m.switchState });
+    y += bh + 14 * u;
+    this.button(x, y, bw / 2 - 4 * u, bh, 'CONTINUAR (T)', actions.resume, { color: '#7ad84a' });
+    this.button(x + bw / 2 + 4 * u, y, bw / 2 - 4 * u, bh, 'SAIR DO TREINO', actions.menu, { color: '#aa9' });
+    y += bh + 14 * u;
+    for (const ln of ['Os bonecos têm vida infinita e voltam ao lugar. Seus monstros não caem e se curam sozinhos.', 'No treino a energia fica sempre cheia: aperte G para evoluir a qualquer momento.', 'Atalhos: T painel · B número de bonecos · H ajuda do monstro · 1/2/3 trocar']) {
+      text(c, ln, cx, y, fitSize(c, ln, 5.5, W - 30 * u, u), '#d8ccb0', 'center', u); y += 11 * u;
+    }
+    this.drawButtons(u);
+  }
+
   // Ajuda durante a batalha (tecla H): mecânica do monstro em campo, cada botão e como ler a tela.
   renderHelp(u, W, H, world, actions) {
     const c = this.c, cx = W / 2;
@@ -642,7 +678,9 @@ export class UI {
       text(c, 'PAUSADO', cx, H * 0.32, 16, '#ffe9b0', 'center', u);
       let y = H * 0.4;
       this.button(cx - bw / 2, y, bw, bh, 'CONTINUAR', actions.resume); y += bh + 10 * u;
-      this.button(cx - bw / 2, y, bw, bh, 'REINICIAR PARTIDA', actions.rematch, { color: '#ff8a3a' }); y += bh + 10 * u;
+      if (world.training) this.button(cx - bw / 2, y, bw, bh, 'PAINEL DE TREINO (T)', actions.trainingPanel, { color: '#d8c08a' });
+      else this.button(cx - bw / 2, y, bw, bh, 'REINICIAR PARTIDA', actions.rematch, { color: '#ff8a3a' });
+      y += bh + 10 * u;
       this.button(cx - bw / 2, y, bw, bh, 'MENU PRINCIPAL', actions.menu, { color: '#aa9' });
     } else if (kind === 'online') {
       c.fillStyle = 'rgba(8,4,2,0.55)';
@@ -651,6 +689,9 @@ export class UI {
       let y = H * 0.4;
       this.button(cx - bw / 2, y, bw, bh, 'CONTINUAR', actions.resume); y += bh + 10 * u;
       this.button(cx - bw / 2, y, bw, bh, 'SAIR DA PARTIDA', actions.leaveOnline, { color: '#ff8a3a' });
+    } else if (kind === 'training') {
+      this.renderTrainingPanel(u, W, H, world, actions);
+      return;
     } else if (kind === 'help') {
       this.renderHelp(u, W, H, world, actions);
       return;

@@ -12,6 +12,14 @@ Abra `http://localhost:8140`. O mesmo servidor entrega o jogo e as salas de mult
 - **Jogar sozinho (contra a IA):** Menu → *Jogar contra a IA* → time → arena. Também funciona abrindo o jogo por qualquer servidor estático, mas o multiplayer precisa do `npm start`.
 - **Com amigos:** mesma rede → `http://IP-DO-ANFITRIÃO:8140`; pela internet → veja **[DEPLOY.md](DEPLOY.md)** (Render, Docker/Fly, túnel). Na sala, **Copiar link** gera um convite com o código. Não há contas nem login.
 
+## Modo Treinamento
+Menu → **Treinamento** → escolha de 1 a 3 monstros e a arena. Você treina contra **bonecos de pano com alvo** (até 3), que têm **vida infinita**, reagem aos golpes (balançam, queimam, ficam presos, recebem marcas) e voltam ao lugar. Seus monstros não caem e se curam sozinhos.
+- **G** evolui a qualquer momento (a energia fica sempre cheia no treino).
+- **T** abre o painel: número de bonecos (1 a 3), **bonecos atiram** (para treinar esquiva, Casco Reflexo e reflexo), **recargas instantâneas**, **voltar à forma base** e sair.
+- **B** troca rápido o número de bonecos; **1/2/3** trocam de monstro.
+- No topo: **dano nos últimos 5 s, dano por segundo e o último golpe**.
+- Para ver duas IAs lutando, abra o jogo com `?watch` (ex.: `?watch&arena=abismo`).
+
 ## Multiplayer online
 1. Menu → **Multiplayer online** → escolha seus 3 monstros → **Criar sala 1v1** ou **2v2** (você recebe um código de 4 caracteres, ex.: `K7QM`) — ou digite um código e **Entrar na sala** (aceita minúsculas e Ctrl+V).
 2. Na **sala**: veja jogadores, equipes (A/B), time de cada um e quem está pronto; clique numa vaga livre para sentar nela. O anfitrião (★) muda **modo** (1v1/2v2) e **arena**; mudar a configuração desmarca a prontidão de todos.

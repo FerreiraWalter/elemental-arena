@@ -2,9 +2,10 @@ import { STATE_LABEL } from '../ai/brain.js';
 import { TEAM_COLOR, ELEMENT_COLOR, SIG_COLOR } from './renderer.js';
 import { EVOLUTION } from '../config.js';
 import { SIG } from '../sim/signature.js';
+import { meter } from '../sim/training.js';
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', neutral: 'Treino' };
 const SLOTS = [['primary', 'MOUSE E'], ['melee', 'MOUSE D'], ['q', 'Q'], ['e', 'E'], ['f', 'F'], ['dodge', 'ESPAÇO']];
 
 function text(c, s, x, y, size, color, align = 'left', dpr = 1) {
@@ -96,7 +97,7 @@ function canSwitchTo(world, m) {
 
 // Cartão compacto de um monstro do time (em campo, reserva ou derrotado).
 function card(c, r, world, m, idx, x, y, w, dpr) {
-  const st = r.mon.get(m.id);
+  const st = r.ms(m);
   const h = 54 * dpr, pad = 6 * dpr;
   const field = m.onField && m.alive;
   const mine = world.playerTeam !== null && m.slot === world.playerTeam;
@@ -316,9 +317,14 @@ export function drawHud(c, r, world, ui) {
   const tm = world.over ? world.endTime : world.time;
   text(c, `${String(Math.floor(tm / 60)).padStart(2, '0')}:${String(Math.floor(tm % 60)).padStart(2, '0')}`, mid, 22 * dpr, 11, '#ffffff', 'center', dpr);
   const aliveSide = (side) => world.roster.filter((m) => m.team === side && m.alive).length;
-  text(c, `${aliveSide(mySide)} × ${aliveSide(1 - mySide)}`, mid, 36 * dpr, 6, '#ffe9b0', 'center', dpr);
-  if (world.time >= 150 && !world.over) text(c, 'MORTE SÚBITA · sem cura', mid, 62 * dpr, 5, Math.floor(performance.now() / 400) % 2 ? '#ff6a6a' : '#ffb0b0', 'center', dpr);
-  else if (world.time >= 130 && !world.over) text(c, `Morte súbita em ${Math.ceil(150 - world.time)}s`, mid, 62 * dpr, 5, '#ffb070', 'center', dpr);
+  if (world.training) {
+    // Medidor do treino: dano nos bonecos nos últimos 5 s, por segundo e o último golpe.
+    const mt = meter(world);
+    text(c, `TREINO · dano 5s ${Math.round(mt.sum)} · ${mt.dps.toFixed(1)}/s`, mid, 36 * dpr, 6, '#d8c08a', 'center', dpr);
+    if (mt.last) text(c, `último golpe ${mt.last.toFixed(1)}`, mid, 62 * dpr, 5, '#bba', 'center', dpr);
+  } else text(c, `${aliveSide(mySide)} × ${aliveSide(1 - mySide)}`, mid, 36 * dpr, 6, '#ffe9b0', 'center', dpr);
+  if (world.suddenDeath && !world.over) text(c, 'MORTE SÚBITA · sem cura', mid, 62 * dpr, 5, Math.floor(performance.now() / 400) % 2 ? '#ff6a6a' : '#ffb0b0', 'center', dpr);
+  else if (world.time >= 130 && !world.over && !world.training) text(c, `Morte súbita em ${Math.ceil(150 - world.time)}s`, mid, 62 * dpr, 5, '#ffb070', 'center', dpr);
   if (world.playerTeam !== null) {
     const ts = world.teams[myTeam];
     const anyBench = world.teamOf(myTeam).some((m) => m.alive && !m.onField);
@@ -343,7 +349,9 @@ export function drawHud(c, r, world, ui) {
   c.globalAlpha = 1;
 
   if (world.playerTeam !== null) abilityBar(c, world, ox, aw, oy + ah + 8 * dpr, dpr, r);
-  const help = world.playerTeam !== null
+  const help = world.training
+    ? 'TREINO · T painel (bonecos, tiros, recargas, forma base) · B nº de bonecos · G evoluir · H ajuda · 1/2/3 trocar · Esc menu'
+    : world.playerTeam !== null
     ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 trocar · G evoluir · H ajuda · P pausar'
     : 'MODO ESPECTADOR · P pausar · I visão da IA';
   const hsz = fit(c, help, 5, aw, dpr);

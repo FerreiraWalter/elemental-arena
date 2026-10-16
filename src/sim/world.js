@@ -10,6 +10,7 @@ import { PlayerController } from '../control/player.js';
 import { TeamCoach } from '../ai/coach.js';
 import { DEFAULT_TEAM } from './species.js';
 import * as Sig from './signature.js';
+import * as Training from './training.js';
 
 const OBSTACLE_DEFS = {
   rock: { flammable: false, hp: Infinity, blocksLOS: true },
@@ -123,6 +124,13 @@ export class World {
   }
 
   static duel(seed = 1, a = 'brasalisco', b = 'hidrocasco', arenaId = 'quadra') { return World.match(seed, [[a], [b]], null, arenaId); }
+
+  // Treinamento: seu time (1 a 3 monstros) contra bonecos de pano de vida infinita (ver training.js).
+  static training(seed, team, arenaId = 'quadra', opts = {}) {
+    const w = World.match(seed, [team], 0, arenaId, 'normal', { sides: [0] });
+    Training.setup(w, opts);
+    return w;
+  }
 
   teamOf(slot) { return this.roster.filter((m) => m.slot === slot); }
   fieldOf(slot) { return this.teams[slot].field; }
@@ -318,6 +326,7 @@ export class World {
         const d = Math.min(m.hp, SWITCH.benchBurnDps * dt);
         m.hp -= d;
         m.stats.dmgTaken += d;
+        if (this.training && m.hp < 1) m.hp = 1;
         if (m.hp <= 0.0001) { this.emit({ type: 'benchDefeat', m }); this.kill(m, null); }
       }
       for (const k in st) if (st[k] > 0) st[k] = Math.max(0, st[k] - dt);
@@ -594,12 +603,13 @@ export class World {
     }
     if (guarding) Sig.blocked(this, t, src, o);
     Sig.afterDamage(this, t, src, dmg, o);
+    if (this.training) Training.onDamage(this, t, src, dmg);
     if (t.hp <= 0) this.kill(t, src);
     return dmg;
   }
 
   // Cura (terreno, sentinelas, habilidades). Na morte súbita não cura mais.
-  get suddenDeath() { return this.time >= MATCH.suddenDeath; }
+  get suddenDeath() { return !this.training && this.time >= MATCH.suddenDeath; }
   heal(m, amount) {
     if (!m.alive || this.suddenDeath) return;
     m.hp = Math.min(m.maxHp, m.hp + amount);
@@ -783,6 +793,7 @@ export class World {
     this.steam = this.steam.filter((s) => s.life > 0 && s.density > 0);
     // Corpos de derrotados saem do campo depois da animação.
     this.monsters = this.monsters.filter((m) => m.alive || m.deathT < 2.6);
+    if (this.training) Training.update(this, dt);
     if (this._checkEnd) this.checkEnd();
   }
 

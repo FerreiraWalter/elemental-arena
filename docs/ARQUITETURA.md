@@ -12,6 +12,7 @@ src/
                         projéteis, obstáculos, perigos, fim de partida
     monster.js          estado persistente de cada monstro (vida, status, recargas, energia, forma)
     species.js          FORMAS (base e evoluída) ligadas por `evolvesTo`; perfis de IA, controles e `sig` (mecânica própria)
+    training.js         modo Treinamento: bonecos de pano (vida infinita), opções e medidor de dano
     signature.js        mecânicas próprias: Fornalha, Casco Reflexo, Brotos Sentinela, Ímpeto/espinhos, Ilusões de Tinta, Marcas
     abilities.js        habilidades com fases reais (preparação → ativa → recuperação) e hitboxes
     tiles.js            registro de tipos de terreno e propriedades (combustível, água, espinhos, lentidão…)

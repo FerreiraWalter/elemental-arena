@@ -300,3 +300,42 @@ export function stumpSprite() {
   pb.outline(rgba('#0c0806'));
   return pb.commit();
 }
+
+// Boneco de pano de treino: estaca de madeira, saco de juta costurado com um alvo no peito, braços de pau com
+// palha nas pontas e cabeça de pano com olhos em X. Balança quando apanha (s.wobble).
+const BURLAP = ramp('#5a4228', '#8a6a42', '#b8945e', '#d6b67e', '#ecd6a4');
+const WOOD = ramp('#2e1c0e', '#4a2e16', '#6e4626', '#8e6034', '#a87a44');
+const STRAW = [rgba('#c8a040'), rgba('#e8c860'), rgba('#f8e898')];
+export function drawDummy(pb, s) {
+  pb.clear();
+  const ox = 24, oy = 38, t = s.t;
+  const wob = s.wobble || 0;
+  const lean = Math.sin(t * 22) * wob * 3.2; // inclinação no topo (pixels)
+  const at = (y) => Math.round(lean * Math.max(0, (oy - y) / 30)); // quanto cada altura se desloca
+  // Base em cruz e estaca.
+  pb.rect(ox - 6, oy - 1, 13, 2, WOOD[1]);
+  pb.rect(ox - 1, oy - 3, 3, 3, WOOD[2]);
+  for (let y = oy - 4; y >= oy - 30; y--) { pb.set(ox + at(y), y, WOOD[2]); pb.set(ox + 1 + at(y), y, WOOD[3]); }
+  // Braços: travessa de madeira com tufos de palha.
+  const ay = oy - 19;
+  for (let x = -11; x <= 11; x++) { pb.set(ox + x + at(ay), ay, WOOD[3]); pb.set(ox + x + at(ay), ay + 1, WOOD[1]); }
+  for (const sx of [-1, 1]) for (let k = 0; k < 5; k++) pb.set(ox + sx * (12 + (k % 2)) + at(ay), ay - 2 + k, STRAW[k % 3]);
+  // Corpo: saco de juta com costuras.
+  const by = oy - 13;
+  pb.ellipse(ox + at(by), by, 6.5, 8, BURLAP, { shift: 0.15 });
+  for (let y = by - 7; y <= by + 7; y += 2) pb.set(ox - 4 + at(y), y, BURLAP[0]);
+  for (let k = 0; k < 4; k++) pb.set(ox - 5 + k * 3 + at(by + 8), by + 8, STRAW[k % 3]); // palha saindo embaixo
+  // Alvo no peito.
+  const tx = ox + 1 + at(by - 1), ty = by - 1;
+  pb.ellipse(tx, ty, 4, 4, [rgba('#8a1414'), rgba('#c82828'), rgba('#c82828'), rgba('#e84040'), rgba('#e84040')], { edge: false });
+  pb.ellipse(tx, ty, 2.6, 2.6, [rgba('#e8e0d0'), rgba('#f4ecd8'), rgba('#f4ecd8'), rgba('#ffffff'), rgba('#ffffff')], { edge: false });
+  pb.ellipse(tx, ty, 1.2, 1.2, [rgba('#c82828'), rgba('#e84040'), rgba('#e84040'), rgba('#ff5050'), rgba('#ff5050')], { edge: false });
+  // Pescoço amarrado e cabeça de pano com olhos em X.
+  const hy = oy - 26;
+  pb.rect(ox - 2 + at(hy + 4), hy + 4, 5, 1, WOOD[0]);
+  pb.ellipse(ox + at(hy), hy, 4.6, 4.2, BURLAP, { shift: 0.2 });
+  for (const ex of [-2, 2]) { const x0 = ox + ex + at(hy); pb.set(x0 - 1, hy - 1, WOOD[0]); pb.set(x0 + 1, hy + 1, WOOD[0]); pb.set(x0 + 1, hy - 1, WOOD[0]); pb.set(x0 - 1, hy + 1, WOOD[0]); pb.set(x0, hy, WOOD[0]); }
+  for (let k = 0; k < 3; k++) pb.set(ox - 1 + k + at(hy - 5), hy - 5, STRAW[k]); // palha no topo
+  pb.outline(rgba('#1a0e06'));
+  void hash2;
+}
