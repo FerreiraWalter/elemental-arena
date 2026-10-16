@@ -64,7 +64,7 @@ export class PlayerController {
     const ok = m.cast(w, ab, {
       aim: ab.kind === 'dodge' ? dir : aim, dir,
       aimPoint: { x: inp.aim.x, y: inp.aim.y }, point: { x: inp.aim.x, y: inp.aim.y },
-      purpose: ab.kind === 'dodge' ? 'dodge' : 'attack',
+      purpose: ab.kind === 'dodge' ? 'dodge' : 'attack', aimLand: true, // saltos caem no ponto do mouse
     });
     if (ok && ab.kind === 'dodge') w.emit({ type: 'dodge', m, threat: 'player', x: m.x, y: m.y });
     return ok;

@@ -77,7 +77,7 @@ export class Monster {
     this.action = {
       ab, phase: 'windup', t: 0, aim, hit: new Set(), data: {},
       aimPoint: params.aimPoint || null, target: params.target || null, point: params.point || null,
-      dir: params.dir ?? aim, purpose: params.purpose || 'attack',
+      dir: params.dir ?? aim, purpose: params.purpose || 'attack', aimLand: !!params.aimLand,
     };
     this.cd[ab.id] = ab.cooldown;
     this.stats.casts++;
@@ -101,10 +101,10 @@ export class Monster {
 
   // Saltos (Salto Longo, Salto Celeste): caem no ponto mirado quando a tecla foi apertada; o alcance da
   // habilidade é só o máximo. O tempo de voo não muda (mesma invulnerabilidade), muda a velocidade.
-  // Fuga da IA e salto sem ponto mirado usam o alcance todo.
+  // Só o jogador escolhe o ponto (aimLand); a IA e o salto sem ponto mirado usam o alcance todo.
   aimLeap(a, final) {
     const ab = a.ab;
-    if (!a.aimPoint || a.purpose === 'escape') { a.leapDist = ab.range; if (final) a.leapFrom = { x: this.x, y: this.y }; return; }
+    if (!a.aimPoint || !a.aimLand || a.purpose === 'escape') { a.leapDist = ab.range; if (final) a.leapFrom = { x: this.x, y: this.y }; return; }
     const dx = a.aimPoint.x - this.x, dy = a.aimPoint.y - this.y, d = Math.hypot(dx, dy);
     a.leapDist = Math.max(ab.minRange ?? 30, Math.min(ab.range, d));
     if (final && d > 2) a.dir = a.aim = this.facing = Math.atan2(dy, dx);
