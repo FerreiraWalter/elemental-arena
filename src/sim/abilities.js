@@ -284,7 +284,7 @@ export const ABILITIES = {
     id: 'infernoBreath', name: 'Sopro Infernal', element: 'fire', kind: 'cone', heat: 25,
     cooldown: 8, windup: 0.5, active: 0.9, recovery: 0.55, superArmor: true,
     move: [0.15, 0.25, 0.5], turn: [6, 1.1], range: 84, len: 84, half: 0.52,
-    onActiveTick(w, m, a, dt) { ABILITIES.flameWave.coneTick.call(this, w, m, a, dt, 2.0); },
+    onActiveTick(w, m, a, dt) { ABILITIES.flameWave.coneTick.call(this, w, m, a, dt, 2.2); },
   },
   eruptionDash: {
     id: 'eruptionDash', name: 'Erupção', element: 'fire', kind: 'dash', heat: 20,
@@ -492,7 +492,7 @@ export const ABILITIES = {
       for (const t of w.enemiesOf(m)) {
         const d = Math.hypot(t.x - m.x, t.y - m.y);
         if (d > 30 + t.r) continue;
-        w.damage(t, 16, m, { tag: 'burrow', kb: 90, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.55, lift: 0.7, burn: 1.4, element: 'fire' });
+        w.damage(t, 14, m, { tag: 'burrow', kb: 90, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.55, lift: 0.7, burn: 1.4, element: 'fire' });
       }
       w.popDecoysIn(m.x, m.y, 30, m.team);
       w.igniteArea(m.x, m.y, 16, 2, m);

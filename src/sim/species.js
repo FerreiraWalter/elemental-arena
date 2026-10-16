@@ -147,11 +147,11 @@ export const SPECIES = {
   ouriflamaVulcanico: {
     key: 'ouriflamaVulcanico', line: 'ouriflama', stage: 2,
     name: 'Ouriflama Vulcânico', title: 'Fogo Vulcânico', element: 'fire', sprite: 'hedgehog_3',
-    hp: 205, speed: 66, radius: 13, mass: 1.7,
+    hp: 198, speed: 66, radius: 13, mass: 1.7,
     abilities: [A.lavaBite, A.magmaQuill, A.quillStorm, A.burrow, A.volcanoRush, A.curlRoll],
     dodge: A.curlRoll,
     controls: { primary: 'magmaQuill', melee: 'lavaBite', q: 'quillStorm', e: 'burrow', f: 'volcanoRush', dodge: 'curlRoll' },
-    sig: { kind: 'momentum', name: 'Ímpeto Vulcânico', desc: 'Ímpeto evoluído: sair do Mergulho Vulcânico enche o ímpeto na hora. Espinhos de magma queimam quem o ataca de perto.', thorns: { dmg: 6, burn: 1 } },
+    sig: { kind: 'momentum', name: 'Ímpeto Vulcânico', desc: 'Ímpeto evoluído: sair do Mergulho Vulcânico enche o ímpeto na hora. Espinhos de magma queimam quem o ataca de perto.', thorns: { dmg: 5, burn: 0.8 } },
     traits: ['Entra na terra e levanta o inimigo', 'Sai do mergulho em disparada', 'Espinhos de magma'],
     tips: 'Ponto fraco: o montinho de terra denuncia o mergulho; corra de lado para despistar.',
     difficulty: 3,

@@ -448,6 +448,7 @@ export class Brain {
     const k = m.def.sig?.kind;
     // Fornalha: exausto, recua; inimigo superaquecido ou em disparada, dá espaço.
     if (m.status.exhaust > 0) return [80, 150];
+    if (m.status.overheat > 0) return [0, m.r + c.t.r + 14]; // superaquecido: hora de pressionar de perto
     if (m.element !== 'fire' && (c.t.status.overheat > 0 || c.t.charged) && c.hpF < 0.8) return [70, 140];
     if (c.tGuarding) return [50, 110];
     // Ímpeto: sem carga, circula de longe (correr enche a barra); carregado, entra para o golpe.

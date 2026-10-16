@@ -11,7 +11,8 @@ src/
     world.js            mundo: roster × em campo, troca, evolução, física, colisão com terreno/alturas,
                         projéteis, obstáculos, perigos, fim de partida
     monster.js          estado persistente de cada monstro (vida, status, recargas, energia, forma)
-    species.js          FORMAS (base e evoluída) ligadas por `evolvesTo`; perfis de IA e controles
+    species.js          FORMAS (base e evoluída) ligadas por `evolvesTo`; perfis de IA, controles e `sig` (mecânica própria)
+    signature.js        mecânicas próprias: Fornalha, Casco Reflexo, Brotos Sentinela, Ímpeto/espinhos, Ilusões de Tinta, Marcas
     abilities.js        habilidades com fases reais (preparação → ativa → recuperação) e hitboxes
     tiles.js            registro de tipos de terreno e propriedades (combustível, água, espinhos, lentidão…)
     terrain.js          grade 80×45: fogo que se espalha, umidade, raízes, rebrota, alturas, correnteza
@@ -29,8 +30,10 @@ src/
     terrainpaint.js     pintura do chão por arena (alturas, penhascos, pontes, umidade, fuligem)
     scenery.js          obstáculos, decoração, perigos, correnteza, cachoeiras, ambientação
     hud.js              cartões dos times, barra de habilidades, energia de evolução, fim de partida
-  ui/ui.js              menu, seleção de time e arena, multiplayer (criar/entrar/sala), bestiário, opções, pausa/fim
-  net/                  snapshot.js (serializa/aplica estado), client.js (WebSocket), mirror.js (mundo espelho)
+  ui/ui.js              menu, seleção de time e arena, multiplayer (criar/entrar/sala), bestiário, opções, ajuda (H), pausa/fim
+  audio/sfx.js          efeitos sonoros sintetizados (WebAudio) a partir dos eventos do combate
+  net/                  snapshot.js (serializa/aplica estado), client.js (WebSocket), mirror.js (mundo espelho),
+                        smooth.js (buffer de interpolação + predição do próprio monstro)
 server/                 server.js (HTTP estático + WebSocket), room.js (lobby e partida autoritativa)
 assets/monsters/        sprites extraídos (tools/extract_sprites.py)
 test/                   cenários e aceitação headless
@@ -48,3 +51,4 @@ tools/                  extração de sprites e build
 - `server/room.js` roda `World` (humanos = vagas com `PlayerController`; as demais, IA) e transmite snapshots (`src/net/snapshot.js`). Quem desconecta tem a vaga assumida por um `TeamCoach` (IA).
 - O cliente cria um `World` espelho (`mirror: true`: sem coaches, sem passos) e aplica snapshots; o renderizador desenha esse espelho.
 - Produção: `server/server.js` expõe `/health`, comprime estáticos, limita mensagens/conexões/salas e aceita `ALLOWED_ORIGINS`. Cada jogador recebe um `token` ao entrar; `rejoin` (code+token) devolve a vaga e reenvia `start` com `resumed`. O cliente (`net/client.js`) tenta vários endereços, faz ping e não trata falha de conexão inicial como queda. Ver `DEPLOY.md`.
+- Mecânicas próprias: o estado novo (calor, ímpeto, marcas, camuflagem, cópias em `world.decoys`, sentinelas como obstáculos com dono e lado) vai no snapshot; o cliente só desenha. Todo dano passa por `World.damage`, que aplica bloqueio (`Sig.isGuarding`), multiplicadores (`Sig.outgoing/incoming`), queimadura limitada (`FIRE`) e controle com resistência a sequência (`applyStun/applyRoot`, `CONTROL`).

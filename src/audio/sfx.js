@@ -72,6 +72,7 @@ export class Sfx {
     const c = this.ctx, t0 = c.currentTime + at;
     const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
     s.buffer = this.noise;
+    s.loop = true;
     f.type = type; f.Q.value = q;
     f.frequency.setValueAtTime(f0, t0);
     f.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t0 + dur);

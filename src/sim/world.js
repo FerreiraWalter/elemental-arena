@@ -23,8 +23,8 @@ const OBSTACLE_DEFS = {
   log: { flammable: true, hp: 60, blocksLOS: true, burnTime: 10, burnDps: 7 },
   thicket: { flammable: true, hp: 40, blocksLOS: true, burnTime: 4, burnDps: 12 }, // barreira temporária da planta
   // Brotos Sentinela (Brotossauro): torres vivas; o fogo as derruba rápido.
-  sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 1, healR: 46, shot: { kind: 'seed', dmg: 3.5, every: 1.3, range: 100, speed: 240 } },
-  ancientSentry: { flammable: true, hp: 50, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 1.4, healR: 50, shot: { kind: 'thorn', dmg: 6, every: 1.4, range: 118, speed: 235 } },
+  sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 0.6, healR: 46, shot: { kind: 'seed', dmg: 3, every: 1.3, range: 100, speed: 240 } },
+  ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 0.9, healR: 50, shot: { kind: 'thorn', dmg: 4.5, every: 1.5, range: 115, speed: 235 } },
 };
 
 const DIFFICULTY_MODS = {

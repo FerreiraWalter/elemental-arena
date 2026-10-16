@@ -392,6 +392,10 @@ export class Renderer {
         case 'castDenied':
           if (e.m === this.world.active) this.denySlot = { slot: e.slot, reason: e.reason, t: 0.45 };
           break;
+        case 'nearMiss':
+          // Seu tiro passou raspando: diz que errou por pouco (só no jogo local; online não é enviado).
+          if (e.p?.owner && e.p.owner === this.world.active && e.m?.alive) this.addText({ x: e.m.x, y: e.m.y - 22, text: 'QUASE!', t: 0, color: '#b8b0a0' });
+          break;
       }
     }
   }
@@ -567,7 +571,8 @@ export class Renderer {
       for (let j = 0; j < tongues; j++) {
         const cx = tx + 2 + j * 4 + ((hash2(i, j, 1) * 3) | 0) - (tongues === 1 ? -1 : 0);
         const by = ty + 7 - ((hash2(i, j + 5, 1) * 2) | 0);
-        const h = Math.round((4 + 9 * k) * (0.6 + 0.4 * Math.sin(t * (8 + j * 2.3) + i * 1.7 + j * 2)));
+        // Chamas de vegetação são altas; o chão em brasa de ataques é baixo (não esconde os monstros).
+        const h = Math.round((fuelFire ? 4 + 9 * k : 3 + 4 * k) * (0.6 + 0.4 * Math.sin(t * (8 + j * 2.3) + i * 1.7 + j * 2)));
         this.flame(fx, cx, by, h, 1 + (k > 0.6 ? 1 : 0), t + i * 0.37);
       }
       if (Math.random() < 0.035 * k) this.particles.add({ ramp: 'spark', x: tx + Math.random() * 8, y: ty + 4, vz: 30 + Math.random() * 30, vx: (Math.random() - 0.5) * 10, life: 0.6, add: true });
@@ -1156,7 +1161,7 @@ export class Renderer {
     for (const i of tr.burning) {
       if (k++ % 2) continue;
       const fl = 0.75 + 0.25 * Math.sin(t * 13 + i);
-      g.globalAlpha = 0.38 * fl;
+      g.globalAlpha = 0.28 * fl;
       g.drawImage(this.glows.fire, tr.cx(i) - 14, tr.cy(i) - 18, 28, 28);
     }
     for (const o of world.obstacles) if (o.burning > 0 && !o.destroyed) { g.globalAlpha = 0.9; g.drawImage(this.glows.fire, o.x - 24, o.y - 30, 48, 48); }
