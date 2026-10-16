@@ -59,3 +59,10 @@ Menor ping possível quando os amigos moram perto de você: o servidor roda na s
 3. Os amigos abrem esse endereço no navegador, escolhem o time e entram na sala (o link de convite da sala também funciona).
 4. O PC precisa ficar ligado com a janela aberta. Na primeira vez, permita o Node no Firewall do Windows (rede privada).
 O `ws://` sobre `http://` funciona normalmente dentro do Tailscale; não precisa de HTTPS nem de abrir portas no roteador.
+
+## Jogar pelo seu PC com um link (sem os amigos instalarem nada)
+Os amigos só abrem o link no navegador. Só o seu PC instala uma ferramenta, uma vez: `winget install Cloudflare.cloudflared`.
+1. Dê dois cliques em `jogar-link.bat`. Ele sobe o servidor e abre um túnel do Cloudflare.
+2. Aparece um link `https://alguma-coisa.trycloudflare.com`: copie e mande aos amigos.
+3. O PC precisa ficar ligado com as janelas abertas. O link **muda a cada vez** que você abre o arquivo; para ter um link fixo é preciso uma conta Cloudflare e um domínio.
+O ping é o do caminho amigo → servidor da Cloudflare mais próximo → seu PC (costuma ser bem menor que o Render nos EUA). O script já liga `TRUST_PROXY=1` para o limite de conexões por IP enxergar cada amigo.
