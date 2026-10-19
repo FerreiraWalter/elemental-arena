@@ -1,4 +1,4 @@
-import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION, FIRE, CONTROL, MATCH } from '../config.js';
+import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION, FIRE, CONTROL, MATCH, COMBAT } from '../config.js';
 import { mulberry32, segCircle, segAabb, clamp } from '../core/math.js';
 import { Terrain, IGNITE, T, props } from './terrain.js';
 import { ARENAS } from '../arenas/index.js';
@@ -564,6 +564,7 @@ export class World {
       this.gainEnergy(src, dmg * EVOLUTION.dealt);
       // Cada ataque que acerta enche um pedaço fixo da barra (tiros de sentinelas e cópias não contam).
       if (!o.dot && !o.minor && dmg > 0 && this.time - (src._hitBonusT ?? -9) >= EVOLUTION.hitGap) { src._hitBonusT = this.time; this.gainEnergy(src, EVOLUTION.hit); }
+      if (!o.dot && dmg > 0 && !src.dummy) this.rhythm(src, o.tag || src.action?.ab.id);
     }
     this.gainEnergy(t, dmg * EVOLUTION.taken);
     if (src) {
@@ -932,6 +933,7 @@ export class World {
           else if (p.kind === 'sentrySeed') Sig.plantSentry(this, p);
           else if (p.kind === 'bubble') this.bubbleBurst(p);
           else if (p.kind === 'tentacle') this.tentacleSlam(p);
+          else if (p.kind === 'splashBubble' || p.kind === 'splashSeed') this.splashBurst(p);
           else this.explodeMeteor(p);
         }
         continue;
@@ -1046,7 +1048,7 @@ export class World {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'magmaBall', burn: 1.8, kb: 90, stun: 0.12, element: 'fire' });
       this.igniteArea(p.x, p.y, 8, 2, p.owner);
     } else if (p.kind === 'wave') {
-      this.damage(m, p.dmg, p.owner, { ...base, tag: 'tidalWave', wet: 4, kb: 330, stun: 0.35, element: 'water' });
+      this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'tidalWave', wet: p.small ? 3 : 4, kb: p.kb ?? 330, stun: p.stun ?? 0.35, element: 'water' });
     } else if (p.kind === 'thorn') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.fromSentry ? 'sentinela' : 'thornShot', kb: 70, stun: p.fromSentry ? 0 : 0.12, element: 'plant' });
       this.sprout(p.x, p.y, T.THORNS, p.owner);
@@ -1090,7 +1092,8 @@ export class World {
   // A onda arrebenta: estouro de água que atinge quem estiver perto (inclusive quem ela carregou).
   waveCrash(p) {
     const ang = Math.atan2(p.vy, p.vx), R = p.r + 10;
-    this.emit({ type: 'waveCrash', x: p.x, y: p.y, r: R, ang, src: p.owner });
+    this.emit({ type: 'waveCrash', x: p.x, y: p.y, r: R, ang, src: p.owner, small: !!p.small });
+    if (p.small) { this.douseArea(p.x, p.y, R, 5, p.owner); return; } // onda curta do golpe básico: só respinga
     for (const m of this.monsters) {
       if (!m.alive || m.team === p.team || Math.hypot(m.x - p.x, m.y - p.y) > R + m.r) continue;
       this.damage(m, 5, p.owner, { tag: 'tidalWave', element: 'water', wet: 3, kb: 240, ang, stun: 0.2, proj: true });
@@ -1118,6 +1121,40 @@ export class World {
   }
 
   // Bolha Prisão (Gotapus): estoura no chão e prende quem estiver dentro numa bolha.
+  // Golpe básico em arco (Bolha Saltitante, Semente Explosiva): estoura numa área pequena.
+  splashBurst(p) {
+    const water = p.kind === 'splashBubble';
+    this.emit({ type: 'splash', x: p.tx, y: p.ty, r: p.radius, water, src: p.owner });
+    for (const m of this.monsters) {
+      if (!m.alive || m.team === p.team) continue;
+      if (Math.hypot(m.x - p.tx, m.y - p.ty) > p.radius + m.r) continue;
+      this.damage(m, p.dmg, p.owner, { tag: p.tag, element: water ? 'water' : 'plant', kb: water ? 140 : 80, ang: Math.atan2(m.y - p.ty, m.x - p.tx), stun: 0.1, proj: true, ...(water ? { wet: 3 } : {}) });
+    }
+    this.popDecoysIn(p.tx, p.ty, p.radius, p.team);
+    if (water) { this.douseArea(p.tx, p.ty, p.radius * 0.8, 4, p.owner); return; }
+    const tr = this.terrain;
+    for (let r = Math.floor((p.ty - p.radius) / TILE); r <= Math.floor((p.ty + p.radius) / TILE); r++)
+      for (let c = Math.floor((p.tx - p.radius) / TILE); c <= Math.floor((p.tx + p.radius) / TILE); c++) {
+        const i = tr.idx(c, r);
+        if (i >= 0 && Math.hypot(c * TILE + 4 - p.tx, r * TILE + 4 - p.ty) <= p.radius * 0.8) tr.growRoots(i, p.rootTiles || 3);
+      }
+  }
+
+  // Ritmo: cada golpe básico (botão esquerdo ou direito) que acerta adianta as habilidades Q/E/F.
+  rhythm(src, tag) {
+    const c = src.def?.controls;
+    if (!c || (tag !== c.primary && tag !== c.melee)) return;
+    if (this.time - (src._rhythmT ?? -9) < COMBAT.rhythmGap) return;
+    src._rhythmT = this.time;
+    for (const slot of ['q', 'e', 'f']) {
+      const id = c[slot];
+      if (!id) continue;
+      if (src.ch[id] !== undefined) { if (src.rc[id] > 0) src.rc[id] = Math.max(0.01, src.rc[id] - COMBAT.rhythm); }
+      else if (src.cd[id] > 0) src.cd[id] = Math.max(0, src.cd[id] - COMBAT.rhythm);
+    }
+    this.emit({ type: 'rhythm', m: src, x: src.x, y: src.y });
+  }
+
   bubbleBurst(p) {
     this.emit({ type: 'bubbleBurst', x: p.tx, y: p.ty, r: p.radius, src: p.owner });
     for (const m of this.monsters) {

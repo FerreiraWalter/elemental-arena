@@ -63,5 +63,14 @@ export const FIRE = {
 // para de recuar. Evita partidas eternas entre monstros que se curam (ex.: água × água perto de um riacho).
 export const MATCH = { suddenDeath: 150 };
 
+// Combate focado em skills: o ataque básico é um golpe curto/médio com cara de cada monstro (nada de tiro longo
+// repetido) e cada golpe básico que ACERTA adianta as recargas das habilidades Q/E/F (Ritmo). As skills recarregam
+// mais rápido que antes. Assim o ciclo é: entra, acerta o básico, solta a skill, sai.
+export const COMBAT = {
+  rhythm: 0.6, // segundos que cada golpe básico acertado tira das recargas de Q/E/F
+  rhythmGap: 0.3, // no máximo um "ritmo" a cada 0,3 s (rajadas contam uma vez)
+  skillCdMult: 0.7, // recarga das habilidades Q/E/F em relação ao balanceamento antigo
+};
+
 // Controle: atordoamento e enraizamento seguidos perdem força (evita sequências inevitáveis).
 export const CONTROL = { guardTime: 1.2, chainMult: 0.4 };

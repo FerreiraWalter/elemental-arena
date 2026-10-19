@@ -1,5 +1,5 @@
 import { angleDiff, angleTo, pointSeg, clamp, turnToward } from '../core/math.js';
-import { TILE } from '../config.js';
+import { TILE, WORLD_W, WORLD_H } from '../config.js';
 import { T } from './tiles.js';
 import { thorns, spawnDecoy, SIG } from './signature.js';
 
@@ -112,7 +112,7 @@ export const ABILITIES = {
     onActiveStart(w, m, a) {
       const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
       const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 40, this.range);
-      const tx = clamp(m.x + Math.cos(ang) * d, 10, 630), ty = clamp(m.y + Math.sin(ang) * d, 10, 350);
+      const tx = clamp(m.x + Math.cos(ang) * d, 10, WORLD_W - 10), ty = clamp(m.y + Math.sin(ang) * d, 10, WORLD_H - 10);
       w.spawnProjectile({ kind: 'meteor', owner: m, lob: true, x: m.x, y: m.y - 8, tx, ty, flight: this.flight, radius: this.radius, dmg: 20 });
     },
   },
@@ -239,7 +239,7 @@ export const ABILITIES = {
     onActiveStart(w, m, a) {
       const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
       const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 20, this.range);
-      const tx = clamp(m.x + Math.cos(ang) * d, 10, 630), ty = clamp(m.y + Math.sin(ang) * d, 10, 350);
+      const tx = clamp(m.x + Math.cos(ang) * d, 10, WORLD_W - 10), ty = clamp(m.y + Math.sin(ang) * d, 10, WORLD_H - 10);
       w.spawnProjectile({ kind: 'roots', owner: m, lob: true, flat: true, x: tx, y: ty, tx, ty, flight: this.flight, radius: this.radius, dmg: 8 });
     },
   },
@@ -392,7 +392,7 @@ export const ABILITIES = {
     onActiveStart(w, m, a) {
       const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
       const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 20, this.range);
-      const tx = clamp(m.x + Math.cos(ang) * d, 10, 630), ty = clamp(m.y + Math.sin(ang) * d, 10, 350);
+      const tx = clamp(m.x + Math.cos(ang) * d, 10, WORLD_W - 10), ty = clamp(m.y + Math.sin(ang) * d, 10, WORLD_H - 10);
       w.spawnProjectile({ kind: 'roots', owner: m, lob: true, flat: true, x: tx, y: ty, tx, ty, flight: this.flight, radius: this.radius, dmg: 12, rootTime: 2.4, rootTiles: 7 });
     },
   },
@@ -554,7 +554,7 @@ export const ABILITIES = {
     onActiveStart(w, m, a) {
       const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
       const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 30, this.range);
-      const tx = clamp(m.x + Math.cos(ang) * d, 10, 630), ty = clamp(m.y + Math.sin(ang) * d, 10, 350);
+      const tx = clamp(m.x + Math.cos(ang) * d, 10, WORLD_W - 10), ty = clamp(m.y + Math.sin(ang) * d, 10, WORLD_H - 10);
       w.spawnProjectile({ kind: 'bubble', owner: m, lob: true, x: m.x, y: m.y - 6, tx, ty, flight: this.flight, radius: this.radius, dmg: 5, trap: 1.1 });
     },
   },
@@ -843,3 +843,133 @@ ABILITIES.mantisClaw.desc = 'Garras longas que puxam o alvo para perto.';
 ABILITIES.bladeStorm.desc = 'Leque de três lâminas de folha.';
 ABILITIES.sporeStorm.desc = 'Tempestade de esporos: grande cone que enraíza.';
 ABILITIES.skyLeap.desc = 'Salto celeste até onde está a mira (alcance enorme); ao cair, enraíza e arremessa quem estiver perto.';
+
+// ───────────── Golpes básicos (combate focado em skills) ─────────────
+// Cada monstro tem um golpe próprio no botão esquerdo, de alcance curto ou médio, com impacto. Nenhum é um tiro
+// longo repetido: quem quer dano de longe precisa das habilidades. Acertar o básico acelera as habilidades (Ritmo).
+
+// Chicote: golpe em linha estreita e comprida (usa o mesmo corpo a corpo, com arco fino).
+function lineGround(w, m, a, reach, fn) {
+  for (let s = m.r; s <= m.r + reach; s += 6) fn(m.x + Math.cos(a.aim) * s, m.y + Math.sin(a.aim) * s);
+}
+// Projétil em arco que estoura numa área pequena (bolha d'água ou semente que vira raízes).
+function lobBasic(kind) {
+  return function onActiveStart(w, m, a) {
+    const p = a.point || a.aimPoint || { x: m.x + Math.cos(a.aim) * this.range, y: m.y + Math.sin(a.aim) * this.range };
+    const ang = Math.atan2(p.y - m.y, p.x - m.x);
+    const d = clamp(Math.hypot(p.x - m.x, p.y - m.y), 30, this.range);
+    const tx = clamp(m.x + Math.cos(ang) * d, 10, WORLD_W - 10), ty = clamp(m.y + Math.sin(ang) * d, 10, WORLD_H - 10);
+    w.spawnProjectile({ kind, tag: this.id, owner: m, lob: true, x: m.x, y: m.y - 6, tx, ty, flight: this.flight, radius: this.radius, dmg: this.dmg, rootTiles: this.rootTiles });
+  };
+}
+// Leque de espinhos de curto alcance (espingarda).
+function fan(n, spread, range, dmg, speed = 270) {
+  return function onActiveStart(w, m, a) {
+    for (let k = 0; k < n; k++) {
+      const ang = a.aim + (n === 1 ? 0 : (k / (n - 1) - 0.5) * spread * 2);
+      w.spawnProjectile({ kind: 'ember', tag: this.id, owner: m, ang, speed, r: 2, range, dmg, x: m.x + Math.cos(ang) * (m.r + 2), y: m.y + Math.sin(ang) * (m.r + 2) - 3, minorShot: k > 0 });
+    }
+  };
+}
+
+Object.assign(ABILITIES, {
+  // Brasalisco: chicote de brasa que deixa o chão em brasa ao longo da linha.
+  emberLash: {
+    id: 'emberLash', name: 'Chicote de Brasa', element: 'fire', kind: 'melee', heat: 4, basic: true,
+    cooldown: 1.15, windup: 0.18, active: 0.1, recovery: 0.24,
+    move: [0.5, 0.7, 0.8], turn: [10, 1], range: 58,
+    ...melee({ reach: 58, arc: 0.6, dmg: 12.5, kb: 90, stun: 0.12, extra: { burn: 1.2 } }),
+    onActiveStart(w, m, a) { lineGround(w, m, a, 58, (x, y) => w.igniteTile(w.terrain.at(x, y), 2.2, m)); },
+    desc: 'CHICOTE DE BRASA: golpe em linha (alcance médio) que queima e deixa o chão em brasa.',
+  },
+  magmaLash: {
+    id: 'magmaLash', name: 'Chicote de Magma', element: 'fire', kind: 'melee', heat: 5, basic: true,
+    cooldown: 1.12, windup: 0.2, active: 0.12, recovery: 0.28,
+    move: [0.5, 0.7, 0.8], turn: [10, 1], range: 66,
+    ...melee({ reach: 66, arc: 0.7, dmg: 17, kb: 120, stun: 0.15, extra: { burn: 1.6 } }),
+    onActiveStart(w, m, a) { lineGround(w, m, a, 66, (x, y) => w.igniteTile(w.terrain.at(x, y), 3.2, m)); },
+    desc: 'CHICOTE DE MAGMA: linha longa de lava que queima e deixa o chão ardendo.',
+  },
+  // Hidrocasco: pancada de casco que solta uma onda de choque curta e larga (empurra e molha).
+  // Hidrocasco: pancada de casco que solta uma onda curta: atravessa alvos, empurra e apaga o fogo no caminho.
+  shockWave: {
+    id: 'shockWave', name: 'Onda de Choque', element: 'water', kind: 'projectile', basic: true, wave: true,
+    cooldown: 1.3, windup: 0.2, active: 0.05, recovery: 0.26,
+    move: [0.4, 0.7, 0.7], turn: [9, 0], range: 95, speed: 230,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'wave', small: true, tag: this.id, owner: m, ang: a.aim, speed: 230, r: 8, r0: 8, rMax: 11, carryMax: 0, range: 95, dmg: 11, kb: 150, stun: 0.12, pierce: true, x: m.x + Math.cos(a.aim) * (m.r + 4), y: m.y + Math.sin(a.aim) * (m.r + 4), aimPoint: a.aimPoint });
+    },
+    desc: 'ONDA DE CHOQUE: onda curta que atravessa todos no caminho, EMPURRA, molha e apaga o fogo.',
+  },
+  abyssShock: {
+    id: 'abyssShock', name: 'Maremoto', element: 'water', kind: 'projectile', basic: true, wave: true,
+    cooldown: 1.4, windup: 0.22, active: 0.05, recovery: 0.28,
+    move: [0.4, 0.7, 0.7], turn: [9, 0], range: 110, speed: 235,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'wave', small: true, tag: this.id, owner: m, ang: a.aim, speed: 235, r: 10, r0: 10, rMax: 14, carryMax: 0, range: 110, dmg: 14, kb: 190, stun: 0.15, pierce: true, x: m.x + Math.cos(a.aim) * (m.r + 4), y: m.y + Math.sin(a.aim) * (m.r + 4), aimPoint: a.aimPoint });
+    },
+    desc: 'MAREMOTO: onda maior que atravessa, empurra longe e apaga o fogo.',
+  },
+  // Brotossauro: semente em arco que estoura e cobre o chão de raízes (atrasa quem não é planta).
+  burstSeed: {
+    id: 'burstSeed', name: 'Semente Explosiva', element: 'plant', kind: 'lob', basic: true,
+    cooldown: 1.5, windup: 0.22, active: 0.05, recovery: 0.25,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 150, radius: 18, flight: 0.5, dmg: 9, rootTiles: 3,
+    onActiveStart: lobBasic('splashSeed'),
+    desc: 'SEMENTE EXPLOSIVA: arco até a mira; estoura em área e deixa raízes que atrasam.',
+  },
+  ancientSeed: {
+    id: 'ancientSeed', name: 'Semente Ancestral', element: 'plant', kind: 'lob', basic: true,
+    cooldown: 1.4, windup: 0.24, active: 0.05, recovery: 0.26,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 160, radius: 24, flight: 0.52, dmg: 15, rootTiles: 4,
+    onActiveStart: lobBasic('splashSeed'),
+    desc: 'SEMENTE ANCESTRAL: estouro maior que cobre o chão de raízes.',
+  },
+  // Ouriflama: leque de espinhos em brasa de perto (espingarda).
+  quillFan: {
+    id: 'quillFan', name: 'Leque de Espinhos', element: 'fire', kind: 'projectile', basic: true,
+    cooldown: 1.1, windup: 0.16, active: 0.02, recovery: 0.2,
+    move: [0.6, 0.6, 0.85], turn: [9, 0], range: 100, speed: 270,
+    onActiveStart: fan(3, 0.24, 90, 2.9),
+    desc: 'LEQUE DE ESPINHOS: 3 espinhos em brasa de perto; quanto mais perto, mais acertam.',
+  },
+  magmaFan: {
+    id: 'magmaFan', name: 'Leque de Magma', element: 'fire', kind: 'projectile', basic: true,
+    cooldown: 1.2, windup: 0.18, active: 0.02, recovery: 0.22,
+    move: [0.6, 0.6, 0.85], turn: [9, 0], range: 112, speed: 280,
+    onActiveStart: fan(5, 0.32, 112, 3.0),
+    desc: 'LEQUE DE MAGMA: 5 espinhos de magma em leque curto.',
+  },
+  // Gotapus: bolha lenta em arco que estoura, molha e apaga o fogo.
+  bounceBubble: {
+    id: 'bounceBubble', name: 'Bolha Saltitante', element: 'water', kind: 'lob', basic: true,
+    cooldown: 1.35, windup: 0.2, active: 0.05, recovery: 0.24,
+    move: [0.6, 0.6, 0.85], turn: [8, 0], range: 150, radius: 20, flight: 0.55, dmg: 8,
+    onActiveStart: lobBasic('splashBubble'),
+    desc: 'BOLHA SALTITANTE: bolha em arco até a mira; estoura em área, molha e apaga o fogo.',
+  },
+  krakenBubble: {
+    id: 'krakenBubble', name: 'Bolha do Kraken', element: 'water', kind: 'lob', basic: true,
+    cooldown: 1.65, windup: 0.22, active: 0.05, recovery: 0.26,
+    move: [0.6, 0.6, 0.85], turn: [8, 0], range: 160, radius: 22, flight: 0.58, dmg: 8,
+    onActiveStart: lobBasic('splashBubble'),
+    desc: 'BOLHA DO KRAKEN: estouro largo que molha e empurra.',
+  },
+  // Mantifolha: combo rápido de foices com avanço (corpo a corpo puro).
+  twinScythe: {
+    id: 'twinScythe', name: 'Foice Dupla', element: 'plant', kind: 'melee', basic: true,
+    cooldown: 0.85, windup: 0.12, active: 0.1, recovery: 0.18,
+    move: [0.6, 1, 0.8], turn: [12, 2], range: 34,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 150; m.ky += Math.sin(a.aim) * 150; },
+    ...melee({ reach: 34, arc: 2.2, dmg: 8.5, kb: 60, stun: 0.12, extra: {} }),
+    desc: 'FOICE DUPLA: golpe rápido com avanço; ótimo para acumular Marcas.',
+  },
+  mantisFlurry: {
+    id: 'mantisFlurry', name: 'Rajada de Foices', element: 'plant', kind: 'melee', basic: true,
+    cooldown: 0.8, windup: 0.13, active: 0.12, recovery: 0.2,
+    move: [0.6, 1, 0.8], turn: [12, 2], range: 40,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 170; m.ky += Math.sin(a.aim) * 170; },
+    ...melee({ reach: 40, arc: 2.4, dmg: 11, kb: 70, stun: 0.14, extra: {} }),
+    desc: 'RAJADA DE FOICES: avanço com foices largas.',
+  },
+});

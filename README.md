@@ -39,13 +39,19 @@ Como funciona (servidor autoritativo):
 |---|---|
 | WASD / setas | mover |
 | Mouse | mirar |
-| Botão esquerdo / direito | ataque à distância (segure para repetir) / corpo a corpo |
+| Botão esquerdo / direito | golpe básico próprio do monstro (segure para repetir) / golpe pesado |
 | Q / E / F | poderes especiais (Hidrocasco: F = **Casco Reflexo**; Brotossauro: F = **Broto Sentinela**) |
 | Espaço / Shift | esquiva com invulnerabilidade |
 | 1 2 3 / Tab | trocar o monstro em campo (recarga de 3 s) |
 | **G** | **evoluir** (energia cheia) |
 | **H** | **ajuda**: mecânica do monstro em campo, cada botão e como ler a tela (abre sozinha na 1ª partida) |
 | P / Esc | pausa (local) ou menu (online; a partida continua) |
+
+## Combate focado em skills
+- **Golpe básico (botão esquerdo):** cada monstro tem o seu, de alcance curto ou médio, sem tiro longo repetido: Chicote de Brasa (Brasalisco), Onda de Choque (Hidrocasco, onda curta que atravessa e empurra), Semente Explosiva (Brotossauro, arco que vira raízes), Leque de Espinhos (Ouriflama, espingarda), Bolha Saltitante (Gotapus, arco que estoura e molha) e Foice Dupla (Mantifolha, corpo a corpo com avanço). As evoluções têm versões mais fortes.
+- **Ritmo:** cada golpe básico que acerta adianta 0,6 s das recargas de Q, E e F. Bater faz as skills voltarem mais rápido.
+- **Skills mais frequentes:** recargas 30% menores; algumas têm **cargas** (Meteoro e Brotos Sentinela: 2).
+- Ajustes em `src/config.js` (`COMBAT`). Nas simulações IA × IA, as skills passaram a causar mais dano que os golpes básicos (36% contra 31%; antes 25% contra 47%).
 
 ## Os 6 monstros e suas mecânicas próprias
 Triângulo: **Fogo > Planta > Água > Fogo** (+10–12% de dano). Cada linha tem uma **mecânica própria** (`src/sim/signature.js`) que muda o jeito de jogar com ela e contra ela; a evolução aprofunda essa mecânica. Arte: sprites extraídos das folhas do usuário (`assets/source/`).

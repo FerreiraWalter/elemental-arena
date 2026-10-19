@@ -23,6 +23,18 @@ function sentrySpot(c) {
   return { x: m.x + Math.cos(a) * d, y: m.y + Math.sin(a) * d };
 }
 
+
+// Chicote em linha: precisa de linha de visão e o alvo dentro do alcance.
+function lash(c, len) {
+  if (!c.vis || c.d > reach(c, len) || c.tGuarding) return null;
+  return { score: 0.8 + (c.tBusy ? 0.2 : 0) + (c.d > 30 ? 0.1 : 0) + charged(c), target: c.t };
+}
+// Arco até onde o alvo vai estar; não usa colado (o estouro também pegaria perto de mim).
+function lobShot(c, range) {
+  if (c.d < 30 || c.d > range + 10 || c.sinceSeen > 0.8) return null;
+  return { score: 0.62 + (c.tSpeed < 25 ? 0.15 : 0) + (c.tBusy ? 0.1 : 0), target: c.t, lob: true };
+}
+
 export const TACTICS = {
   // ───────────── FOGO: agressivo, cria e usa terreno em chamas ─────────────
   claw(c) {
@@ -278,5 +290,41 @@ export const TACTICS = {
     if (c.vis && c.d < 50 && c.hpF < 0.4) return { score: 0.66, aimPoint: c.awayPoint, purpose: 'escape' };
     if (c.vis && c.d > 110 && c.d < 250) return { score: 0.6 + (c.tBusy ? 0.25 : 0) + execReady(c), target: c.t };
     return null;
+  },
+  // ───── Golpes básicos do combate focado em skills ─────
+  // Chicotes (linha): acertam de média distância; ótimos contra quem está parado ou canalizando.
+  emberLash(c) { return lash(c, 58); },
+  magmaLash(c) { return lash(c, 66); },
+  // Ondas de choque: de perto, empurram para longe (bom para tirar inimigo de cima).
+  shockWave(c) {
+    if (!c.vis || c.d > 100 || c.tGuarding) return null;
+    return { score: 0.8 + (c.tBusy ? 0.15 : 0) + (c.d < 50 ? 0.1 : 0), target: c.t };
+  },
+  abyssShock(c) {
+    if (!c.vis || c.d > 115 || c.tGuarding) return null;
+    return { score: 0.85 + (c.tBusy ? 0.15 : 0) + (c.d < 55 ? 0.1 : 0), target: c.t };
+  },
+  // Projéteis em arco (bolha, semente): de média distância, mirando onde o alvo vai estar.
+  burstSeed(c) { return lobShot(c, 150); },
+  ancientSeed(c) { return lobShot(c, 160); },
+  bounceBubble(c) { return lobShot(c, 150); },
+  krakenBubble(c) { return lobShot(c, 165); },
+  // Leques de espinhos: espingarda — só vale de perto.
+  quillFan(c) {
+    if (!c.vis || c.d > 95 || c.tGuarding) return null;
+    return { score: 0.65 + (c.d < 55 ? 0.3 : 0) + charged(c), target: c.t };
+  },
+  magmaFan(c) {
+    if (!c.vis || c.d > 105 || c.tGuarding) return null;
+    return { score: 0.7 + (c.d < 60 ? 0.3 : 0) + charged(c), target: c.t };
+  },
+  // Foices: corpo a corpo com avanço; acumulam Marcas para a execução.
+  twinScythe(c) {
+    if (!c.vis || c.d > reach(c, 46) || c.tGuarding) return null;
+    return { score: 0.92 + (c.tBusy ? 0.2 : 0) + execReady(c), target: c.t };
+  },
+  mantisFlurry(c) {
+    if (!c.vis || c.d > reach(c, 54) || c.tGuarding) return null;
+    return { score: 0.95 + (c.tBusy ? 0.2 : 0) + execReady(c), target: c.t };
   },
 };

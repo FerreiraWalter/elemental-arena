@@ -107,7 +107,7 @@ test('Trocar no meio de um ataque cancela o ataque; dano durante a animação ai
   const hc = C.hp;
   w.damage(C, 10, null, { element: 'fire' });
   assert(SWITCH.entryInvulnerable ? C.hp === hc : C.hp < hc, 'vulnerabilidade de entrada diferente da configuração');
-  assert(!C.ready('waterBolt') && !C.ready('seedShot') && !C.ready('ember'), 'monstro entrando pode atacar');
+  assert(!C.ready('shockWave') && !C.ready('burstSeed') && !C.ready('emberLash'), 'monstro entrando pode atacar');
 });
 
 test('Derrotar o monstro em campo: o próximo vivo entra sozinho', () => {

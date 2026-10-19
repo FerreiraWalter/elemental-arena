@@ -89,8 +89,10 @@ const both = windows.filter((s) => s.size === 2).length / windows.length;
 check('2. Sem turnos: os dois times atacam continuamente', both > 0.8,
   `${(both * 100).toFixed(0)}% das janelas de 5s têm ataques dos DOIS times`);
 
-check('3. Projéteis viajam e colidem', ev('shoot') > 0 && ev('impact') > 0 && ev('hit') > 0 && ev('clash') > 0,
-  `${ev('shoot')} disparos, ${ev('impact')} impactos, ${ev('clash')} choques fogo×água viraram vapor, ${ev('rootsErupt')} raízes brotaram`);
+// Com o combate focado em skills quase não há projéteis de água voando: fogo × água vira vapor no ar (choque)
+// ou no chão (fogo sobre água/molhado). O critério exige a interação, venha de onde vier.
+check('3. Projéteis viajam e colidem', ev('shoot') > 0 && ev('impact') > 0 && ev('hit') > 0 && ev('clash') + ev('steam') > 0,
+  `${ev('shoot')} disparos, ${ev('impact')} impactos, ${ev('clash')} choques no ar e ${ev('steam')} no chão viraram vapor, ${ev('rootsErupt')} raízes brotaram`);
 
 check('4. Esquivas e reposicionamento diante de ameaças', ev('dodge') > 0 && sum((r) => r.evaded) > 0 && ev('nearMiss') > 0,
   `${ev('dodge')} esquivas, ${sum((r) => r.evaded)} ataques anulados por invulnerabilidade, ${ev('nearMiss')} projéteis que passaram raspando`);

@@ -18,6 +18,7 @@ export const STATE_LABEL = {
 };
 
 const DIRS = Array.from({ length: 16 }, (_, i) => ({ x: Math.cos((i / 16) * TAU), y: Math.sin((i / 16) * TAU) }));
+const SKILL_BIAS = 0.2; // preferência da IA por habilidades Q/E/F sobre o golpe básico
 const PROBES = [[8, 2, 1], [16, 0.8, 0.6], [28, 0.3, 0.3]]; // distância, peso de bloqueio, peso de terreno
 
 export class Brain {
@@ -436,7 +437,11 @@ export class Brain {
       const f = TACTICS[ab.id];
       const r = f && f(c);
       if (!r) continue;
-      const s = r.score + (w.rng() - 0.5) * 0.16;
+      // Combate focado em skills: com uma habilidade Q/E/F boa disponível, a IA a prefere ao golpe básico
+      // (como um jogador faria). Ataques que não causam dano (cura, buff) não ganham o bônus.
+      const ctl = m.def.controls;
+      const skill = ab.id === ctl.q || ab.id === ctl.e || ab.id === ctl.f;
+      const s = r.score + (skill && r.purpose !== 'escape' ? SKILL_BIAS : 0) + (w.rng() - 0.5) * 0.16;
       if (s > bestS) { bestS = s; best = { ...r, ab }; }
     }
     return best;

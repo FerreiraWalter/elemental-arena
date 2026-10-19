@@ -279,11 +279,18 @@ export class Renderer {
           if (e.big) this.hitstop = Math.max(this.hitstop, 0.06);
           break;
         case 'waveCrash':
+          if (e.small) { P.burst(e.x, e.y, 14, { ramp: 'water', speed: 90, life: 0.45, vz: 70, g: 220 }); break; } // onda curta do golpe básico: só respingo
           P.burst(e.x, e.y, 44, { ramp: 'water', speed: 150, life: 0.7, vz: 120, g: 240, size: 2 });
           P.burst(e.x + Math.cos(e.ang) * 10, e.y + Math.sin(e.ang) * 10, 16, { ramp: 'steam', speed: 60, life: 0.8, size: 3, grow: 3, alpha: 0.7 });
           this.rings.push({ x: e.x, y: e.y, r: 6, max: e.r + 6, t: 0, color: '#e8f8ff', thick: true });
           this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r - 4, t: 0, color: '#5ab4ff', thick: true });
           this.shake = Math.max(this.shake, 5);
+          break;
+        case 'splash':
+          // Estouro do golpe básico em arco: água (bolha) ou folhas e terra (semente).
+          P.burst(e.x, e.y, e.water ? 22 : 16, e.water ? { ramp: 'water', speed: 90, life: 0.45, vz: 70, g: 220 } : { ramp: 'dust', speed: 70, life: 0.45, vz: 40, g: 160 });
+          if (!e.water) P.burst(e.x, e.y, 10, { ramp: 'leafFall', speed: 60, life: 0.6, vz: 50, g: 120 });
+          this.rings.push({ x: e.x, y: e.y, r: 3, max: e.r, t: 0, color: e.water ? '#bfe8ff' : '#a8d860' });
           break;
         case 'whirlBurst':
           P.burst(e.x, e.y, 34, { ramp: 'water', speed: 140, life: 0.5, vz: 50, g: 200, size: 2 });
@@ -1193,7 +1200,18 @@ export class Renderer {
           if (d <= 2.6) g.set(x + dx, y + dy, W[Math.min(3, Math.floor(d))]);
         }
         this.particles.add({ ramp: 'water', x, y, vx: -p.vx * 0.12 + (Math.random() - 0.5) * 16, vy: -p.vy * 0.12 + (Math.random() - 0.5) * 16, life: 0.3 });
-      } else if (p.kind === 'bubble') {
+      } else if (p.kind === 'splashSeed') {
+        // Semente Explosiva em voo: sombra no chão + semente verde e marrom girando.
+        const l = this.l, k = p.t / p.flight;
+        l.globalAlpha = 0.35; l.fillStyle = '#0a1a08';
+        l.beginPath(); l.ellipse(Math.round(x), Math.round(y), 2 + k * 3, 1 + k * 2, 0, 0, Math.PI * 2); l.fill(); l.globalAlpha = 1;
+        const hy = y - p.h, sp = Math.floor(t * 12) % 2;
+        for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+          const d = Math.hypot(dx, dy);
+          if (d > 3.2) continue;
+          g.set(x + dx, hy + dy, d > 2.3 ? rgba('#2a3a10') : (dx + dy + sp) % 3 === 0 ? rgba('#c8e070') : rgba(dy < 0 ? '#7ab040' : '#5a3a1a'));
+        }
+      } else if (p.kind === 'bubble' || p.kind === 'splashBubble') {
         const l = this.l, k = p.t / p.flight;
         l.globalAlpha = 0.35; l.fillStyle = '#0a1a30';
         l.beginPath(); l.ellipse(Math.round(x), Math.round(y), 3 + k * 4, 2 + k * 2, 0, 0, Math.PI * 2); l.fill(); l.globalAlpha = 1;

@@ -174,7 +174,10 @@ export class Sfx {
       case 'bubbleBurst': this.tone({ type: 'sine', f0: 300, f1: 900, dur: 0.15, vol: 0.16, x }); this.hiss({ type: 'lowpass', f0: 1800, f1: 400, dur: 0.3, vol: 0.18, x }); return;
       case 'bubblePop': this.tone({ type: 'sine', f0: 700, f1: 1600, dur: 0.07, vol: 0.14, x }); return;
       case 'tentacleSlam': this.hiss({ type: 'lowpass', f0: 1400, f1: 120, dur: 0.6, vol: e.big ? 0.35 : 0.2, x }); this.tone({ type: 'sine', f0: e.big ? 90 : 140, f1: 40, dur: 0.5, vol: e.big ? 0.3 : 0.15, x }); return;
-      case 'waveCrash': this.hiss({ type: 'lowpass', f0: 2600, f1: 200, dur: 0.7, vol: 0.38, x }); this.tone({ type: 'sine', f0: 120, f1: 45, dur: 0.5, vol: 0.25, x }); return;
+      case 'waveCrash': if (e.small) { if (this.ok('smallWave', 0.1)) this.hiss({ type: 'lowpass', f0: 1800, f1: 300, dur: 0.22, vol: 0.12, x }); return; } this.hiss({ type: 'lowpass', f0: 2600, f1: 200, dur: 0.7, vol: 0.38, x }); this.tone({ type: 'sine', f0: 120, f1: 45, dur: 0.5, vol: 0.25, x }); return;
+      case 'splash':
+        if (this.ok('splash', 0.08)) { if (e.water) { this.tone({ type: 'sine', f0: 700, f1: 260, dur: 0.14, vol: 0.12, x }); this.hiss({ type: 'highpass', f0: 2600, dur: 0.12, vol: 0.06, x }); } else this.hiss({ type: 'bandpass', f0: 500, f1: 220, q: 1.5, dur: 0.18, vol: 0.14, x }); }
+        return;
       case 'whirlBurst': this.hiss({ type: 'bandpass', f0: 600, f1: 2200, dur: 0.35, vol: 0.2, x }); return;
       case 'burrowOut': this.hiss({ type: 'lowpass', f0: 700, f1: 150, dur: 0.25, vol: e.big ? 0.22 : 0.14, x }); this.tone({ type: 'triangle', f0: 180, f1: 90, dur: 0.18, vol: 0.12, x }); return;
       case 'castDenied': if (e.m === world.active) this.play('deny'); return;
