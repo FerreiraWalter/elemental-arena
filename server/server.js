@@ -166,7 +166,10 @@ export function createServer({
     ws.on('error', () => {});
   });
 
-  return new Promise((resolveStart) => {
+  return new Promise((resolveStart, rejectStart) => {
+    // Porta ocupada etc.: rejeita em vez de derrubar o processo com um erro sem tratamento.
+    wss.on('error', () => {});
+    server.once('error', rejectStart);
     server.listen(port, host, () => {
       const actual = server.address().port;
       resolveStart({
@@ -200,5 +203,14 @@ if (isMain) {
     const stop = (sig) => { console.log(`\n${sig}: encerrando...`); s.close().then(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
     process.on('SIGTERM', () => stop('SIGTERM'));
     process.on('SIGINT', () => stop('SIGINT'));
+  }).catch((e) => {
+    if (e.code === 'EADDRINUSE') {
+      console.error(`
+A porta ${port} já está em uso: o jogo provavelmente já está rodando em outra janela.`);
+      console.error(`Abra http://localhost:${port} no navegador, ou feche a outra janela e rode de novo.`);
+      console.error(`Para usar outra porta: defina PORT (ex.: no PowerShell, $env:PORT=8141; npm start).
+`);
+    } else console.error('Não consegui iniciar o servidor:', e.message);
+    process.exit(1);
   });
 }
