@@ -41,6 +41,7 @@ function monsterRec(m, idxOf) {
     st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield), overheat: r2(m.status.overheat), exhaust: r2(m.status.exhaust), cloak: r2(m.status.cloak), bubble: r2(m.status.bubble) },
     ht: r1(m.heat), mo: r1(m.momentum), cg: +m.charged, mk: m.marks.n ? [m.marks.n, idxOfId(m.marks.by)] : 0,
     cd: Object.fromEntries(Object.entries(m.cd).map(([k, v]) => [k, r2(v)])),
+    ...(Object.keys(m.ch).length ? { chg: Object.fromEntries(Object.keys(m.ch).map((k) => [k, [m.ch[k], r2(m.rc[k])]])) } : {}),
     x: r1(m.x), y: r1(m.y), vx: r1(m.vx), vy: r1(m.vy), fc: r2(m.facing),
     sw: m.switchState || 0, swT: r2(m.switchT), evT: r2(m.evolveT), hf: r2(m.hitFlash), dT: r2(m.deathT),
     sh: r1(m.shieldHp), lv: m.level ?? 1, lf: r2(m.lift), lfM: r2(m.liftMax),
@@ -137,6 +138,7 @@ export function applySnapshot(world, s, ctx) {
     m.hp = r.h; m.maxHp = r.M; m.alive = !!r.a; m.onField = !!r.f; m.energy = r.e; m.evolved = !!r.ev;
     Object.assign(m.status, r.st);
     m.cd = r.cd;
+    if (r.chg) for (const k in r.chg) { m.ch[k] = r.chg[k][0]; m.rc[k] = r.chg[k][1]; }
     m.px = entering ? r.x : m.x; m.py = entering ? r.y : m.y;
     m.x = r.x; m.y = r.y; m.vx = r.vx; m.vy = r.vy; m.facing = r.fc; m.lookAt = r.fc;
     m.switchState = r.sw || null; m.switchT = r.swT; m.evolveT = r.evT; m.hitFlash = r.hf; m.deathT = r.dT;

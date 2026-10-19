@@ -246,7 +246,7 @@ export class Room {
     this.acc = 0;
     this.last = process.hrtime.bigint();
     this.tickN = 0;
-    this.timer = setInterval(() => this.loop(), 8);
+    this.timer = setInterval(() => this.loop(), 4); // 4 ms: snapshots saem com no máximo ~4 ms de irregularidade
     this.pushSnapshot();
   }
 

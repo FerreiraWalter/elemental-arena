@@ -1,9 +1,18 @@
 // Rasterizador de pixel art: desenha formas sombreadas pixel a pixel (sem anti-aliasing),
 // com rampa de cores, pontilhado ordenado e contorno — base de todos os sprites procedurais.
 
+// Cor empacotada (ABGR). É chamada pixel a pixel em muitos desenhos: guarda as já convertidas (sem reinterpretar o texto).
+const RGBA_CACHE = new Map();
 export function rgba(hex, a = 255) {
-  const n = parseInt(hex.slice(1), 16);
-  return ((a & 255) << 24) | ((n & 255) << 16) | (((n >> 8) & 255) << 8) | ((n >> 16) & 255);
+  let row = RGBA_CACHE.get(hex);
+  if (!row) { row = new Array(256); RGBA_CACHE.set(hex, row); }
+  a &= 255;
+  let v = row[a];
+  if (v === undefined) {
+    const n = parseInt(hex.slice(1), 16);
+    v = row[a] = (a << 24) | ((n & 255) << 16) | (((n >> 8) & 255) << 8) | ((n >> 16) & 255);
+  }
+  return v;
 }
 export const ramp = (...hexes) => hexes.map((h) => rgba(h));
 
@@ -19,18 +28,36 @@ export function makeCanvas(w, h) {
 }
 
 export class PixelBuf {
-  constructor(w, h) {
+  // track: camadas de efeitos que são limpas e redesenhadas a cada quadro. Guardam a região desenhada e só
+  // limpam/enviam essa região (antes: a tela inteira duas vezes por quadro, mesmo quase vazia).
+  constructor(w, h, track = false) {
     this.w = w; this.h = h;
     this.canvas = makeCanvas(w, h);
     this.ctx = this.canvas.getContext('2d');
     this.img = this.ctx.createImageData(w, h);
     this.px = new Uint32Array(this.img.data.buffer);
+    this.track = track;
+    this.x0 = w; this.y0 = h; this.x1 = -1; this.y1 = -1; // região desenhada neste quadro
+    this.cx0 = w; this.cy0 = h; this.cx1 = -1; this.cy1 = -1; // região limpa (precisa ir para a tela também)
   }
-  clear() { this.px.fill(0); }
+  clear() {
+    if (!this.track) { this.px.fill(0); return; }
+    if (this.x1 < 0) return;
+    for (let y = this.y0; y <= this.y1; y++) this.px.fill(0, y * this.w + this.x0, y * this.w + this.x1 + 1);
+    this.cx0 = Math.min(this.cx0, this.x0); this.cy0 = Math.min(this.cy0, this.y0);
+    this.cx1 = Math.max(this.cx1, this.x1); this.cy1 = Math.max(this.cy1, this.y1);
+    this.x0 = this.w; this.y0 = this.h; this.x1 = -1; this.y1 = -1;
+  }
   set(x, y, c) {
     x |= 0; y |= 0;
     if (x < 0 || y < 0 || x >= this.w || y >= this.h) return;
     this.px[y * this.w + x] = c;
+    if (this.track) {
+      if (x < this.x0) this.x0 = x;
+      if (x > this.x1) this.x1 = x;
+      if (y < this.y0) this.y0 = y;
+      if (y > this.y1) this.y1 = y;
+    }
   }
   get(x, y) { return x < 0 || y < 0 || x >= this.w || y >= this.h ? 0 : this.px[y * this.w + x]; }
   rect(x, y, w, h, c) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.set(x + i, y + j, c); }
@@ -100,5 +127,12 @@ export class PixelBuf {
     }
   }
 
-  commit() { this.ctx.putImageData(this.img, 0, 0); return this.canvas; }
+  commit() {
+    if (!this.track) { this.ctx.putImageData(this.img, 0, 0); return this.canvas; }
+    const x0 = Math.min(this.x0, this.cx0), y0 = Math.min(this.y0, this.cy0);
+    const x1 = Math.max(this.x1, this.cx1), y1 = Math.max(this.y1, this.cy1);
+    if (x1 >= x0 && y1 >= y0) this.ctx.putImageData(this.img, 0, 0, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+    this.cx0 = this.w; this.cy0 = this.h; this.cx1 = -1; this.cy1 = -1;
+    return this.canvas;
+  }
 }

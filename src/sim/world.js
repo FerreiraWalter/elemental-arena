@@ -320,7 +320,7 @@ export class World {
   updateBench(dt) {
     for (const m of this.roster) {
       if (m.onField || !m.alive) continue;
-      for (const k in m.cd) if (m.cd[k] > 0) m.cd[k] = Math.max(0, m.cd[k] - dt);
+      m.tickCooldowns(dt);
       const st = m.status;
       Sig.bench(m, dt);
       st.overheat = 0; st.exhaust = 0; st.cloak = 0;
@@ -704,7 +704,7 @@ export class World {
     m.hp = frac * def.hp;
     m.r = def.radius;
     m.stage = def.stage;
-    for (const ab of def.abilities) if (m.cd[ab.id] === undefined) m.cd[ab.id] = 0;
+    for (const ab of def.abilities) m.initAbility(ab);
     m.ai.applyProfile();
     // A forma nova é maior: se não couber onde está (beira d'água, parede), vai para o ponto válido mais próximo.
     if (!this.mirror && (!this.standable(m, m.x, m.y) || this.blocked(m.x, m.y, m.r * 0.8))) {
@@ -804,7 +804,7 @@ export class World {
     m.hitFlash = Math.max(0, m.hitFlash - dt);
     if (m.lift > 0) m.lift = Math.max(0, m.lift - dt);
     if (!m.alive) { m.deathT += dt; m.kx *= Math.exp(-6 * dt); m.ky *= Math.exp(-6 * dt); m.x += m.kx * dt; m.y += m.ky * dt; return; }
-    for (const k in m.cd) if (m.cd[k] > 0) m.cd[k] = Math.max(0, m.cd[k] - dt);
+    m.tickCooldowns(dt);
     for (const k in st) if (st[k] > 0) st[k] = Math.max(0, st[k] - dt);
 
     // Efeitos do terreno sob os pés.

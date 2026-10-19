@@ -106,7 +106,8 @@ export const ABILITIES = {
   },
   meteor: {
     id: 'meteor', name: 'Meteoro', element: 'fire', kind: 'lob', heat: 18,
-    cooldown: 10, windup: 0.4, active: 0.05, recovery: 0.35,
+    charges: 2, chargeGap: 0.9, // 2 cargas; cada uma volta em 11 s
+    cooldown: 11, windup: 0.4, active: 0.05, recovery: 0.35,
     move: [0.3, 0.3, 0.7], turn: [8, 0], range: 230, radius: 30, flight: 0.95,
     onActiveStart(w, m, a) {
       const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
@@ -262,6 +263,7 @@ export const ABILITIES = {
   // Brotos Sentinela: arremessa uma semente que vira uma torre viva (atira sozinha e cura o Brotossauro por perto).
   plantSentry: {
     id: 'plantSentry', name: 'Broto Sentinela', element: 'plant', kind: 'lob', sentry: true,
+    charges: 2, chargeGap: 0.6, // 2 cargas: dá para plantar as duas sentinelas seguidas
     cooldown: 10, windup: 0.3, active: 0.05, recovery: 0.3,
     move: [0.4, 0.4, 0.7], turn: [8, 0], range: 150, radius: 10, flight: 0.55,
     onActiveStart(w, m, a) { sentryLob(w, m, a, this, 'sentry', 10); },
@@ -425,6 +427,7 @@ export const ABILITIES = {
   },
   ancientSentry: {
     id: 'ancientSentry', name: 'Guardião Ancestral', element: 'plant', kind: 'lob', sentry: true,
+    charges: 2, chargeGap: 0.6,
     cooldown: 10, windup: 0.35, active: 0.05, recovery: 0.35,
     move: [0.3, 0.3, 0.6], turn: [8, 0], range: 160, radius: 12, flight: 0.6,
     onActiveStart(w, m, a) { sentryLob(w, m, a, this, 'ancientSentry', 13); },
@@ -776,7 +779,7 @@ const DESC = {
   claw: 'Golpe corpo a corpo com avanço; deixa o alvo em chamas.',
   flameWave: 'Cone de fogo canalizado; incendeia a vegetação à frente.',
   fireDash: 'Investida que deixa um rastro de chão em brasa.',
-  meteor: 'Bola de fogo em arco com área marcada no chão.',
+  meteor: 'Bola de fogo em arco com área marcada no chão. 2 cargas.',
   hop: 'Salto lateral com invulnerabilidade breve.',
   waterBolt: 'Jato que molha o alvo e apaga o fogo pelo caminho.',
   headbutt: 'Cabeçada com empurrão forte; molha o alvo.',
@@ -805,7 +808,7 @@ const DESC = {
   barkStep: 'Afunda e anda como uma arvorezinha (invulnerável); ao brotar, empurra quem estiver colado e espalha grama.',
   shellGuard: 'BLOQUEIO de 0,55 s: reduz o dano em 85%, devolve projéteis e contra-ataca quem bate de perto.',
   abyssGuard: 'Bloqueio mais longo; bloquear um golpe dá uma bolha que absorve 25 de dano.',
-  plantSentry: 'Planta um BROTO SENTINELA (10 s) que atira sementes sozinho e cura você por perto. Máx. 2.',
+  plantSentry: 'Planta um BROTO SENTINELA (10 s) que atira sementes sozinho e cura você por perto. 2 cargas, até 2 em campo.',
   ancientSentry: 'Guardião maior e mais resistente: dispara espinhos e cura mais. Máx. 2.',
   krakenJet: 'Esquiva a jato que deixa uma cópia de tinta para enganar o inimigo.',
   bubbleTrap: 'Bolha em arco, rápida: estoura no círculo marcado e PRENDE quem estiver dentro por ~1 s.',

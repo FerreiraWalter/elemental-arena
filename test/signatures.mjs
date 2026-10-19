@@ -418,6 +418,42 @@ test('Saltos (Mantifolha/Silvamante) caem onde o mouse estava; o alcance é o m�
   }
 });
 
+test('Cargas: Meteoro tem 2 cargas, recarregam uma por vez e vão para o cliente online', () => {
+  const { w, A } = setup('brasalisco', 'brotossauro', { gap: 200 });
+  const ab = ABILITIES.meteor;
+  assert(A.ch.meteor === 2, 'não começou com 2 cargas');
+  const cast = () => A.cast(w, ab, { aim: 0, point: { x: 330, y: 200 }, aimPoint: { x: 330, y: 200 } });
+  assert(cast(), 'primeiro meteoro falhou');
+  until(w, () => !A.action, 2);
+  until(w, () => A.cd.meteor <= 0, 2);
+  assert(cast(), 'segundo meteoro seguido falhou (devia ter 2 cargas)');
+  until(w, () => !A.action, 2);
+  until(w, () => A.cd.meteor <= 0, 2);
+  assert(A.ch.meteor === 0 && !A.ready('meteor'), 'terceiro meteoro não devia estar disponível');
+  until(w, () => A.ch.meteor >= 1, ab.cooldown + 0.5);
+  assert(A.ch.meteor === 1, 'não recarregou uma carga');
+  // Snapshot leva as cargas ao espelho do cliente.
+  const ctx = makeSyncCtx(w);
+  const mirror = createMirror({ seed: 5, rosters: [['brasalisco', 'hidrocasco', 'brotossauro'], ['brotossauro', 'brasalisco', 'hidrocasco']], you: 0, arena: 'quadra', sides: [0, 1], players: [{ seat: 0 }, { seat: 1 }] });
+  applySnapshot(mirror.world, JSON.parse(JSON.stringify(serialize(w, ctx))), mirror.ctx);
+  const mA = mirror.world.roster[w.roster.indexOf(A)];
+  assert(mA.ch.meteor === A.ch.meteor && Math.abs(mA.rc.meteor - A.rc.meteor) < 0.02, 'cargas não sincronizaram');
+});
+
+test('Cargas: Brotossauro planta as 2 sentinelas em sequência (até 2 em campo)', () => {
+  const { w, A } = setup('brotossauro', 'brasalisco', { gap: 200 });
+  const ab = ABILITIES.plantSentry;
+  for (let k = 0; k < 2; k++) {
+    until(w, () => A.ready('plantSentry'), 2);
+    assert(A.cast(w, ab, { aim: 0, point: { x: 240, y: 170 + k * 60 }, aimPoint: { x: 240, y: 170 + k * 60 } }), `sentinela ${k + 1} falhou`);
+    until(w, () => !A.action, 2);
+  }
+  step(w, 1);
+  const mine = w.obstacles.filter((o) => o.sentry && o.owner === A && !o.destroyed);
+  assert(mine.length === 2, `esperava 2 sentinelas em campo, há ${mine.length}`);
+  assert(!A.ready('plantSentry'), 'terceira sentinela não devia estar disponível');
+});
+
 let failed = 0;
 console.log('\nMecânicas próprias, limites do fogo e sincronização\n');
 for (const r of results) { console.log(`${r.ok ? '[OK] ' : '[FALHOU]'} ${r.name}${r.ok ? '' : '\n       ' + r.err}`); if (!r.ok) failed++; }

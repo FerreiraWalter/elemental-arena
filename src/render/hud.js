@@ -224,7 +224,8 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
   const deny = r.denySlot;
   for (const [slot, key] of slots) {
     const ab = m.ability(m.def.controls[slot]);
-    const cd = m.cd[ab.id];
+    const cd = m.waitFor ? m.waitFor(ab.id) : m.cd[ab.id];
+    const charges = ab.charges ? (m.ch[ab.id] ?? ab.charges) : 0;
     const using = m.action?.ab === ab;
     const locked = m.status.exhaust > 0 && m.isSpecial?.(ab.id);
     const denied = deny && deny.slot === slot && Math.floor(deny.t * 14) % 2 === 0;
@@ -242,8 +243,20 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     const nsz = Math.min(fit(c, l1, 6.5, bw - 6 * dpr, dpr), fit(c, l2 || l1, 6.5, bw - 6 * dpr, dpr));
     text(c, l1, x + bw / 2, y + 25 * dpr, nsz, '#e8e0d0', 'center', dpr);
     if (l2) text(c, l2, x + bw / 2, y + 34 * dpr, nsz, '#e8e0d0', 'center', dpr);
+    if (ab.charges) {
+      // Pontinhos de carga no canto e a barrinha da próxima carga recarregando.
+      for (let k = 0; k < ab.charges; k++) {
+        c.fillStyle = k < charges ? '#ffe066' : '#3a302a';
+        c.fillRect(x + bw - (7 + k * 6) * dpr, y + 4 * dpr, 4 * dpr, 4 * dpr);
+      }
+      if (charges < ab.charges && charges > 0) {
+        const f = 1 - (m.rc[ab.id] || 0) / ab.cooldown;
+        c.fillStyle = '#ffe066';
+        c.fillRect(x + 3 * dpr, y + bh - 4 * dpr, (bw - 6 * dpr) * Math.max(0, Math.min(1, f)), 2 * dpr);
+      }
+    }
     if (cd > 0) {
-      const f = cd / ab.cooldown;
+      const f = Math.min(1, cd / (ab.charges && charges > 0 ? (ab.chargeGap ?? 0.6) : ab.cooldown));
       c.fillStyle = 'rgba(0,0,0,0.6)';
       c.fillRect(x + 2 * dpr, y + 2 * dpr + (bh - 4 * dpr) * (1 - f), bw - 4 * dpr, (bh - 4 * dpr) * f);
       if (cd >= 0.95) text(c, cd.toFixed(0), x + bw / 2, y + bh / 2 + 5 * dpr, 9, '#fff', 'center', dpr);

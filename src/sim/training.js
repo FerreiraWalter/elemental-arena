@@ -93,6 +93,7 @@ export function update(w, dt) {
   }
   if (T.opts.noCd && me) {
     for (const k in me.cd) if (!me.action || me.action.ab.id !== k) me.cd[k] = 0;
+    for (const k in me.ch) { const ab = me.ability(k); if (ab) { me.ch[k] = ab.charges; me.rc[k] = 0; } }
     w.teams[w.playerTeam].cooldown = 0;
   }
   for (const d of T.dummies) {

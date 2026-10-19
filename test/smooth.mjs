@@ -14,7 +14,7 @@ const assert = (c, m) => { if (!c) throw new Error(m); };
 const ROSTERS = [['brasalisco', 'hidrocasco', 'brotossauro'], ['ouriflama', 'gotapus', 'mantifolha']];
 
 // owd = latência de ida (ms); jitter = variação aleatória (ms); script(t) → direção desejada {x,y} em t segundos.
-function run({ owd, jitter, seconds = 4, script, seed = 1, rosters = ROSTERS }) {
+function run({ owd, jitter, seconds = 4, script, seed = 1, rosters = ROSTERS, spikes = 0 }) {
   const rnd = mulberry32(seed);
   const server = World.match(7, rosters, null, 'quadra', 'normal', { sides: [0, 1], humans: [0, 1] });
   const sctx = makeSyncCtx(server);
@@ -24,7 +24,8 @@ function run({ owd, jitter, seconds = 4, script, seed = 1, rosters = ROSTERS }) 
   const sm = new NetSmoother();
   const toClient = [], toServer = []; // { at, data }
   let lastC = 0, lastS = 0;
-  const lat = () => owd + (rnd() - 0.5) * 2 * jitter;
+  // spikes: a cada ~2 s a rede trava por esse tempo (retransmissão TCP / Wi-Fi) e o que estava parado chega de uma vez.
+  const lat = (t) => owd + (rnd() - 0.5) * 2 * jitter + (spikes && (t % 2000) < spikes ? spikes - (t % 2000) : 0);
   const frames = [], casts = [];
   let ticks = 0;
   const pressed = new Set();
@@ -40,8 +41,9 @@ function run({ owd, jitter, seconds = 4, script, seed = 1, rosters = ROSTERS }) 
       if (d.aim) { si.aim.x = d.aim.x; si.aim.y = d.aim.y; }
       if (d.press) si.presses.push(d.press);
     }
+    { const a = tms / 700; server.inputs[1].move.x = Math.cos(a); server.inputs[1].move.y = Math.sin(a); }
     server.step(DT);
-    if (++ticks % 3 === 0) { const s = JSON.parse(JSON.stringify(serialize(server, sctx))); const at = Math.max(lastC + 0.01, tms + lat()); lastC = at; toClient.push({ at, data: s }); }
+    if (++ticks % 3 === 0) { const s = JSON.parse(JSON.stringify(serialize(server, sctx))); const at = Math.max(lastC + 0.01, tms + lat(tms)); lastC = at; toClient.push({ at, data: s }); }
     // cliente: snapshots que chegaram
     while (toClient.length && toClient[0].at <= tms) sm.enqueue(toClient.shift().data, toClient[0] ? tms : tms, cw);
     // cliente: entrada desta quadro (após o pré-aquecimento)
@@ -53,13 +55,15 @@ function run({ owd, jitter, seconds = 4, script, seed = 1, rosters = ROSTERS }) 
     // Tecla: uma vez por rótulo (o roteiro devolve press enquanto a janela de tempo dura).
     let press = null;
     if (dir.press && !pressed.has(dir.key || dir.press)) { pressed.add(dir.key || dir.press); press = dir.press; sm.press(press, cw, tms, owd * 2); }
-    const at = Math.max(lastS + 0.01, tms + lat()); lastS = at; toServer.push({ at, data: { x: dir.x, y: dir.y, aim: dir.aim, press } });
+    const at = Math.max(lastS + 0.01, tms + lat(tms)); lastS = at; toServer.push({ at, data: { x: dir.x, y: dir.y, aim: dir.aim, press } });
     sm.lead(tms, FR / 1000, alpha, cw, false, owd * 2);
     for (const e of cw.drainEvents()) if (e.type === 'cast' && e.m === cw.active) casts.push({ t, ab: e.ab, local: !!e.local });
     const m = cw.active;
     if (m && tms >= pre) {
       const l = m.lead || { x: 0, y: 0 };
-      frames.push({ t, x: m.px + (m.x - m.px) * alpha + l.x, y: m.py + (m.y - m.py) * alpha + l.y, sx: server.fieldOf(0).x, sy: server.fieldOf(0).y, dir, act: m.action?.ab.id, cd: { ...m.cd }, facing: m.facing });
+      const e = cw.fieldOf(1);
+      frames.push({ t, x: m.px + (m.x - m.px) * alpha + l.x, y: m.py + (m.y - m.py) * alpha + l.y, sx: server.fieldOf(0).x, sy: server.fieldOf(0).y, dir, act: m.action?.ab.id, cd: { ...m.cd }, facing: m.facing,
+        ex: e ? e.px + (e.x - e.px) * alpha : 0, ey: e ? e.py + (e.y - e.py) * alpha : 0 });
     }
   }
   return { frames, server, casts };
@@ -150,7 +154,7 @@ test('Habilidade comum: recarga e som na hora, sem som repetido quando o servido
   const { frames, casts, server } = run({ owd: 125, jitter: 30, script, seconds: 2 });
   const i0 = frames.findIndex((f) => f.t >= 0.5);
   assert(frames[i0 + 1].cd.meteor > 0, 'recarga não começou na hora');
-  assert(server.fieldOf(0).cd.meteor > 0, 'servidor não lançou');
+  assert(server.fieldOf(0).ch.meteor === 1, 'servidor não lançou (a carga gasta não aparece)');
   const mc = casts.filter((c) => c.ab === 'meteor');
   assert(mc.length === 1 && mc[0].local, `esperava 1 som de lançamento local, veio ${JSON.stringify(mc)}`);
 });
@@ -161,6 +165,23 @@ test('Olha para o mouse na hora (sem esperar o servidor)', () => {
   const f = frames.find((x) => x.t >= 0.52);
   assert(Math.cos(f.facing) < 0, 'ainda olhando para o lado antigo');
 });
+
+// O inimigo anda em círculo sem parar: no cliente ele não pode congelar nem dar saltos quando um snapshot atrasa.
+for (const [name, cfg] of [['ping 120 ms (jitter 25)', { owd: 60, jitter: 25 }], ['ping 250 ms (jitter 60)', { owd: 125, jitter: 60 }], ['ping 80 ms com travadas de 200 ms', { owd: 40, jitter: 8, spikes: 200 }]]) {
+  test(`Outros monstros andam sem engasgar — ${name}`, () => {
+    const { frames } = run({ ...cfg, script: () => ({ x: 0, y: 0 }), seconds: 5, seed: 3 });
+    let frozen = 0, maxStep = 0;
+    for (let i = 1; i < frames.length; i++) {
+      const d = Math.hypot(frames[i].ex - frames[i - 1].ex, frames[i].ey - frames[i - 1].ey);
+      if (d < 0.05) frozen++;
+      maxStep = Math.max(maxStep, d);
+    }
+    const per = 80 / 60; // velocidade ~ 80 px/s
+    console.log(`      inimigo (${name}): ${frozen} quadros congelados de ${frames.length}, maior salto ${maxStep.toFixed(1)} px`);
+    assert(frozen <= frames.length * 0.03, `inimigo congelou em ${frozen} quadros`);
+    assert(maxStep < per * 3.5, `inimigo saltou ${maxStep.toFixed(1)} px em um quadro`);
+  });
+}
 
 let failed = 0;
 console.log('\nSuavização de rede (simulação com latência e jitter)\n');

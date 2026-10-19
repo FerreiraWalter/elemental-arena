@@ -20,7 +20,7 @@ export class Particles {
   constructor() { this.list = []; }
 
   add(o) {
-    if (this.list.length > 2600) return;
+    if (this.list.length > 900) return; // acima disso o olho não distingue; cada partícula custa uma chamada de desenho
     this.list.push({
       x: o.x, y: o.y, z: o.z || 0, vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0,
       g: o.g || 0, drag: o.drag ?? 2, life: o.life || 0.6, age: 0, size: o.size || 1,

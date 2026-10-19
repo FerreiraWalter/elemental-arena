@@ -14,7 +14,8 @@
 import { applySnapshot, SNAP_HZ } from './snapshot.js';
 
 const SNAP_MS = 1000 / SNAP_HZ;
-const BUFFER_MS = 300; // o servidor guarda teclas por 0,3 s (control/player.js)
+const BUFFER_MS = 300;
+const EXTRAP_MS = 110; // quanto tempo os outros monstros seguem andando sem snapshot novo // o servidor guarda teclas por 0,3 s (control/player.js)
 const stepVel = (v, target, dt) => v + (target - v) * Math.min(1, 12 * dt);
 const total = (ab) => ab.windup + ab.active + ab.recovery;
 
@@ -70,17 +71,20 @@ export class NetSmoother {
     }
     if (applied) this.captureServer(world);
     if (this.curT === null || this.curT <= this.prevT) return 1;
-    return Math.max(0, Math.min(1, (renderT - this.prevT) / (this.curT - this.prevT)));
+    // Snapshot atrasado (rede travou): em vez de congelar no último estado e saltar quando o próximo chegar,
+    // continua o movimento na mesma direção por até EXTRAP_MS (alpha > 1). Teleportes não são extrapolados (renderer).
+    const span = (this.curT - this.prevT) * 1000;
+    return Math.max(0, Math.min(1 + EXTRAP_MS / span, (renderT - this.prevT) / (this.curT - this.prevT)));
   }
 
   // Guarda o que o servidor disse do meu monstro (a previsão é refeita por cima disso a cada quadro),
   // confirma teclas reconhecidas e descarta o "cast" atrasado do servidor (o som já tocou no aperto).
   captureServer(world) {
     const m = world.active;
-    this.srv = m ? { m, action: m.action, cd: { ...m.cd } } : null;
+    this.srv = m ? { m, action: m.action, cd: { ...m.cd }, ch: { ...m.ch } } : null;
     if (!m) return;
     for (const k of this.acks) {
-      if (!k.confirmed && ((m.action && m.action.ab.id === k.id) || (m.cd[k.id] || 0) > k.cd0 + 0.05)) k.confirmed = true;
+      if (!k.confirmed && ((m.action && m.action.ab.id === k.id) || (m.cd[k.id] || 0) > k.cd0 + 0.05 || (k.charge && k.ch0 !== undefined && (m.ch[k.id] ?? k.ch0) < k.ch0))) k.confirmed = true;
     }
     world.events = world.events.filter((e) => {
       if (e.type !== 'cast' || e.local || e.m !== m) return true;
@@ -89,6 +93,12 @@ export class NetSmoother {
       k.heard = true;
       return false;
     });
+  }
+
+  // Cargas que sobram segundo o servidor menos as que eu já gastei e ele ainda não confirmou.
+  chargesLeft(id, ab) {
+    const base = this.srv?.ch?.[id] ?? ab.charges;
+    return base - this.acks.filter((k) => k.id === id && k.charge && !k.confirmed).length;
   }
 
   drawnPos(m) { return this.pred.init ? { x: this.pred.x, y: this.pred.y } : { x: m.x, y: m.y }; }
@@ -107,6 +117,7 @@ export class NetSmoother {
     if (m.status.exhaust > 0 && m.isSpecial(id)) return false;
     const tol = (rtt + this.delay) / 1000;
     if ((this.srv.cd[id] || 0) - tol > 0.05 || this.localCd(id, now) > 0.05) return false;
+    if (ab.charges && this.chargesLeft(id, ab) <= 0) return false;
     if (this.pc && (now - this.pc.t0) / 1000 < total(this.pc.ab) - 0.03) return false;
     const sa = this.srv.action;
     if (sa && !(this.tail && sa.ab.id === this.tail.id) && !this.acks.some((k) => k.id === sa.ab.id)) {
@@ -128,7 +139,7 @@ export class NetSmoother {
     const aim = Math.atan2(inp.aim.y - pos.y, inp.aim.x - pos.x);
     const ml = Math.hypot(inp.move.x, inp.move.y);
     const dir = ab.kind === 'dodge' && ml > 0 ? Math.atan2(inp.move.y, inp.move.x) : aim;
-    this.acks.push({ id, t: now, cd0: srv.cd[id] || 0, cooldown: ab.cooldown, confirmed: false, heard: false });
+    this.acks.push({ id, t: now, cd0: srv.cd[id] || 0, cooldown: ab.charges ? (ab.chargeGap ?? 0.6) : ab.cooldown, charge: !!ab.charges, ch0: srv.ch?.[id], confirmed: false, heard: false });
     if (this.acks.length > 10) this.acks.shift();
     if ((ab.kind === 'dodge' || ab.kind === 'dash') && ab.dash) {
       const pc = { m, id, ab, t0: now, aim: ab.kind === 'dodge' ? dir : aim, dir, aimPoint: { x: inp.aim.x, y: inp.aim.y } };
@@ -149,6 +160,7 @@ export class NetSmoother {
     const limit = rtt + this.delay + BUFFER_MS + 250;
     this.acks = this.acks.filter((k) => (k.confirmed ? now - k.t < k.cooldown * 1000 + 1500 : now - k.t < limit));
     for (const id in srv.cd) m.cd[id] = Math.max(0, srv.cd[id] - tol, this.localCd(id, now));
+    for (const id in srv.ch) { const ab = m.ability(id); if (ab) m.ch[id] = Math.max(0, this.chargesLeft(id, ab)); }
 
     const P = this.pc;
     if (P) {
@@ -205,7 +217,8 @@ export class NetSmoother {
     const ux = free && !dashing && l ? inp.move.x / l : 0, uy = free && !dashing && l ? inp.move.y / l : 0;
     hist.push({ t: now, dt, ux, uy, spd, dvx, dvy, air, land });
     while (hist.length && now - hist[0].t > 1500) hist.shift();
-    const base = { x: m.px + (m.x - m.px) * alpha, y: m.py + (m.y - m.py) * alpha };
+    const ba = alpha > 1 && Math.abs(m.x - m.px) + Math.abs(m.y - m.py) > 24 ? 1 : alpha;
+    const base = { x: m.px + (m.x - m.px) * ba, y: m.py + (m.y - m.py) * ba };
     const move = (s, vx, vy, d, through) => {
       const nx = s.x + vx * d, ny = s.y + vy * d;
       if (through || world.standable(m, nx, ny)) { s.x = nx; s.y = ny; return true; }

@@ -41,10 +41,12 @@ export class Renderer {
     this.low = makeCanvas(WORLD_W, WORLD_H);
     this.l = this.low.getContext('2d');
     this.base = new PixelBuf(WORLD_W, WORLD_H);
-    this.fxG = new PixelBuf(WORLD_W, WORLD_H);
-    this.fxT = new PixelBuf(WORLD_W, WORLD_H);
-    this.glow = makeCanvas(WORLD_W, WORLD_H);
+    this.fxG = new PixelBuf(WORLD_W, WORLD_H, true);
+    this.fxT = new PixelBuf(WORLD_W, WORLD_H, true);
+    // Brilho aditivo em meia resolução (é um borrão: ninguém nota a diferença; custa 1/4 dos pixels).
+    this.glow = makeCanvas(WORLD_W / 2, WORLD_H / 2);
     this.gl = this.glow.getContext('2d');
+    this.gl.setTransform(0.5, 0, 0, 0.5, 0, 0);
     this.glows = { fire: glowSprite('rgba(255,140,40,0.55)'), blue: glowSprite('rgba(90,180,255,0.5)'), white: glowSprite('rgba(255,250,220,0.8)') };
     this.particles = new Particles();
     this.debug = false;
@@ -83,6 +85,7 @@ export class Renderer {
     for (const m of world.roster) this.ms(m);
     this.palette = paletteFor(world);
     this.obsSprites = new Map();
+    this.obsDeco = new Map(); // sombra + anel de hitbox por obstáculo (estáticos)
     this.stump = stumpSprite();
     this.groups = new Map();
     for (const o of world.obstacles) if (o.group) { if (!this.groups.has(o.group)) this.groups.set(o.group, []); this.groups.get(o.group).push(o); }
@@ -589,14 +592,23 @@ export class Renderer {
     const tr = world.terrain, fx = this.fxG;
     // Água animada.
     const ft = Math.floor(t * 8);
-    for (const i of world.waterTiles) {
-      const tx = (i % COLS) * TILE, ty = ((i / COLS) | 0) * TILE;
-      for (let y = ty; y < ty + TILE; y++) for (let x = tx; x < tx + TILE; x++) {
-        const v = valueNoise(x / 7 + t * 0.7, y / 3.5 - t * 0.25, 77);
-        if (v > 0.74) fx.set(x, y, rgba('#a8e0f8', 200));
-        else if (v > 0.68) fx.set(x, y, rgba('#5aa6dc', 150));
+    // Água animada: o ruído por pixel só é recalculado 10×/s; nos outros quadros repetimos os pixels guardados.
+    const wf = Math.floor(t * 10);
+    if (this._waterF !== wf || this._waterW !== world) {
+      this._waterF = wf; this._waterW = world;
+      const tw = wf / 10, hi = [], lo = [];
+      for (const i of world.waterTiles) {
+        const tx = (i % COLS) * TILE, ty = ((i / COLS) | 0) * TILE;
+        for (let y = ty; y < ty + TILE; y++) for (let x = tx; x < tx + TILE; x++) {
+          const v = valueNoise(x / 7 + tw * 0.7, y / 3.5 - tw * 0.25, 77);
+          if (v > 0.74) hi.push(x, y); else if (v > 0.68) lo.push(x, y);
+        }
       }
+      this._waterHi = hi; this._waterLo = lo;
     }
+    { const H = rgba('#a8e0f8', 200), L = rgba('#5aa6dc', 150), hi = this._waterHi, lo = this._waterLo;
+      for (let k = 0; k < hi.length; k += 2) fx.set(hi[k], hi[k + 1], H);
+      for (let k = 0; k < lo.length; k += 2) fx.set(lo[k], lo[k + 1], L); }
     for (const i of this.deepTiles) {
       const hh = hash2(i, Math.floor(t * 3 + (i % 7)), 6);
       if (hh > 0.7) fx.set((i % COLS) * TILE + ((hh * 61) % 8 | 0), ((i / COLS) | 0) * TILE + ((hh * 37) % 8 | 0), rgba(hh > 0.9 ? '#7fc0e0' : '#2e5e90', 200));
@@ -623,15 +635,27 @@ export class Renderer {
     }
     // Fogo: chão incandescente + línguas de chama.
     const burning = [...tr.burning].sort((a, b) => a - b);
+    if (this._ember && this._ember.size > burning.length * 2 + 64) for (const k of this._ember.keys()) if (!tr.burning.has(k)) this._ember.delete(k);
     for (const i of burning) {
       const tx = (i % COLS) * TILE, ty = ((i / COLS) | 0) * TILE;
       const fuelFire = !!props(tr.type[i]).fuel;
       const k = fuelFire ? 0.65 + 0.35 * Math.sin(Math.PI * clamp(1 - tr.fire[i] / tr.fireMax[i], 0, 1)) : clamp(tr.fire[i] / 1.5, 0.25, 0.8);
-      for (let y = ty; y < ty + TILE; y++) for (let x = tx; x < tx + TILE; x++) {
-        const h = hash2(x, y + (ft >> 1), 3);
-        if (h < 0.22 * k) fx.set(x, y, EMBER[(h * 13) % 3 | 0]);
-        else if (h < 0.5 * k) fx.set(x, y, rgba('#3a120a', 120));
+      // Brasas do tile: o padrão só muda 4×/s; guardado por tile e repetido nos quadros seguintes.
+      const ec = this._ember || (this._ember = new Map());
+      const kq = Math.round(k * 8);
+      let e = ec.get(i);
+      if (!e || e.f !== (ft >> 1) || e.k !== kq) {
+        const px = [];
+        for (let y = ty; y < ty + TILE; y++) for (let x = tx; x < tx + TILE; x++) {
+          const h = hash2(x, y + (ft >> 1), 3);
+          if (h < 0.22 * k) px.push(x, y, (h * 13) % 3 | 0);
+          else if (h < 0.5 * k) px.push(x, y, -1);
+        }
+        e = { f: ft >> 1, k: kq, px };
+        ec.set(i, e);
       }
+      const SOOT = rgba('#3a120a', 120);
+      for (let q = 0; q < e.px.length; q += 3) fx.set(e.px[q], e.px[q + 1], e.px[q + 2] < 0 ? SOOT : EMBER[e.px[q + 2]]);
       const tongues = fuelFire ? 2 : 1;
       for (let j = 0; j < tongues; j++) {
         const cx = tx + 2 + j * 4 + ((hash2(i, j, 1) * 3) | 0) - (tongues === 1 ? -1 : 0);
@@ -784,7 +808,12 @@ export class Renderer {
     }
   }
 
-  lerpPos(m, alpha) { const l = m.lead; return { x: m.px + (m.x - m.px) * alpha + (l ? l.x : 0), y: m.py + (m.y - m.py) * alpha + (l ? l.y : 0) }; }
+  // alpha > 1 = extrapolação (snapshot atrasado no online). Saltos grandes (entrada em campo, teleporte) não se extrapolam.
+  lerpPos(m, alpha) {
+    const l = m.lead;
+    const a = alpha > 1 && Math.abs(m.x - m.px) + Math.abs(m.y - m.py) > 24 ? 1 : alpha;
+    return { x: m.px + (m.x - m.px) * a + (l ? l.x : 0), y: m.py + (m.y - m.py) * a + (l ? l.y : 0) };
+  }
 
   drawShadowRing(m, alpha) {
     if (m.status.cloak > 0 && this.isFoe(m)) return; // camuflado não denuncia a posição pela sombra
@@ -1042,22 +1071,30 @@ export class Renderer {
       return;
     }
     const spr = this.obsSprites.get(o.id) || this.obstacleSprite(o, 0);
-    // Anel de base = hitbox real. Contínuo e escuro: sólido permanente. Tracejado dourado: destrutível/inflamável.
-    if (!o.sentry && o.kind !== 'thicket') {
-      const perm = o.hp === Infinity, ry = o.r * 0.55, cx = Math.round(o.x), cy = Math.round(o.y + 1);
-      l.globalAlpha = perm ? 0.55 : 0.8;
-      l.fillStyle = perm ? '#0e0e14' : '#e8c860';
-      for (let k = 0; k < 28; k++) {
-        if (!perm && k % 2) continue;
-        const an = (k / 28) * Math.PI * 2;
-        l.fillRect(Math.round(cx + Math.cos(an) * o.r), Math.round(cy + Math.sin(an) * ry), 1, 1);
+    // Sombra de contato + anel de base (= hitbox real: contínuo e escuro = sólido permanente; tracejado dourado =
+    // destrutível). Nunca mudam: ficam numa imagem pronta por obstáculo (1 desenho em vez de ~30 por quadro).
+    let deco = this.obsDeco.get(o.id);
+    if (!deco) {
+      const R = Math.ceil(o.r) + 2, W = R * 2 + 2, H = R * 2 + 4;
+      const cvs = makeCanvas(W, H), g = cvs.getContext('2d');
+      const cx = R + 1, cy = R + 2;
+      g.globalAlpha = 0.3; g.fillStyle = '#000';
+      g.beginPath(); g.ellipse(cx, cy + Math.round(o.r * 0.55) - 1, o.r, o.r * 0.4, 0, 0, Math.PI * 2); g.fill();
+      if (!o.sentry && o.kind !== 'thicket') {
+        const perm = o.hp === Infinity, ry = o.r * 0.55;
+        g.globalAlpha = perm ? 0.55 : 0.8;
+        g.fillStyle = perm ? '#0e0e14' : '#e8c860';
+        for (let k = 0; k < 28; k++) {
+          if (!perm && k % 2) continue;
+          const an = (k / 28) * Math.PI * 2;
+          g.fillRect(Math.round(cx + Math.cos(an) * o.r), Math.round(cy + Math.sin(an) * ry), 1, 1);
+        }
       }
+      deco = { cvs, ox: cx, oy: cy - 1 };
+      this.obsDeco.set(o.id, deco);
     }
-    l.globalAlpha = 0.3;
-    l.fillStyle = '#000';
-    l.beginPath();
-    l.ellipse(Math.round(o.x), Math.round(o.y + o.r * 0.55), o.r, o.r * 0.4, 0, 0, Math.PI * 2);
-    l.fill();
+    l.globalAlpha = 1;
+    l.drawImage(deco.cvs, Math.round(o.x) - deco.ox, Math.round(o.y) - deco.oy);
     l.globalAlpha = o.life !== undefined && o.life < 1.5 ? Math.max(0.2, o.life / 1.5) : 1;
     if (o.hitFlash > 0) l.filter = 'brightness(2)';
     if (o.sentry && o.team !== undefined) {
@@ -1285,12 +1322,18 @@ export class Renderer {
     const g = this.gl;
     g.clearRect(0, 0, WORLD_W, WORLD_H);
     const tr = world.terrain;
-    let k = 0;
+    // Um halo por bloco de 2×2 tiles em chamas (antes: um a cada dois tiles; incêndios grandes pesavam muito).
+    const blocks = this._glowBlocks || (this._glowBlocks = new Map());
+    blocks.clear();
     for (const i of tr.burning) {
-      if (k++ % 2) continue;
-      const fl = 0.75 + 0.25 * Math.sin(t * 13 + i);
-      g.globalAlpha = 0.28 * fl;
-      g.drawImage(this.glows.fire, tr.cx(i) - 14, tr.cy(i) - 18, 28, 28);
+      const key = ((((i / COLS) | 0) >> 1) << 8) | ((i % COLS) >> 1);
+      blocks.set(key, (blocks.get(key) || 0) + 1);
+    }
+    for (const [key, n] of blocks) {
+      const bx = (key & 255) * 16 + 8, by = (key >> 8) * 16 + 8;
+      const fl = 0.75 + 0.25 * Math.sin(t * 13 + key);
+      g.globalAlpha = Math.min(0.5, 0.16 * n) * fl;
+      g.drawImage(this.glows.fire, bx - 18, by - 22, 36, 36);
     }
     for (const o of world.obstacles) if (o.burning > 0 && !o.destroyed) { g.globalAlpha = 0.9; g.drawImage(this.glows.fire, o.x - 24, o.y - 30, 48, 48); }
     for (const mu of this.mushrooms) if (mu.glow) { g.globalAlpha = 0.45 + Math.sin(t * 2 + mu.x) * 0.15; g.drawImage(this.glows.blue, mu.x - 10, mu.y - 14, 20, 20); }
@@ -1327,7 +1370,7 @@ export class Renderer {
     g.globalAlpha = 1;
     const l = this.l;
     l.globalCompositeOperation = 'lighter';
-    l.drawImage(this.glow, 0, 0);
+    l.drawImage(this.glow, 0, 0, WORLD_W, WORLD_H);
     l.globalCompositeOperation = 'source-over';
   }
 

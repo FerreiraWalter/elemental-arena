@@ -22,7 +22,11 @@ export class Monster {
     this.lookAt = this.facing;
     this.action = null;
     this.cd = {};
-    for (const ab of def.abilities) this.cd[ab.id] = 0;
+    // Cargas: habilidades com `charges` guardam até N usos; cada carga volta em `cooldown` s (rc = tempo restante
+    // da carga que está recarregando). Entre dois usos seguidos há só um intervalo curto (`chargeGap`).
+    this.ch = {};
+    this.rc = {};
+    for (const ab of def.abilities) this.initAbility(ab);
     // overheat/exhaust: Fornalha (Brasalisco); cloak: camuflagem de tinta (Gotapus).
     // bubble: preso na Bolha Prisão do Gotapus (desenho; o efeito real é o enraizamento).
     this.status = { burn: 0, wet: 0, stun: 0, invuln: 0, root: 0, shield: 0, overheat: 0, exhaust: 0, cloak: 0, bubble: 0 };
@@ -58,10 +62,31 @@ export class Monster {
   }
 
   ability(id) { return this.def.abilities.find((a) => a.id === id); }
+  initAbility(ab) {
+    if (this.cd[ab.id] === undefined) this.cd[ab.id] = 0;
+    if (ab.charges && this.ch[ab.id] === undefined) { this.ch[ab.id] = ab.charges; this.rc[ab.id] = 0; }
+  }
+  // Avança recargas e cargas (em campo e no banco).
+  tickCooldowns(dt) {
+    for (const k in this.cd) if (this.cd[k] > 0) this.cd[k] = Math.max(0, this.cd[k] - dt);
+    for (const k in this.ch) {
+      const ab = this.ability(k);
+      if (!ab || this.ch[k] >= ab.charges) { this.rc[k] = 0; continue; }
+      this.rc[k] -= dt;
+      if (this.rc[k] <= 0) { this.ch[k]++; this.rc[k] = this.ch[k] < ab.charges ? ab.cooldown : 0; }
+    }
+  }
+  // Tempo até poder usar de novo (para HUD e IA): com cargas, só espera a recarga se não sobrou nenhuma.
+  waitFor(id) {
+    const ab = this.ability(id);
+    if (ab?.charges) return Math.max(this.cd[id] || 0, this.ch[id] > 0 ? 0 : this.rc[id] || 0);
+    return this.cd[id] || 0;
+  }
   get locked() { return !!this.switchState || this.evolveT > 0; } // trocando ou evoluindo: não age
   get canEvolve() { return !!this.def.evolvesTo && !this.evolved && this.alive && this.energy >= EVOLUTION.threshold; }
   ready(id) {
     if (!this.alive || !this.onField || this.locked || this.action || this.status.stun > 0 || !(this.cd[id] <= 0)) return false;
+    if (this.ch[id] !== undefined && this.ch[id] <= 0) return false; // sem cargas
     if (this.status.root > 0 && this.ability(id)?.dash) return false; // enraizado não consegue investir/esquivar
     if (this.status.exhaust > 0 && this.isSpecial(id)) return false; // exausto: sem poderes especiais
     return true;
@@ -79,7 +104,11 @@ export class Monster {
       aimPoint: params.aimPoint || null, target: params.target || null, point: params.point || null,
       dir: params.dir ?? aim, purpose: params.purpose || 'attack', aimLand: !!params.aimLand,
     };
-    this.cd[ab.id] = ab.cooldown;
+    if (ab.charges) {
+      if (this.ch[ab.id] >= ab.charges) this.rc[ab.id] = ab.cooldown; // começa a recarregar a carga gasta
+      this.ch[ab.id]--;
+      this.cd[ab.id] = ab.chargeGap ?? 0.6;
+    } else this.cd[ab.id] = ab.cooldown;
     this.stats.casts++;
     if (ab.kind === 'dodge') { this.stats.dodges++; this.action.aim = this.action.dir; }
     if (ab.kind === 'dash') this.action.aim = this.action.dir;
