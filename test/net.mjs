@@ -151,6 +151,35 @@ await test('1v1 online: partida completa, servidor autoritativo e espelhos idên
   a.c.close(); b.c.close();
 });
 
+await test('Rede de um jogador engasga: o servidor não empilha snapshots velhos e depois reenvia o estado completo', async () => {
+  const [a, b] = await lobby('1v1', 2);
+  a.c.send({ t: 'start' });
+  await until(() => a.start && b.start && b.snaps > 5, 4000, 'início');
+  const room = srv.rooms.get(a.code);
+  const pb = [...room.players.values()].find((p) => p.seat === b.start.you);
+  let lag = true;
+  pb.send.lagging = () => lag;
+  const before = b.snaps;
+  // Durante o engasgo o terreno muda (fogo): diferenças que esse jogador perderia sem o snapshot completo.
+  const w = room.world;
+  await wait(200); // o que já estava a caminho chega
+  const mid = b.snaps, midA = a.snaps;
+  // Mudança que só é enviada uma vez (chão queimado): sem o snapshot completo, esse jogador a perderia para sempre.
+  const burnt = [];
+  for (let r = 3; r < 9; r++) for (let c = 3; c < 13; c++) { const i = r * 88 + c; w.terrain.scorch(i); burnt.push(i); }
+  await wait(600);
+  assert(b.snaps === mid, `recebeu ${b.snaps - mid} snapshots velhos durante o engasgo`);
+  assert(a.snaps > midA + 3, 'o outro jogador parou de receber');
+  lag = false;
+  await until(() => b.snaps > before + 3, 2000, 'retomada');
+  await wait(120);
+  const sw = room.world, cw = b.mirror.world;
+  const missed = burnt.filter((i) => cw.terrain.type[i] !== sw.terrain.type[i]).length;
+  assert(missed === 0, `o espelho perdeu ${missed} mudanças de terreno feitas durante o engasgo`);
+  sw.roster.forEach((m, i) => assert(Math.abs(m.hp - cw.roster[i].hp) < 15, `monstro ${i} divergiu após a retomada`));
+  a.c.close(); b.c.close();
+});
+
 await test('Servidor valida entradas: NaN, valores enormes e teclas inválidas não quebram nem trapaceiam', async () => {
   const [a, b] = await lobby('1v1', 2);
   a.c.send({ t: 'start' });

@@ -1,0 +1,37 @@
+Op‡Æo incorreta -D.
+
+Uso: ping [-t] [-a] [-n count] [-l size] [-f] [-i TTL] [-v TOS]
+          [-r count] [-s count] [[-j host-list] | [-k host-list]]
+          [-w timeout] [-R] [-S srcaddr] [-c compartment] [-p]
+          [-4] [-6] target_name
+
+Op‡äes:
+    -t             Executa ping no host especificado at‚ ser parado.
+                   Para ver as estat¡sticas e continuar, pressione
+                   Control-Break;
+                   Para parar, pressione Control-C.
+    -a             Resolve os endere‡os para nomes de host.
+    -n count       N£mero de solicita‡äes de eco a serem enviadas.
+    -l size        Envia o tamanho de buffer.
+    -f             Define o sinalizador NÆo Fragmentar no pacote
+                   (somente IPv4).
+    -i TTL         Vida £til.
+    -v TOS         Tipo de Servi‡o (somente IPv4. Essa configura‡Æo
+                   foi preterida e nÆo afeta o tipo de campo de servi‡o
+                   no Cabe‡alho IP).
+    -r count       Registra a rota de saltos de contagem (somente IPv4).
+    -s count       Carimbo de data/hora para saltos de contagem (somente IPv4).
+    -j host-list   Rota de origem flex¡vel em host-list (somente IPv4).
+    -k host-list   Rota de origem r¡gida em host-list (somente IPv4).
+    -w timeout     Tempo limite em milissegundos de espera por cada resposta.
+    -R             Usa o cabe‡alho de roteamento para testar tamb‚m a rota
+                   inversa (somente IPv6). Conforme RFC 5095, o uso desse
+                   cabe‡alho de roteamento foi preterido. Alguns sistemas podem
+                   remover solicita‡äes de eco se esse cabe‡alho for usado.
+    -S srcaddr     Endere‡o de origem a ser usado.
+    -c compartment Identificador de compartimento de roteamento.
+    -p             Executa ping em um endere‡o de provedor de Virtualiza‡Æo
+                   de Rede Hyper-V.
+    -4             For‡a o uso de IPv4.
+    -6             For‡a o uso de IPv6.
+

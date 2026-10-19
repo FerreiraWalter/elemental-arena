@@ -269,11 +269,39 @@ export class Room {
     }
   }
 
-  pushSnapshot() { this.broadcast(serialize(this.world, this.sync)); }
+  // Snapshot para cada jogador. Se a fila de envio de alguém encheu (rede dele engasgou), não empilhamos estado velho:
+  // pulamos os snapshots dele e, quando a fila esvazia, mandamos um snapshot COMPLETO e atual (terreno, obstáculos e
+  // monstros inteiros), já que os pulados levavam diferenças de terreno que ele perdeu.
+  // force: o snapshot final da partida vai para todos, mesmo com fila cheia (senão o jogador não vê o fim).
+  pushSnapshot(force = false) {
+    const s = JSON.stringify(serialize(this.world, this.sync));
+    let full = null;
+    for (const p of this.list()) {
+      if (!p.connected) continue;
+      if (!force && p.send.lagging?.()) { p.stale = true; continue; }
+      if (p.stale) {
+        full ||= JSON.stringify(this.fullSnapshot());
+        p.send(full);
+        p.stale = false;
+        continue;
+      }
+      p.send(s);
+    }
+  }
+
+  // Estado inteiro, sem eventos nem mensagens (já foram para os snapshots normais deste quadro).
+  fullSnapshot() {
+    const ctx = { ...makeSyncCtx(this.world), nInit: this.sync.nInit, lastFeed: this.world.feedSeq || 0 };
+    const snap = serialize(this.world, ctx);
+    snap.events = [];
+    snap.feed = [];
+    snap.seq = this.sync.seq;
+    return snap;
+  }
 
   finish() {
     if (this.state !== 'playing') return;
-    this.pushSnapshot();
+    this.pushSnapshot(true);
     this.state = 'over';
     clearInterval(this.timer); this.timer = null;
     const w = this.world;

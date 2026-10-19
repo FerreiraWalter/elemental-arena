@@ -26,6 +26,9 @@ const SECURITY = { 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-r
 
 // Limite de mensagens por conexão: rajada de 60, reposição de 80/s (o cliente envia ~30 entradas/s no máximo).
 const BUCKET = { burst: 60, rate: 80 };
+// Acima disto na fila de envio de um jogador (~0,5 s de snapshots), paramos de empilhar estado velho para ele.
+// Antes o limite era 1 MB: um soluço de rede virava vários segundos de atraso (e de "ping") até a fila esvaziar.
+export const LAG_BYTES = 24 * 1024;
 
 export function createServer({
   port = 8140, host = '0.0.0.0', log = () => {}, timeScale = 1,
@@ -107,6 +110,8 @@ export function createServer({
     alive.add(ws);
     ws.on('pong', () => alive.add(ws));
     const send = (s) => { if (ws.readyState === 1 && ws.bufferedAmount < 1e6) ws.send(typeof s === 'string' ? s : JSON.stringify(s)); };
+    // Fila de saída acumulada (rede do jogador engasgou): a sala pula snapshots velhos em vez de empilhá-los.
+    send.lagging = () => ws.bufferedAmount > LAG_BYTES * timeScale; // timeScale > 1 só em testes (mais snapshots por segundo)
     let room = null, player = null;
     const burst = BUCKET.burst * timeScale, rate = BUCKET.rate * timeScale; // timeScale > 1 só em testes
     let tokens = burst, tAt = Date.now(), strikes = 0;
