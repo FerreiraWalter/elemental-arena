@@ -21,6 +21,7 @@ export function setPerspective(side, ffa = false) {
   TEAM_COLOR[0] = side === 0 ? '#ffd23a' : '#ff4a5a'; TEAM_COLOR[1] = side === 0 ? '#ff4a5a' : '#ffd23a';
   TEAM_COLOR[2] = TEAM_COLOR[0]; TEAM_COLOR[3] = TEAM_COLOR[1];
 }
+const PUNCH_HAND = { jab: 'L', armoredJab: 'L', cross: 'R', clawRip: 'R' };
 export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', neutral: '#d8c08a' };
 const ROOT = [rgba('#4a2e16'), rgba('#6e4624'), rgba('#94653a'), rgba('#5aa83c'), rgba('#84c858')];
 const FLAME = ['#fff7c2', '#ffd84a', '#ff9a1f', '#f2541b', '#b3200f'].map((h) => rgba(h));
@@ -79,6 +80,8 @@ export class Renderer {
     this.texts = [];
     this.rings = [];
     this.bolts = []; // raios desenhados por alguns quadros: { x0, y0, x1, y1, life, w, jag }
+    this.stars = []; // estrelas de impacto dos golpes fortes
+    this.swings = []; // arcos de corte dos golpes corpo a corpo
     this.shake = 0;
     this.hitstop = 0;
     this.excite = 0.2;
@@ -168,6 +171,15 @@ export class Renderer {
           if (e.m?.dummy) { const st = this.ms(e.m); st.wob = Math.min(1.4, st.wob + (e.dot ? 0.05 : e.big ? 1 : 0.6)); }
           if (!this.showNumbers) { if (e.dot) break; } else this.nums.push({ x: e.m.x + (Math.random() - 0.5) * 8, y: e.m.y - 22, v: e.amount, t: 0, color: e.blocked ? '#c8e8ff' : fire ? '#ffb347' : e.element === 'water' ? '#8fd8ff' : e.element === 'plant' ? '#a8f080' : '#ffffff', small: e.dot || e.blocked, big: !e.dot && e.amount >= 14 });
           if (!e.dot) {
+            // Quem apanha encolhe e treme; faíscas saem na direção do golpe; golpe forte ganha estrela de impacto.
+            if (e.m) { const vs = this.ms(e.m); vs.hurt = e.big ? 1 : 0.7; }
+            const ka = e.src && e.m ? Math.atan2(e.m.y - e.src.y, e.m.x - e.src.x) : Math.random() * 6.28;
+            const ramp = fire ? 'spark' : e.element === 'plant' ? 'leaf' : e.element === 'electric' ? 'volt' : e.element === 'earth' ? 'dust' : 'water';
+            for (let k = 0; k < (e.big ? 10 : 5); k++) {
+              const a2 = ka + (Math.random() - 0.5) * 1.1, sp = 70 + Math.random() * (e.big ? 110 : 60);
+              P.add({ ramp, x: e.x, y: e.y - 6, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp * 0.7, vz: 20 + Math.random() * 40, g: 160, life: 0.3 + Math.random() * 0.15, add: fire || e.element === 'electric' });
+            }
+            if (e.big || e.amount >= 9) this.stars.push({ x: e.x + Math.cos(ka) * 4, y: e.y - 8, life: 0.1, max: 0.1, r: e.big ? 11 : 7, col: ELEMENT_COLOR[e.element] || '#ffffff' });
             P.burst(e.x, e.y - 4, e.big ? 18 : 9, { ramp: fire ? 'spark' : e.element === 'plant' ? 'leaf' : 'water', speed: e.big ? 90 : 60, life: 0.35, add: fire });
             this.rings.push({ x: e.x, y: e.y - 4, r: 2, max: e.big ? 16 : 9, t: 0, color: fire ? '#fff2a0' : '#e0f6ff' });
             this.shake = Math.max(this.shake, e.big ? 4 : 1.5);
@@ -658,6 +670,20 @@ export class Renderer {
     for (const f of this.rootFx) { this.drawRootCage(f, t, true); f.t += dt; }
     this.rootFx = this.rootFx.filter((f) => f.t < f.dur);
     this.drawTentacles(dt, t);
+    // Arcos de corte (golpes corpo a corpo) e estrelas de impacto.
+    for (const sw of this.swings) { sw.life -= dt; if (sw.life > 0) this.drawSwing(sw); }
+    this.swings = this.swings.filter((sw) => sw.life > 0);
+    for (const sr of this.stars) {
+      sr.life -= dt;
+      const k = Math.max(0, sr.life / sr.max), R = sr.r * (1.2 - 0.4 * k), col = rgba(sr.col), wht = rgba('#ffffff');
+      for (let q = -R; q <= R; q++) {
+        const inner = Math.abs(q) < R * 0.6;
+        this.fxT.set(sr.x + q, sr.y, inner ? wht : col); this.fxT.set(sr.x, sr.y + q * 0.8, inner ? wht : col);
+        if (Math.abs(q) < R * 0.35) { this.fxT.set(sr.x + q, sr.y + 1, wht); this.fxT.set(sr.x + 1, sr.y + q * 0.8, wht); }
+        if (Math.abs(q) < R * 0.5) { this.fxT.set(sr.x + q * 0.6, sr.y + q * 0.6, col); this.fxT.set(sr.x + q * 0.6, sr.y - q * 0.6, col); }
+      }
+    }
+    this.stars = this.stars.filter((sr) => sr.life > 0);
     // Raios (eventos) e cipós da Casca Viva ligando o Brotossauro ao parceiro (antes do commit do fxT).
     for (const b of this.bolts) {
       if (b.from) { b.x0 = b.from.x; b.y0 = b.from.y - 6; }
@@ -1027,6 +1053,12 @@ export class Renderer {
       if (ab.id === 'whirlpool' && ph !== 'windup') pose.spin = t * 4 + 1;
       if (ab.kind === 'dodge' && ph === 'active' && !pose.spin) pose.dash = 0.6;
       if ((ab.kind === 'cone' || ab.kind === 'aoe') && ph === 'active') pose.power = 0.6;
+      // Lutadores: clique esquerdo soca com a mão esquerda, clique direito com a direita (o braço estica no golpe).
+      const hand = PUNCH_HAND[ab.id];
+      if (hand) {
+        const k = ph === 'active' ? Math.min(1, (a.t / ab.active) * 2) : ph === 'recovery' ? Math.max(0, 1 - a.t / (ab.recovery * 0.7)) : 0;
+        if (k > 0) pose.punch = { side: hand, k };
+      }
     }
     const tr = this.world.terrain;
     if (m.element === 'fire' && tr.fire[tr.at(m.x, m.y)] > 0) pose.power = Math.max(pose.power, 0.4);
@@ -1089,13 +1121,19 @@ export class Renderer {
     let fade = 1;
     if (!m.alive) fade = Math.max(0, 1 - Math.max(0, m.deathT - 1) / 1.2);
     if (fade <= 0) return;
-    // Rastros (afterimages) em investidas e esquivas.
+    const juice = this.juice(m, st, frame, x, y, dt, t);
+    wScale *= juice.w; hScale *= juice.h;
+    // Rastros (afterimages) em investidas e esquivas, tingidos com a cor do elemento.
     const dashing = m.action && m.action.phase === 'active' && m.action.ab.dash;
     st.ghostT -= dt;
     if (dashing && st.ghostT <= 0) {
       st.ghostT = 0.035;
       const g = makeCanvas(frame.w, frame.h);
-      g.getContext('2d').drawImage(frame.canvas, 0, 0);
+      const gc = g.getContext('2d');
+      gc.drawImage(frame.canvas, 0, 0);
+      gc.globalCompositeOperation = 'source-atop';
+      gc.fillStyle = ELEMENT_COLOR[m.element] || '#ffffff'; gc.globalAlpha = m.action.ab.kind === 'dodge' ? 0.55 : 0.35;
+      gc.fillRect(0, 0, frame.w, frame.h);
       st.ghosts.push({ frame: { ...frame, canvas: g }, x, y, face, life: 0.25 });
     }
     for (const g of st.ghosts) {
@@ -1114,10 +1152,13 @@ export class Renderer {
     if (hopA && st.hop !== hopA) { st.hop = hopA; this.particles.burst(x, y, 7, { ramp: 'dust', speed: 40, life: 0.3, vz: 20 }); this.particles.burst(x, y - 4, 6, { ramp: 'volt', speed: 60, life: 0.25, add: true }); }
     else if (!hopA && st.hop) { st.hop = null; this.particles.burst(x, y, 6, { ramp: 'dust', speed: 35, life: 0.3, vz: 15 }); this.rings.push({ x, y, r: 2, max: 10, t: 0, color: '#d8fbff' }); }
     if (hopA && m.element === 'electric' && Math.random() < 0.7) this.particles.add({ ramp: 'volt', x: x + (Math.random() - 0.5) * 8, y, z: 6 + Math.random() * 10, vz: -10, life: 0.2, add: true });
+    // Saltos longos e voos curtos: arco alto (a sombra fica no chão) — lê como voo por cima da água e das pedras.
+    const flyA = m.action && m.action.phase === 'active' && (m.action.ab.leap || m.action.ab.air) ? m.action : null;
+    if (flyA) lift = Math.max(lift, Math.sin(Math.PI * Math.min(1, flyA.t / flyA.ab.active)) * (flyA.ab.air ? 9 : Math.min(30, 10 + (flyA.leapDist || 100) * 0.12)));
     if (hopA) lift = Math.max(lift, Math.sin(Math.PI * Math.min(1, hopA.t / hopA.ab.active)) * (m.evolved ? 12 : 14));
     // Cauda de raio em espiral (Raiolua e Trovogato), atrás do corpo.
     if (m.alive && m.element === 'electric') EF.drawTail(l, x, y - lift - frame.top * (m.evolved ? 0.22 : 0.3), st.faceDir, m.evolved ? 1.35 : 1, t, m.id, Math.hypot(m.vx, m.vy), frame.w * 0.3);
-    this.blitFrame(frame, x, y - lift, face, hScale, wScale, pose.spin ? pose.spin * 6 : 0);
+    this.blitFrame(frame, x + juice.dx, y - lift, face, hScale, wScale, pose.spin ? pose.spin * 6 : 0);
     if (m.alive && m.action?.ab.overload && m.action.phase !== 'recovery') {
       const A = m.action, k = A.phase === 'windup' ? 0.3 * A.t / A.ab.windup : 0.3 + 0.7 * Math.min(1, A.t / A.ab.active);
       EF.drawCore(this.fxT, x, y - lift - frame.top * 0.45, k, t, m.id);
@@ -1220,6 +1261,83 @@ export class Renderer {
     if (pose.flash) pb.fill(rgba('#ffffff'));
     if (pose.tint) pb.tint(pose.tint[0], pose.tint[1]);
     return { canvas: pb.commit(), w: 48, h: 48, ax: 24, ay: 38, faces: 1, top: m.dummy ? 32 : 26 };
+  }
+
+  // "Peso" das ações: carga (antecipação), estalo ao soltar, arco do golpe, linhas da esquiva e encolhida ao apanhar.
+  // Só visual (roda igual no online). Retorna a escala extra e o tremor horizontal do sprite.
+  juice(m, st, frame, x, y, dt, t) {
+    const a = m.alive ? m.action : null, ab = a?.ab, col = ELEMENT_COLOR[m.element] || '#ffffff';
+    const out = { w: 1, h: 1, dx: 0 };
+    const P = this.particles, top = frame.top || 24;
+    const RAMP = { fire: 'spark', water: 'water', plant: 'leaf', electric: 'volt', earth: 'dust' };
+    const key = a ? a.ab.id + ':' + a.phase : '';
+    if (key !== st.jKey) {
+      // Chegada de uma esquiva/investida: poeirinha onde parou.
+      if (st.jDodge) P.burst(x, y, 6, { ramp: 'dust', speed: 35, life: 0.3, vz: 10 });
+      if (a && a.phase === 'active') {
+        st.pop = ab.basic ? 0.5 : 1;
+        if (ab.kind === 'melee' && PUNCH_HAND[ab.id] === 'L') {
+          // Jab: estalo reto na frente do punho em vez do arco de corte.
+          this.rings.push({ x: x + Math.cos(a.aim) * ((ab.range || 20) + 2), y: y - top * 0.5 + Math.sin(a.aim) * ((ab.range || 20) + 2) * 0.8, r: 2, max: 7, t: 0, color: '#fff2c8' });
+        } else if (ab.kind === 'melee') this.swings.push({ m, ang: a.aim, reach: (ab.reach || ab.range || 26) + 4, arc: ab.arc || 1.8, life: 0.16, max: 0.16, col, big: !ab.basic });
+        else if (ab.kind === 'dodge' || ab.kind === 'dash') {
+          P.burst(x, y, 8, { ramp: 'dust', speed: 55, life: 0.35, vz: 15 });
+          this.rings.push({ x, y, r: 3, max: 12, t: 0, color: '#ffffff' });
+        } else if (ab.kind !== 'guard' && ab.kind !== 'buff') {
+          // Jato na direção da mira (boca/mãos) + anel na cor do elemento nas habilidades fortes.
+          for (let k = 0; k < (ab.basic ? 4 : 9); k++) {
+            const an = a.aim + (Math.random() - 0.5) * 0.7, sp = 60 + Math.random() * 90;
+            P.add({ ramp: RAMP[m.element] || 'dust', x: x + Math.cos(a.aim) * (m.r + 3), y: y - top * 0.45 + Math.sin(a.aim) * (m.r + 3), vx: Math.cos(an) * sp, vy: Math.sin(an) * sp * 0.7, life: 0.22, add: m.element === 'fire' || m.element === 'electric' });
+          }
+          if (!ab.basic) this.rings.push({ x, y, r: 4, max: m.r + 14, t: 0, color: col, thick: true });
+        }
+      }
+      st.jKey = key;
+      st.jDodge = !!(a && a.phase === 'active' && (ab.kind === 'dodge' || ab.kind === 'dash'));
+    }
+    // Carga: faíscas da cor do elemento convergindo + aura no chão; tremidinha no fim do preparo.
+    if (a && a.phase === 'windup' && !ab.basic && ab.kind !== 'dodge' && ab.windup >= 0.12) {
+      const k = Math.min(1, a.t / ab.windup);
+      if (Math.random() < 0.55) {
+        const an = Math.random() * 6.28, R = 16 + Math.random() * 10;
+        P.add({ ramp: RAMP[m.element] || 'dust', x: x + Math.cos(an) * R, y: y - top * 0.4 + Math.sin(an) * R * 0.6, vx: -Math.cos(an) * R * 3.5, vy: -Math.sin(an) * R * 2.1, life: 0.26, add: m.element !== 'earth' && m.element !== 'plant' });
+      }
+      const l = this.l;
+      l.save(); l.globalAlpha *= 0.25 + 0.45 * k; l.strokeStyle = col; l.lineWidth = 1;
+      l.beginPath(); l.ellipse(x, y + 1, m.r + 6 - 3 * k, (m.r + 6 - 3 * k) * 0.45, 0, 0, 6.3); l.stroke(); l.restore();
+      if (k > 0.7) out.dx = Math.round(Math.sin(t * 70) * (k - 0.7) * 3);
+    }
+    // Linhas de velocidade atrás de quem esquiva/investe.
+    if (a && a.phase === 'active' && (ab.kind === 'dodge' || ab.kind === 'dash')) {
+      const dir = a.dir ?? a.aim, bx = -Math.cos(dir), by = -Math.sin(dir), wht = rgba('#ffffff', 170);
+      for (const off of [-5, 0, 5]) {
+        const ox = -by * off, oy = bx * off, L = 10 + (off ? 0 : 6) + Math.random() * 4;
+        for (let q = 4; q < L; q += 1.5) this.fxT.set(x + ox + bx * (m.r + q), y - top * 0.4 + oy + by * (m.r + q), wht);
+      }
+    }
+    // Estalo ao soltar (estica na largura e volta) e encolhida ao apanhar.
+    if (st.pop > 0) { out.w *= 1 + st.pop * 0.14; out.h *= 1 - st.pop * 0.1; st.pop = Math.max(0, st.pop - dt * 7); }
+    if (st.hurt > 0) { out.w *= 1 + st.hurt * 0.12; out.h *= 1 - st.hurt * 0.12; out.dx += Math.round(Math.sin(t * 90) * st.hurt * 2); st.hurt = Math.max(0, st.hurt - dt * 6); }
+    return out;
+  }
+
+  // Arco do golpe: varre de um lado ao outro da área do ataque, miolo branco e borda na cor do elemento.
+  drawSwing(sw) {
+    const m = sw.m, k = 1 - sw.life / sw.max, g = this.fxT;
+    const cx = m.x, cy = m.y - 6, a0 = sw.ang - sw.arc / 2, sweep = Math.min(1, k * 1.6);
+    const wht = rgba('#ffffff'), col = rgba(sw.col), dim = rgba(sw.col, 150);
+    const N = Math.max(4, Math.round(sw.arc * sw.reach / 1.5));
+    for (let i = 0; i <= N; i++) {
+      const u = i / N;
+      if (u > sweep) break;
+      const age = sweep - u; // 0 = ponta do corte
+      if (age > 0.75 - k * 0.4) continue;
+      const an = a0 + sw.arc * u, thick = (sw.big ? 4 : 3) * Math.sin(Math.PI * u) * (1 - age);
+      for (let r = sw.reach - thick; r <= sw.reach; r += 0.8) {
+        const px = cx + Math.cos(an) * r, py = cy + Math.sin(an) * r * 0.8;
+        g.set(px, py, r > sw.reach - 1.2 ? (age < 0.15 ? wht : col) : age < 0.25 ? wht : dim);
+      }
+    }
   }
 
   blitFrame(f, x, y, face, hScale, wScale, rot) {

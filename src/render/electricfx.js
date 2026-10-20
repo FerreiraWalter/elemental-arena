@@ -171,58 +171,60 @@ export function drawCore(g, x, y, k, t, seed) {
   }
 }
 
-// Cauda de raio dos gatos elétricos (Raiolua/Trovogato): haste que sai do quadril, sobe e termina num caracol
-// azul que balança e solta faíscas. Desenhada direto no contexto 2D, ANTES do sprite (fica atrás do corpo).
-const TAIL_COL = ['#1d2f9e', '#3f7cff', '#8fe8ff', '#e8fdff'];
+// Cauda dos gatos elétricos (Raiolua/Trovogato): cauda FINA de gato siamês (pelo escuro), em "?" que balança, com
+// arcos elétricos correndo por ela e a ponta brilhando em azul. Desenhada direto no contexto 2D, ANTES do sprite.
+const FUR = { line: '#120e16', dark: '#2e2220', mid: '#4a3832', hi: '#6e5850' };
+const ZAP = ['#3fa9ff', '#8fe8ff', '#e8fdff'];
 export function drawTail(l, x, y, face, size, t, seed, speed = 0, off = 0) {
   const back = -face, k = size;
-  const run = Math.min(1, speed / 90);                 // correndo, a cauda deita para trás
-  const sway = Math.sin(t * 4 + seed) * 1.2;
-  const pts = [];
-  // Haste: curva do quadril até o início do caracol.
-  const rx = x + back * off * 0.6, ry = y;
-  const ex = x + back * (off + (7 + run * 5) * k) + sway * back, ey = y - (9 - run * 5) * k;
-  const cx1 = x + back * (off + 7 * k), cy1 = y + 1;
-  const NS = Math.round(14 * k);
-  for (let i = 0; i <= NS; i++) {
-    const u = i / NS, a = (1 - u) * (1 - u), b = 2 * u * (1 - u), c = u * u;
-    pts.push([a * rx + b * cx1 + c * ex, a * ry + b * cy1 + c * ey]);
+  const run = Math.min(1, speed / 90);                 // correndo, a cauda deita e estica para trás
+  const sway = Math.sin(t * 3.2 + seed) * 2 * k, flick = Math.sin(t * 7.5 + seed * 2) * 0.8 * k;
+  const bx = x + back * off * 0.55, by = y;
+  // Curva de Bézier cúbica em "?": sai baixa para trás, sobe e a ponta volta em direção ao corpo.
+  const P = [
+    [bx, by],
+    [bx + back * (8 + run * 4) * k, by + 1],
+    [bx + back * (13 + run * 8) * k + sway * back, by - (11 - run * 6) * k],
+    [bx + back * (8 + run * 10) * k + (sway + flick) * back, by - (18 - run * 9) * k],
+  ];
+  const pts = [], N = Math.round(26 * k);
+  for (let i = 0; i <= N; i++) {
+    const u = i / N, a = (1 - u) ** 3, b = 3 * u * (1 - u) ** 2, c = 3 * u * u * (1 - u), d = u ** 3;
+    pts.push([a * P[0][0] + b * P[1][0] + c * P[2][0] + d * P[3][0], a * P[0][1] + b * P[1][1] + c * P[2][1] + d * P[3][1]]);
   }
-  // Caracol: gira para cima e de volta na direção do corpo, fechando.
-  const R0 = (4 + Math.sin(t * 6 + seed) * 0.4) * k, total = Math.PI * 2 * 1.15;
-  const ccx = ex - back * R0, ccy = ey, base = Math.atan2(0, back);
-  const NC = Math.round(30 * k);
-  for (let i = 1; i <= NC; i++) {
-    const d = (i / NC) * total, r = R0 * (1 - 0.72 * d / total);
-    const a = base - back * d;
-    pts.push([ccx + Math.cos(a) * r, ccy + Math.sin(a) * r]);
-  }
-  const best = new Map();
+  // Pinta: contorno escuro, pelo escuro com brilho do lado de cima, ponta azul elétrica.
+  const px = new Map();
+  const put = (X, Y, c) => { const key = (Math.round(Y) << 12) | (Math.round(X) & 4095); const r = px.get(key); if (r === undefined || c > r) px.set(key, c); };
   pts.forEach(([qx, qy], i) => {
-    const u = i / (pts.length - 1);
-    const th = (2.1 - 1.5 * u) * k * 0.75;
-    const R = Math.ceil(th + 1.3);
-    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+    const u = i / N, th = (1.25 - 0.25 * u) * k;
+    const tip = u > 0.84;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
       const dd = Math.hypot(dx, dy);
-      const c = dd <= th * 0.35 ? 3 : dd <= th * 0.75 ? 2 : dd <= th + 0.3 ? 1 : dd <= th + 1.1 ? 0 : -1;
-      if (c < 0) continue;
-      const key = (Math.round(qy + dy) << 12) | (Math.round(qx + dx) & 4095);
-      if ((best.get(key) ?? -1) < c) best.set(key, c);
+      if (dd > th + 1) continue;
+      if (dd > th) put(qx + dx, qy + dy, 0);                     // contorno
+      else if (tip) put(qx + dx, qy + dy, dd < th * 0.5 ? 6 : 5); // ponta elétrica
+      else put(qx + dx, qy + dy, dy < 0 ? 3 : dd < th * 0.5 ? 2 : 1);
     }
   });
-  // Brilho correndo pela cauda (pulso de energia indo até a ponta).
-  const pulse = Math.floor(((t * 1.6 + seed * 0.1) % 1) * pts.length);
-  for (let j = -1; j <= 1; j++) { const q = pts[pulse + j]; if (q) best.set((Math.round(q[1]) << 12) | (Math.round(q[0]) & 4095), 3); }
-  for (let c = 0; c < 4; c++) {
-    l.fillStyle = TAIL_COL[c];
-    for (const [key, cc] of best) if (cc === c) l.fillRect(key & 4095, key >> 12, 1, 1);
+  const COLS = [FUR.line, FUR.dark, FUR.mid, FUR.hi, null, ZAP[1], ZAP[2]];
+  for (let c = 0; c < COLS.length; c++) {
+    if (!COLS[c]) continue;
+    l.fillStyle = COLS[c];
+    for (const [key, cc] of px) if (cc === c) l.fillRect(key & 4095, key >> 12, 1, 1);
   }
-  // Faíscas soltas em volta do caracol.
-  l.fillStyle = TAIL_COL[3];
-  for (let i = 0; i < 3; i++) {
-    const f = Math.floor(t * 12);
-    if (hash2(i, f, seed) < 0.45) continue;
-    const a = hash2(i, f, seed + 1) * Math.PI * 2, r = R0 + 2 + hash2(i, f, seed + 2) * 3 * k;
-    l.fillRect(Math.round(ccx + Math.cos(a) * r), Math.round(ccy + Math.sin(a) * r), 1, 1);
+  // Arcos elétricos curtos pulando da cauda (2 por vez, trocam rápido) e faíscas na ponta.
+  const f = Math.floor(t * 14);
+  for (let j = 0; j < 2; j++) {
+    if (hash2(j, f, seed) < 0.35) continue;
+    const at = pts[Math.floor(hash2(j, f, seed + 1) * (pts.length - 4)) + 2];
+    let cx = at[0], cy = at[1];
+    const an = hash2(j, f, seed + 2) * Math.PI * 2;
+    for (let q = 0; q < 4 * k; q++) {
+      cx += Math.cos(an) + (hash2(q, f, seed + j) - 0.5) * 1.6; cy += Math.sin(an) + (hash2(q, f, seed + j + 7) - 0.5) * 1.6;
+      l.fillStyle = q < 1 ? ZAP[2] : ZAP[q % 2]; l.fillRect(Math.round(cx), Math.round(cy), 1, 1);
+    }
   }
+  const tp = pts[pts.length - 1];
+  l.fillStyle = ZAP[2];
+  for (let j = 0; j < 2; j++) if (hash2(j, f, seed + 5) > 0.5) l.fillRect(Math.round(tp[0] + (hash2(j, f, seed + 6) - 0.5) * 6 * k), Math.round(tp[1] - hash2(j, f, seed + 8) * 4 * k), 1, 1);
 }

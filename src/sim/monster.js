@@ -128,6 +128,7 @@ export class Monster {
     a.t = 0;
     if (a.ab.kind === 'dash' || a.ab.kind === 'dodge') a.dir = a.aim;
     if (a.ab.leap) this.aimLeap(a, true);
+    if (a.ab.hop || a.ab.air) a.from = { x: this.x, y: this.y };
     if (a.ab.dash?.invuln) this.status.invuln = Math.max(this.status.invuln, a.ab.active);
     a.ab.onActiveStart?.(w, this, a);
   }
@@ -169,6 +170,7 @@ export class Monster {
       if (a.t >= ab.active) {
         a.phase = 'recovery'; a.t = 0;
         if (ab.leap) { this.vx = 0; this.vy = 0; } // salto finca no chão onde caiu (sem escorregar)
+        if (ab.leap || ab.hop || ab.air) w.landAirborne?.(this, a); // pousa num lugar válido (sobre a água/pedra não fica)
         ab.onEnd?.(w, this, a);
       }
     } else if (a.t >= ab.recovery) {

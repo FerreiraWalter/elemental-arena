@@ -69,6 +69,14 @@ Modificados (missão FFA/arenas): `src/config.js` (COLS 128/ROWS 72 → mundo 10
   - Estágio 2: Brasalisco 51 · Hidrocasco Abissal 48 · Brotossauro Ancestral 52 · Ouriflama 48 · Leviapus 50 · Silvamante 46 · Lutapacho 52 · Trovogato 54.
   - Ficaram confrontos extremos (>75% / <25%) ligados ao triângulo de elementos e ao kit (ex.: Raiolua×Gotapus 96, Brotossauro×Hidrocasco 100, Brasalisco×Mantifolha 100). Só números não resolvem; precisaria mexer em mecânica.
 
+## 6d. Gameplay e "peso" das ações (2026-10-20, 2ª rodada) — FEITO
+- **Voo/salto:** `World.isAirborne(m)` (saltos `leap`, pulos `hop` e voos `air`, na fase ativa) ignora degraus de altura, água funda, pedras e muretas; `World.landAirborne` acerta o pouso (ponto válido mais perto, depois volta pelo caminho). Antes o Salto Longo do Mantifolha travava na margem do canal (37 de 130 px). Voo Curto (`wingDash`) agora é `air: true`. Saltos ganham arco de altura no render (sombra fica no chão).
+- **Abismo:** as pontes eram pintadas por cima das ilhas e o fosso estreito (corrigido na 1ª rodada) virava tábua → deque de madeira gigante. Agora pontes antes das ilhas, ponte N/S afastada (y=104) e ilha central mais baixa (ry 114): canais de verdade. Tábuas novas em `terrainpaint.js`: atravessadas ao sentido da ponte, frestas, pregos, corrimão com postes; madeira de mar no Abismo. navtest abismo: 0 falhas.
+- **Peso das ações (só render, vale online):** `Renderer.juice` — carga com faíscas convergindo + aura e tremidinha; estalo ao soltar (estica/volta) + jato na direção da mira; arco de corte nos golpes (`drawSwing`); quem apanha encolhe/treme, faíscas na direção do golpe e estrela de impacto; esquiva com linhas de velocidade, poeira na saída/chegada e rastro tingido na cor do elemento.
+- **Lutadores:** clique esquerdo = mão esquerda, direito = mão direita (Pugilar jab/direto, Lutapacho soco blindado/garra). `ARMS` em `artsprites.js` define o retângulo de cada braço na arte; `pose.punch` estica o braço para a frente.
+- **Gatos:** cauda refeita como cauda fina de siamês em "?" com arcos elétricos e ponta azul (`EF.drawTail`). Pernas do Trovogato retas (`tools/fix_trovogato_legs.py`, roda depois de `extract_cats_ref.py`).
+- **Cache dos sprites:** `ART_VERSION` em `artsprites.js` vai na URL dos PNGs; suba o número ao trocar qualquer PNG.
+
 ## 7. Próximos passos (ordem)
 1. Confirmar no navegador real (com GPU) a HUD nova em 1280×720 e em janelas menores; o painel de testes desta sessão não renderizava em segundo plano.
 2. Extremos de confronto (ver 6c) — decidir se mexe em mecânica.

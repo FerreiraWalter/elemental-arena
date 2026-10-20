@@ -261,8 +261,43 @@ export class World {
     return true;
   }
 
+  // No ar (saltos, pulos e voos curtos na fase ativa): passa por cima de água funda, degraus, pedras e muretas.
+  isAirborne(m) {
+    const a = m.action;
+    return !!(a && a.phase === 'active' && (a.ab.leap || a.ab.hop || a.ab.air));
+  }
+
+  // Pouso: se caiu num lugar inválido (água funda, tile sólido), vai para o ponto válido mais perto — primeiro em
+  // volta de onde caiu, depois voltando pelo caminho do salto. Pode pousar em outro nível (ex.: em cima do templo).
+  landAirborne(m, a) {
+    const tr = this.terrain;
+    const ok = (x, y) => {
+      const i = tr.at(x, y);
+      // Só o terreno (água funda, tile sólido); pedras e muretas o empurrão normal da colisão resolve.
+      if (i < 0 || x < m.r + 4 || y < m.r + 4 || x > WORLD_W - m.r - 4 || y > WORLD_H - m.r - 4) return false;
+      return this.standable({ r: m.r, element: m.element, level: tr.height[i] }, x, y);
+    };
+    let spot = ok(m.x, m.y) ? { x: m.x, y: m.y } : null;
+    for (let d = 6; !spot && d <= 30; d += 6) for (let k = 0; k < 16 && !spot; k++) {
+      const an = (k / 16) * Math.PI * 2, x = m.x + Math.cos(an) * d, y = m.y + Math.sin(an) * d;
+      if (ok(x, y)) spot = { x, y };
+    }
+    const from = a?.leapFrom || a?.from;
+    if (!spot && from) for (let k = 1; k <= 24 && !spot; k++) {
+      const x = m.x + (from.x - m.x) * k / 24, y = m.y + (from.y - m.y) * k / 24;
+      if (ok(x, y)) spot = { x, y };
+    }
+    for (let d = 36; !spot && d <= 160; d += 8) for (let k = 0; k < 24 && !spot; k++) {
+      const an = (k / 24) * Math.PI * 2, x = m.x + Math.cos(an) * d, y = m.y + Math.sin(an) * d;
+      if (ok(x, y)) spot = { x, y };
+    }
+    if (spot) { m.x = m.px = spot.x; m.y = m.py = spot.y; }
+    m.level = tr.heightAt(m.x, m.y);
+  }
+
   // Depois de mover/empurrar: se a posição ficou inválida, desliza por eixo a partir da última válida.
   constrainToTerrain(m) {
+    if (this.isAirborne(m)) return; // no ar: o pouso (landAirborne) acerta a posição
     if (m.level === undefined) m.level = this.terrain.heightAt(m.x, m.y);
     if (!this.standable(m, m.x, m.y)) {
       if (this.standable(m, m.x, m.py)) m.y = m.py;
@@ -957,7 +992,7 @@ export class World {
   resolveCollisions() {
     const ms = this.monsters.filter((m) => m.alive);
     // Saltos passam por cima; investidas "fantasma" (Ruptura Relâmpago) atravessam os corpos.
-    const air = (m) => m.action && m.action.phase === 'active' && (m.action.ab.leap || m.action.ab.ghost);
+    const air = (m) => this.isAirborne(m) || (m.action && m.action.phase === 'active' && m.action.ab.ghost);
     for (let k = 0; k < 2; k++) {
       for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) {
         const a = ms[i], b = ms[j];
@@ -974,7 +1009,7 @@ export class World {
   }
 
   collideStatic(m) {
-    const leaping = m.action && m.action.phase === 'active' && m.action.ab.leap; // saltos passam por cima de obstáculos
+    const leaping = this.isAirborne(m); // saltos, pulos e voos passam por cima de obstáculos e muretas
     // Duas passadas: empurrado para fora de um tronco/pilar, o corpo pode cair em um vizinho (correntes de troncos, pares de pedras).
     for (let pass = 0; pass < 2; pass++) for (const o of this.obstacles) {
       if (o.destroyed || !o.solid || leaping) continue;
@@ -987,6 +1022,7 @@ export class World {
       }
     }
     for (const w of this.walls) {
+      if (leaping) break;
       const cx = clamp(m.x, w.x, w.x + w.w), cy = clamp(m.y, w.y, w.y + w.h);
       const dx = m.x - cx, dy = m.y - cy, d = Math.hypot(dx, dy);
       if (d < m.r) {

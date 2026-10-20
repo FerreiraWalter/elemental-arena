@@ -36,13 +36,14 @@ export default {
       const dx = (x - cx) / rx, dy = (y - cy) / ry;
       return dx * dx + dy * dy + (B.noise(x, y, 18, off) - 0.5) * 0.4 <= 1;
     }, T.STONE, 1);
-    island(512, 288, 210, 130, 2);
-    for (const [cx, cy] of CORNERS) island(cx, cy, 128, 92, 1);
     // Pontes (48 px, altura 1): norte, sul, oeste, leste entre ilhas de canto e diagonais até o centro.
     const bridge = (pts, wd = 48) => { for (const mir of [(p) => p, B.mirX, B.mirY, B.rot]) B.path(pts.map(mir), wd, T.BRIDGE, 1, 0); };
-    bridge([[176, 120], [848, 120]], 40); // N (e S por espelho)
+    bridge([[176, 104], [848, 104]], 40); // N (e S por espelho), afastada da ilha central
     bridge([[176, 120], [176, 456]], 40); // W (e E)
     bridge([[272, 204], [430, 262]]); // diagonais
+    // Ilhas por cima: a madeira só fica onde a ponte passa sobre a água (antes as pontes cobriam as ilhas também).
+    island(512, 288, 210, 114, 2); // mais baixa que antes: deixa um canal de verdade até as pontes N/S
+    for (const [cx, cy] of CORNERS) island(cx, cy, 128, 92, 1);
     // Praias e musgo.
     B.each((i, x, y, c, r) => {
       if (tr.type[i] !== T.STONE) return;
@@ -86,7 +87,7 @@ export default {
     }
     // Cobertura sólida (fora das pontes e escadas) e um farol por ilha de canto.
     B.sym4([[240, 76, 6], [130, 172, 6], [420, 200, 6]], (x, y, r) => w.addObstacle('pillar', x, y, r));
-    B.sym4([[212, 176, 8], [470, 160, 8]], (x, y, r) => w.addObstacle('rock', x, y, r));
+    B.sym4([[212, 176, 8], [470, 190, 8]], (x, y, r) => w.addObstacle('rock', x, y, r));
     B.sym4([[96, 70, 9]], (x, y, r) => w.addObstacle('lighthouse', x, y, r));
     // Gêiseres no centro.
     w.hazards = [];

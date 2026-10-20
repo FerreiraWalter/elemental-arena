@@ -34,6 +34,7 @@ export function paletteFor(world) {
   const o = world.arenaDef?.style?.palette || {};
   for (const k in o) p[k] = o[k].map(rgb);
   if (world.arenaId === 'abismo') p.stone = pal('#4c5462', '#58606e', '#646c7a', '#727a88', '#848c9a');
+  if (world.arenaId === 'abismo') p.wood = pal('#3a2a1e', '#5a4230', '#76583c', '#957452'); // madeira de mar, desbotada
   if (world.arenaId === 'jardim') p.stone = pal('#7a7468', '#8a8476', '#989282', '#a8a190', '#bdb5a2');
   return p;
 }
@@ -148,12 +149,30 @@ export function paintTile(world, P, i, x, y) {
       break;
     }
     case T.BRIDGE: {
-      const up = tr.type[tr.idx(i % COLS, ((i / COLS) | 0) - 1)] !== T.BRIDGE;
-      const down = tr.type[tr.idx(i % COLS, ((i / COLS) | 0) + 1)] !== T.BRIDGE;
-      c = P.wood[1 + ((hash2((x / 4) | 0, 0, seed + 41) * 3) | 0)];
-      if (x % 4 === 0) c = P.wood[0];
-      if ((up && y % TILE === 0) || (down && y % TILE === 7)) c = rgb('#2a1a0e');
-      if ((up && y % TILE === 1) || (down && y % TILE === 6)) c = P.wood[3];
+      // Tábuas ATRAVESSADAS em relação ao sentido da ponte (frestas escuras, veios, pregos) e corrimão com postes nas
+      // bordas que dão para a água. O sentido sai do comprimento da faixa de ponte na horizontal × vertical.
+      const tc = i % COLS, tr0 = (i / COLS) | 0;
+      const isB = (cc, rr) => tr.type[tr.idx(cc, rr)] === T.BRIDGE;
+      let hr = 0, vr = 0;
+      for (let k = 1; k <= 6; k++) { if (isB(tc + k, tr0)) hr++; if (isB(tc - k, tr0)) hr++; if (isB(tc, tr0 + k)) vr++; if (isB(tc, tr0 - k)) vr++; }
+      const horiz = hr >= vr; // ponte corre na horizontal → tábuas verticais
+      const along = horiz ? x : y, across = horiz ? y : x;
+      const sub = horiz ? y % TILE : x % TILE;
+      const edgeA = horiz ? !isB(tc, tr0 - 1) : !isB(tc - 1, tr0);
+      const edgeB = horiz ? !isB(tc, tr0 + 1) : !isB(tc + 1, tr0);
+      const pi = Math.floor(along / 5), pk = hash2(pi, horiz ? 1 : 2, seed + 41);
+      const grain = hash2(pi, across >> 1, seed + 43);
+      c = P.wood[1 + ((pk * 2.6) | 0)];
+      if (grain > 0.82) c = P.wood[Math.max(0, 1 + ((pk * 2.6) | 0) - 1)];
+      if (along % 5 === 0) c = rgb('#24160c');                       // fresta entre tábuas
+      else if (along % 5 === 1) c = P.wood[Math.min(3, 2 + ((pk * 2) | 0))]; // quina iluminada
+      if (along % 5 === 3 && (sub === 2 || sub === 5) && (edgeA || edgeB) && hash2(pi, sub, seed) > 0.4) c = rgb('#b8b0a0'); // prego
+      // Corrimão: viga escura + brilho no topo; postes a cada 16 px.
+      const rail = (edgeA && sub <= 1) || (edgeB && sub >= TILE - 2);
+      if (rail) {
+        const post = along % 16 < 3;
+        c = post ? (along % 16 === 1 ? P.wood[3] : P.wood[2]) : ((edgeA && sub === 0) || (edgeB && sub === TILE - 1) ? rgb('#2a1a0e') : rgb('#5a3a1e'));
+      }
       break;
     }
     case T.MOSS: {

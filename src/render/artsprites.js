@@ -8,6 +8,8 @@ import { hash2 } from '../core/math.js';
 
 const FLAME = [rgba('#fff7c2'), rgba('#ffd84a'), rgba('#ff9a1f'), rgba('#f2541b'), rgba('#b3200f')];
 const WHITE = rgba('#ffffff');
+// Suba quando trocar algum PNG de assets/monsters (força o navegador a baixar de novo).
+const ART_VERSION = 3;
 
 // Direção para onde a arte original olha (-1 esquerda, 0 frente, 1 direita). O renderer espelha a arte
 // para que o monstro sempre olhe para a mira; sprite que olha para a esquerda precisa de -1 aqui.
@@ -20,6 +22,14 @@ const FACES = {
   mantis_1: 1, mantis_3: -1, // Silvamante: cabeça e garras à esquerda, folhas para trás
   brawler_1: 1, brawler_3: 1, // Pugilar e Lutapacho olham para a direita
   cat_1: 1, cat_3: 0, // Raiolua (de lado) e Trovogato (de frente)
+};
+
+// Braços que socam (coordenadas na arte original, que olha para a direita). L = mão esquerda do personagem (o braço do
+// lado direito da imagem, o da frente), R = mão direita (o do lado esquerdo da imagem, que cruza o corpo no soco).
+// reach = quanto o punho avança (px); lift = sobe/desce junto. O braço avança com um rastro curto de 2 px.
+const ARMS = {
+  brawler_1: { L: { x0: 25, y0: 11, x1: 35, y1: 24, reach: 7, lift: 0 }, R: { x0: 8, y0: 12, x1: 16, y1: 25, reach: 15, lift: 0, keep: true } }, // braço sobre o peito: fica, escurecido
+  brawler_3: { L: { x0: 50, y0: 19, x1: 62, y1: 45, reach: 8, lift: 0 }, R: { x0: 0, y0: 13, x1: 15, y1: 51, reach: 18, lift: -0.15 } },
 };
 
 function classify(r, g, b) {
@@ -59,7 +69,7 @@ export class ArtSprites {
         resolve();
       };
       img.onerror = () => resolve();
-      img.src = base + name + '.png';
+      img.src = base + name + '.png?v=' + ART_VERSION; // versão: o navegador não fica com o sprite antigo em cache
     })));
     this.ready = names.every((n) => this.models[n]);
     return this.ready;
@@ -86,6 +96,8 @@ export class ArtSprites {
     const lean = pose.lunge * 0.22 - pose.crouch * 0.08 + pose.dead * 0.25;
     const legZone = M.h * 0.72;
     const step = Math.sin(pose.walk) * 1.6 * pose.moving;
+    const arm = pose.punch && ARMS[name]?.[pose.punch.side];
+    const pd = arm ? Math.round(Math.max(0, Math.min(1, pose.punch.k)) * arm.reach) : 0;
     for (let dy = 0; dy < H; dy++) {
       const ry = dy - day + bob;
       const syf = ay + ry / sy;
@@ -98,6 +110,30 @@ export class ArtSprites {
         // Folhagem balança na parte de cima.
         const srow = Math.round(syf);
         let scol = Math.round(sxf);
+        // Soco: o braço estica para a frente (procura, do punho para o ombro, um pixel do braço deslocado até aqui).
+        if (pd > 0) {
+          let hit = -1;
+          for (let o = pd; o >= Math.max(1, pd - 2) && hit < 0; o--) { // punho + 2 px de rastro (sem faixa atravessando o corpo)
+            const ax2 = scol - o, ay2 = srow - Math.round(o * arm.lift);
+            if (ax2 >= arm.x0 && ax2 <= arm.x1 && ay2 >= arm.y0 && ay2 <= arm.y1 && M.px[ay2 * M.w + ax2]) hit = ay2 * M.w + ax2;
+          }
+          if (hit >= 0) { pb.px[dy * W + dx] = M.px[hit]; continue; }
+          // De onde o braço saiu: preenche com o corpo vizinho (lado de dentro), senão fica um braço duplicado.
+          if (pd >= 2 && arm.keep && scol >= arm.x0 && scol <= arm.x1 && srow >= arm.y0 && srow <= arm.y1 && M.px[srow * M.w + scol]) {
+            const c0 = M.px[srow * M.w + scol];
+            pb.px[dy * W + dx] = (c0 & 0xff000000) | ((((c0 >> 16) & 255) * 0.62) << 16) | ((((c0 >> 8) & 255) * 0.62) << 8) | ((c0 & 255) * 0.62);
+            continue;
+          }
+          if (pd >= 2 && scol >= arm.x0 && scol <= arm.x1 && srow >= arm.y0 && srow <= arm.y1 && M.px[srow * M.w + scol]) {
+            // Só tapa se o braço estava SOBRE o corpo (há corpo dos dois lados nesta linha); fora do corpo fica vazio.
+            const inX = pose.punch.side === 'L' ? arm.x0 - 1 : arm.x1 + 1, outX = pose.punch.side === 'L' ? arm.x1 + 1 : arm.x0 - 1;
+            const midRow = (arm.y0 + arm.y1) >> 1; // uma cor só de pelo (cor por linha fazia listras)
+            const fc = inX >= 0 && inX < M.w && M.px[srow * M.w + inX] ? M.px[midRow * M.w + inX + (pose.punch.side === 'L' ? -1 : 1)] || M.px[midRow * M.w + inX] : 0;
+            const other = outX >= 0 && outX < M.w ? M.px[srow * M.w + outX] : 0;
+            if (fc && other) pb.px[dy * W + dx] = fc;
+            continue;
+          }
+        }
         if (srow < 0 || srow >= M.h || scol < 0 || scol >= M.w) continue;
         let k = M.kind[srow * M.w + scol];
         if (k === 3 && srow < M.h * 0.6) {
