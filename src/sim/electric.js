@@ -5,9 +5,9 @@
 //                    ELETRIZADO (+10% de velocidade). Descarga 110V / Núcleo de Sobrecarga CONSOMEM as cargas para
 //                    bater mais forte, atordoar mais e (evoluído) explodir numa área maior. Sem acertar, as cargas somem.
 //   Solo eletrificado (zonas) — rastros de dash e o Julgamento do Trovão deixam chão que dá choque e deixa LENTO.
-//   Condutor — alvo MOLHADO leva +15% de dano elétrico (combina com aliados de água no 2v2).
+//   Condutor — alvo MOLHADO leva +12% de dano elétrico (combina com aliados de água no 2v2).
 
-export const VOLT = { max: 3, maxEvo: 5, speed: 1.1, keep: 5, decay: 1.4, wetBonus: 1.15 };
+export const VOLT = { max: 3, maxEvo: 5, speed: 1.1, keep: 5, decay: 1.4, wetBonus: 1.12 };
 
 let nextZone = 1;
 

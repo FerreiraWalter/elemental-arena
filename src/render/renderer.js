@@ -273,7 +273,10 @@ export class Renderer {
         case 'thunder': {
           // Raio do céu: 2-3 traços grossos, clarão, anel e faíscas; o grande treme a tela.
           const H = e.big ? 140 : 110;
-          for (let k = 0; k < (e.big ? 3 : 2); k++) this.bolts.push({ x0: e.x + (Math.random() - 0.5) * 30, y0: e.y - H, x1: e.x + (Math.random() - 0.5) * e.r * 0.4, y1: e.y, life: 0.16 + k * 0.05, w: 1, jag: 7 });
+          // Tronco grosso que cai reto + galhos finos tremendo em volta.
+          this.bolts.push({ x0: e.x + (Math.random() - 0.5) * 12, y0: e.y - H - 20, x1: e.x, y1: e.y, life: 0.22, w: 2, jag: 6 });
+          for (let k = 0; k < (e.big ? 3 : 2); k++) this.bolts.push({ x0: e.x + (Math.random() - 0.5) * 40, y0: e.y - H, x1: e.x + (Math.random() - 0.5) * e.r * 0.6, y1: e.y, life: 0.12 + k * 0.06, w: k ? 0 : 1, jag: 8 });
+          this.impacts = [...(this.impacts || []), { id: (Math.random() * 1e6) | 0, x: e.x, y: e.y, r: e.r * 0.9, life: 0.28, max: 0.28 }];
           P.burst(e.x, e.y, e.big ? 40 : 26, { ramp: 'volt', speed: 120, life: 0.45, add: true, vz: 70 });
           P.burst(e.x, e.y, 10, { ramp: 'dust', speed: 60, life: 0.5, vz: 40 });
           this.rings.push({ x: e.x, y: e.y, r: 3, max: e.r + 6, t: 0, color: '#d8fbff', thick: true });
@@ -289,6 +292,13 @@ export class Renderer {
           this.rings.push({ x: e.x, y: e.y - 4, r: e.r * 0.7, max: 4, t: 0, color: '#ffffff' });
           for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + Math.random(); this.bolts.push({ x0: e.x, y0: e.y - 6, x1: e.x + Math.cos(a) * e.r * 0.8, y1: e.y + Math.sin(a) * e.r * 0.6, life: 0.12, w: 0, jag: 4 }); }
           P.burst(e.x, e.y - 4, 18 + e.n * 6, { ramp: 'volt', speed: 90, life: 0.35, add: true });
+          // Cabos de raio presos em quem foi puxado: acompanham o alvo enquanto ele é arrastado.
+          for (const tg of this.world?.enemiesOf?.(e.m) || []) {
+            if (Math.hypot(tg.x - e.x, tg.y - e.y) > e.r + tg.r) continue;
+            for (let k = 0; k < 2; k++) this.bolts.push({ from: e.m, to: tg, x0: e.x, y0: e.y - 6, x1: tg.x, y1: tg.y - 6, life: 0.32 - k * 0.1, w: 1 - k, jag: 5 });
+            P.burst(tg.x, tg.y - 6, 8, { ramp: 'volt', speed: 60, life: 0.3, add: true });
+          }
+          this.pullRings = [...(this.pullRings || []), { x: e.x, y: e.y - 2, r: e.r, life: 0.3, max: 0.3 }];
           this.addText({ x: e.x, y: e.y - 34, text: e.n ? `${e.big ? 'SOBRECARGA' : '110V'} ×${e.n}` : e.big ? 'SOBRECARGA' : '110V', t: 0, color: '#8fe8ff', big: e.n >= 3 });
           this.shake = Math.max(this.shake, 2.5 + e.n);
           break;
@@ -596,6 +606,7 @@ export class Renderer {
   render(world, alpha, dt, ui) {
     this.time += dt;
     const t = this.time;
+    this.world = world;
     this.consume(world.drainEvents());
     this.elimFx(world);
     if (world.terrain.dirty.size) this.paintBase(false);
@@ -616,6 +627,12 @@ export class Renderer {
     this.fxT.clear();
     this.drawTerrainFx(world, t);
     for (const h of world.hazards) drawHazard(h, this.fxG, this.fxT, t, this.dotCircle.bind(this));
+    if (world.zones?.length) EF.drawTrails(this.fxG, world.zones, t);
+    // Clarão do raio do céu no chão (por baixo dos monstros).
+    if (this.impacts) {
+      for (const f of this.impacts) { f.life -= dt; if (f.life > 0) EF.drawImpact(this.fxG, f); }
+      this.impacts = this.impacts.filter((f) => f.life > 0);
+    }
     for (const z of world.zones || []) EF.drawZone(this.fxG, z, t);
     this.toDrawn(world, alpha, true);
     this.drawTelegraphs(world, t);
@@ -641,17 +658,23 @@ export class Renderer {
     for (const f of this.rootFx) { this.drawRootCage(f, t, true); f.t += dt; }
     this.rootFx = this.rootFx.filter((f) => f.t < f.dur);
     this.drawTentacles(dt, t);
-    for (const d of world.decor) if (d.kind === 'waterfall') drawWaterfall(d, this.fxT, t);
-    l.drawImage(this.fxT.commit(), 0, 0);
-    this.drawCanopies(world);
-    this.particles.draw(l, false);
-    this.drawSteam(world, t);
-    this.drawGlow(world, t);
-    this.particles.draw(l, true);
-    this.drawRings(dt);
-    // Raios (eventos) e cipós da Casca Viva ligando o Brotossauro ao parceiro.
+    // Raios (eventos) e cipós da Casca Viva ligando o Brotossauro ao parceiro (antes do commit do fxT).
+    for (const b of this.bolts) {
+      if (b.from) { b.x0 = b.from.x; b.y0 = b.from.y - 6; }
+      if (b.to) { b.x1 = b.to.x; b.y1 = b.to.y - 6; }
+    }
     for (const b of this.bolts) { b.life -= dt; EF.bolt(this.fxT, b.x0, b.y0, b.x1, b.y1, Math.floor(t * 40) + (b.x0 | 0), { width: b.w, jag: b.jag }); }
     this.bolts = this.bolts.filter((b) => b.life > 0);
+    // Anel do puxão 110V: fecha sobre o gato (mostra para onde os alvos estão sendo arrastados).
+    if (this.pullRings) {
+      for (const d of this.pullRings) {
+        d.life -= dt;
+        const k = Math.max(0, d.life / d.max);
+        this.dotCircle(this.fxT, d.x, d.y, Math.max(3, d.r * k), EF.VOLT_COL.mid, -t * 6, 3);
+        this.dotCircle(this.fxT, d.x, d.y, Math.max(2, d.r * k * 0.8), EF.VOLT_COL.deep, t * 4, 5);
+      }
+      this.pullRings = this.pullRings.filter((d) => d.life > 0);
+    }
     if (this.vines) {
       for (const v of this.vines) {
         v.life -= dt;
@@ -664,9 +687,17 @@ export class Renderer {
       }
       this.vines = this.vines.filter((v) => v.life > 0);
     }
+    this.drawSlashes(dt); // (no fxT: precisa vir antes do commit, senão nunca aparece)
+    for (const d of world.decor) if (d.kind === 'waterfall') drawWaterfall(d, this.fxT, t);
+    l.drawImage(this.fxT.commit(), 0, 0);
+    this.drawCanopies(world);
+    this.particles.draw(l, false);
+    this.drawSteam(world, t);
+    this.drawGlow(world, t);
+    this.particles.draw(l, true);
+    this.drawRings(dt);
     for (const m of world.monsters) this.drawOverhead(m, alpha, dt);
     for (const d of world.decoys) this.drawDecoyOverhead(d, alpha);
-    this.drawSlashes(dt);
     this.drawReticle(world, t);
     if (this.flash > 0) { l.fillStyle = `rgba(255,240,200,${this.flash * 3})`; l.fillRect(0, 0, WORLD_W, WORLD_H); }
 
@@ -1079,8 +1110,18 @@ export class Renderer {
     let lift = m.lift > 0 ? Math.sin(Math.PI * (1 - m.lift / m.liftMax)) * 18 : 0; // erguido no ar
     // Pulo do Gato / Instinto do Trovão: salto em arco (e uma cambalhota curta no gato pequeno).
     const hopA = m.action && m.action.ab.hop && m.action.phase === 'active' ? m.action : null;
+    // Pulo do gato: faíscas e poeira ao sair do chão, rastro de faísca no ar e estalo ao pousar.
+    if (hopA && st.hop !== hopA) { st.hop = hopA; this.particles.burst(x, y, 7, { ramp: 'dust', speed: 40, life: 0.3, vz: 20 }); this.particles.burst(x, y - 4, 6, { ramp: 'volt', speed: 60, life: 0.25, add: true }); }
+    else if (!hopA && st.hop) { st.hop = null; this.particles.burst(x, y, 6, { ramp: 'dust', speed: 35, life: 0.3, vz: 15 }); this.rings.push({ x, y, r: 2, max: 10, t: 0, color: '#d8fbff' }); }
+    if (hopA && m.element === 'electric' && Math.random() < 0.7) this.particles.add({ ramp: 'volt', x: x + (Math.random() - 0.5) * 8, y, z: 6 + Math.random() * 10, vz: -10, life: 0.2, add: true });
     if (hopA) lift = Math.max(lift, Math.sin(Math.PI * Math.min(1, hopA.t / hopA.ab.active)) * (m.evolved ? 12 : 14));
+    // Cauda de raio em espiral (Raiolua e Trovogato), atrás do corpo.
+    if (m.alive && m.element === 'electric') EF.drawTail(l, x, y - lift - frame.top * (m.evolved ? 0.22 : 0.3), st.faceDir, m.evolved ? 1.35 : 1, t, m.id, Math.hypot(m.vx, m.vy), frame.w * 0.3);
     this.blitFrame(frame, x, y - lift, face, hScale, wScale, pose.spin ? pose.spin * 6 : 0);
+    if (m.alive && m.action?.ab.overload && m.action.phase !== 'recovery') {
+      const A = m.action, k = A.phase === 'windup' ? 0.3 * A.t / A.ab.windup : 0.3 + 0.7 * Math.min(1, A.t / A.ab.active);
+      EF.drawCore(this.fxT, x, y - lift - frame.top * 0.45, k, t, m.id);
+    }
     l.globalAlpha = 1;
     if (beam > 0.05) {
       const g = this.fxT;

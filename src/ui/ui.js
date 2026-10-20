@@ -6,6 +6,7 @@ import { World } from '../sim/world.js';
 import { Renderer, ELEMENT_COLOR, SIG_COLOR } from '../render/renderer.js';
 import { makeCanvas } from '../render/pixel.js';
 import { abilityIcon, statusIcon } from '../render/hud.js';
+import { drawTail } from '../render/electricfx.js';
 
 // Telas fora da batalha (menu, time, arena, bestiário, opções) e menus sobre a batalha (pausa, fim).
 // Tudo desenhado no canvas no mesmo estilo pixel art; mouse e teclado funcionam em todas as telas.
@@ -71,7 +72,8 @@ const matchText = (el) => {
   if (!ELEMENT_MULT[el]) return 'Neutro: sem vantagem nem fraqueza no triângulo';
   const strong = Object.keys(ELEMENT_MULT[el]).find((k) => ELEMENT_MULT[el][k] > 1);
   const weak = Object.keys(ELEMENT_MULT).find((k) => ELEMENT_MULT[k][el] > 1);
-  return `Forte contra ${ELEMENT_NAME[strong]} · fraco contra ${ELEMENT_NAME[weak]}`;
+  const sTxt = strong ? `Forte contra ${ELEMENT_NAME[strong]}` : 'Sem vantagem de elemento';
+  return weak ? `${sTxt} · fraco contra ${ELEMENT_NAME[weak]}` : sTxt;
 };
 
 
@@ -196,6 +198,18 @@ export class UI {
     c.save();
     c.imageSmoothingEnabled = false;
     c.translate(Math.round(x), Math.round(y));
+    if (def.element === 'electric') {
+      // Cauda de raio (a mesma do jogo), desenhada num buffer pequeno e ampliada atrás do gato.
+      const tw = f.w + 60, th = f.h + 30;
+      this.tailBuf ??= makeCanvas(tw, th);
+      const tb = this.tailBuf;
+      if (tb.width !== tw || tb.height !== th) { tb.width = tw; tb.height = th; }
+      const g = tb.getContext('2d');
+      g.clearRect(0, 0, tw, th);
+      const big = def.stage > 1;
+      drawTail(g, tw / 2, f.ay + 10 - f.top * (big ? 0.22 : 0.3), flip ? -1 : 1, big ? 1.35 : 1, this.time, seed + 3, 0, f.w * 0.3);
+      c.drawImage(tb, -(tw / 2) * scale, -(f.ay + 10) * scale, tw * scale, th * scale);
+    }
     if (flip) c.scale(-1, 1);
     c.drawImage(f.canvas, -f.ax * scale, -f.ay * scale, f.w * scale, f.h * scale);
     c.restore();
@@ -523,7 +537,9 @@ export class UI {
       const x = cx + (k === 0 ? -pw - 6 * u : 6 * u), y = 74 * u;
       const other = k === 0 ? evo : base;
       panel(c, x, y, pw, ph, u, ELEMENT_COLOR[def.element]);
-      this.drawMonsterArt(def, x + 56 * u, y + 112 * u, Math.max(1, Math.round((def.stage > 1 ? 1.8 : 2.6) * u)), k);
+      // Escala limitada pela altura do modelo (os gatos de chapéu são altos e cortavam no topo do painel).
+      const mh = this.art.models?.[def.sprite]?.h || 40;
+      this.drawMonsterArt(def, x + 56 * u, y + 112 * u, Math.max(1, Math.min(Math.round((def.stage > 1 ? 1.8 : 2.6) * u), Math.floor((100 * u) / mh))), k);
       text(c, def.name.toUpperCase(), x + 112 * u, y + 20 * u, fitSize(c, def.name.toUpperCase(), 8, pw - 120 * u, u), ELEMENT_COLOR[def.element], 'left', u);
       text(c, `${def.title} · ${ELEMENT_NAME[def.element]} · ${def.profile.personality}`, x + 112 * u, y + 32 * u, fitSize(c, `${def.title} · ${ELEMENT_NAME[def.element]} · ${def.profile.personality}`, 5, pw - 120 * u, u), '#bba', 'left', u);
       // Atributos em barras, com a diferença para a outra forma.

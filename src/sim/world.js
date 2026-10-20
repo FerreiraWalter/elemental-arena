@@ -28,8 +28,8 @@ const OBSTACLE_DEFS = {
   thicket: { flammable: true, hp: 40, blocksLOS: true, burnTime: 4, burnDps: 12 }, // barreira temporária da planta
   // Brotos Sentinela (Brotossauro): torres vivas; o fogo as derruba rápido.
   // Sentinelas do Brotossauro: flores carnívoras que atiram de longe (deixam lento) e mordem quem encosta.
-  sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 1.6, healR: 54, shot: { kind: 'seed', dmg: 2.5, every: 1.5, range: 150, speed: 250, slow: [0.8, 0.2] }, bite: { reach: 10, dmg: 4, every: 1.4, slow: 0.3, slowTime: 1 } },
-  ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 2.4, healR: 60, shot: { kind: 'thorn', dmg: 4.5, every: 1.5, range: 175, speed: 250, slow: [1.2, 0.25] }, bite: { reach: 12, dmg: 7, every: 1.1, slow: 0.4, slowTime: 1.4 } },
+  sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 1.4, healR: 54, shot: { kind: 'seed', dmg: 2, every: 1.5, range: 150, speed: 250, slow: [0.6, 0.15] }, bite: { reach: 10, dmg: 4, every: 1.4, slow: 0.3, slowTime: 1 } },
+  ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 2.1, healR: 60, shot: { kind: 'thorn', dmg: 3.5, every: 1.5, range: 175, speed: 250, slow: [1.2, 0.25] }, bite: { reach: 12, dmg: 7, every: 1.1, slow: 0.4, slowTime: 1.4 } },
 };
 
 // Dificuldade da IA (multiplica o perfil do monstro). think: intervalo entre decisões (mais lento = ataca e reage

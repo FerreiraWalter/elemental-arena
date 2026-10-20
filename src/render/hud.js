@@ -25,10 +25,18 @@ function fit(c, s, size, maxW, dpr) {
   return sz;
 }
 
+// Cor da vida: verde no seu time (como no esboço), cor do time nos outros; avermelha quando está baixa.
+function hpColor(m, world) {
+  const k = m.hp / m.maxHp;
+  if (k < 0.3) return '#ff5a4a';
+  const mine = world.playerTeam !== null && world.teams[world.playerTeam]?.side === m.team;
+  return mine ? (k < 0.55 ? '#e8d84a' : '#4ae08a') : TEAM_COLOR[m.team];
+}
+
 function bar(c, x, y, w, h, frac, lag, color, dpr) {
-  c.fillStyle = '#100a08';
+  c.fillStyle = '#05080f';
   c.fillRect(x - dpr, y - dpr, w + 2 * dpr, h + 2 * dpr);
-  c.fillStyle = '#3a1a16';
+  c.fillStyle = '#1a2236';
   c.fillRect(x, y, w, h);
   c.fillStyle = '#fff6e0';
   c.fillRect(x, y, w * Math.max(0, lag), h);
@@ -36,6 +44,60 @@ function bar(c, x, y, w, h, frac, lag, color, dpr) {
   c.fillRect(x, y, w * Math.max(0, frac), h);
   c.fillStyle = 'rgba(255,255,255,0.25)';
   c.fillRect(x, y, w * Math.max(0, frac), Math.max(1, h / 4));
+}
+
+// ───── Estilo dos painéis (azul-noite com cantos chanfrados e borda colorida) ─────
+const PANEL_TOP = 'rgba(24,36,62,0.94)', PANEL_BOT = 'rgba(10,16,30,0.94)', GOLD = '#e8b84a';
+function bevel(c, x, y, w, h, k) {
+  c.beginPath();
+  c.moveTo(x + k, y); c.lineTo(x + w - k, y); c.lineTo(x + w, y + k); c.lineTo(x + w, y + h - k);
+  c.lineTo(x + w - k, y + h); c.lineTo(x + k, y + h); c.lineTo(x, y + h - k); c.lineTo(x, y + k); c.closePath();
+}
+function panel(c, x, y, w, h, border, dpr, cut = 5) {
+  const k = Math.min(cut * dpr, h / 3);
+  bevel(c, x, y, w, h, k);
+  const g = c.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, PANEL_TOP); g.addColorStop(1, PANEL_BOT);
+  c.fillStyle = g; c.fill();
+  c.lineWidth = 3.5 * dpr; c.strokeStyle = 'rgba(4,6,12,0.9)'; c.stroke();
+  c.lineWidth = 1.6 * dpr; c.strokeStyle = border; c.stroke();
+  // Brilho fino no alto (vidro).
+  c.fillStyle = 'rgba(255,255,255,0.06)';
+  c.fillRect(x + k, y + 2 * dpr, w - 2 * k, Math.max(1, dpr));
+}
+
+// Símbolo do elemento ao lado do nome (chama, gota, folha, pedra, raio).
+function elementGlyph(c, el, x, y, s) {
+  const u = s / 6, P = (px, py, w, h, col) => { c.fillStyle = col; c.fillRect(x + px * u, y + py * u, w * u, h * u); };
+  switch (el) {
+    case 'fire': P(2, 0, 2, 1, '#ffb03a'); P(1, 1, 4, 2, '#ff7a1a'); P(1, 3, 4, 2, '#ff5a1a'); P(2, 3, 2, 2, '#ffe066'); P(2, 5, 2, 1, '#ff7a1a'); break;
+    case 'water': P(2.5, 0, 1, 1, '#8fd8ff'); P(2, 1, 2, 1, '#5ab4ff'); P(1, 2, 4, 3, '#3a8cff'); P(1.5, 2.5, 1, 1.5, '#c8f0ff'); P(2, 5, 2, 1, '#2a6ad8'); break;
+    case 'plant': P(3, 0, 3, 1, '#9be862'); P(2, 1, 4, 2, '#6ac84a'); P(1, 3, 3, 2, '#4aa83a'); P(0, 5, 2, 1, '#7a4a28'); break;
+    case 'earth': P(1, 1, 4, 4, '#a8743e'); P(2, 0, 2, 1, '#c89a5a'); P(1, 2, 2, 1, '#c89a5a'); P(4, 3, 1, 2, '#6a4a28'); break;
+    case 'electric': P(3, 0, 2, 1, '#ffe24a'); P(2, 1, 2, 1, '#ffe24a'); P(1, 2, 4, 1, '#ffffff'); P(3, 3, 2, 1, '#ffe24a'); P(2, 4, 2, 1, '#ffe24a'); P(2, 5, 1, 1, '#c8a838'); break;
+  }
+}
+
+// Retrato do monstro: busto animado recortado numa moldura quadrada.
+function portrait(c, r, m, x, y, s, border, dpr) {
+  const def = m.def;
+  bevel(c, x, y, s, s, 3 * dpr);
+  const g = c.createRadialGradient(x + s / 2, y + s * 0.4, 1, x + s / 2, y + s / 2, s * 0.75);
+  g.addColorStop(0, '#2a3e66'); g.addColorStop(1, '#0c1426');
+  c.fillStyle = g; c.fill();
+  if (r.art?.has(def.sprite)) {
+    const f = r.art.render('hud:' + m.id, def.sprite, { t: r.time + m.id, walk: 0, moving: 0, crouch: 0, lunge: 0, dash: 0, dead: 0, seed: m.id, power: 0, flames: def.element === 'fire' ? (def.stage > 1 ? 6 : 3) : 0 });
+    const top = f.top || f.h * 0.8;
+    const sc = Math.max(1, Math.floor((s * 1.15) / top * 2) / 2);
+    c.save();
+    bevel(c, x + dpr, y + dpr, s - 2 * dpr, s - 2 * dpr, 3 * dpr); c.clip();
+    c.imageSmoothingEnabled = false;
+    c.globalAlpha *= m.alive ? 1 : 0.4;
+    c.drawImage(f.canvas, Math.round(x + s / 2 - f.ax * sc), Math.round(y + 3 * dpr + top * sc - f.ay * sc), f.w * sc, f.h * sc);
+    c.restore();
+  }
+  bevel(c, x, y, s, s, 3 * dpr);
+  c.lineWidth = 1.6 * dpr; c.strokeStyle = border; c.stroke();
 }
 
 // Ícone de cada tipo de habilidade, desenhado em pixel (s = tamanho em px do dispositivo).
@@ -103,30 +165,42 @@ function canSwitchTo(world, m) {
 // Cartão compacto de um monstro do time (em campo, reserva ou derrotado).
 function card(c, r, world, m, idx, x, y, w, dpr) {
   const st = r.ms(m);
-  const h = 54 * dpr, pad = 6 * dpr;
+  const h = 54 * dpr, pad = 5 * dpr;
   const field = m.onField && m.alive;
   const mine = world.playerTeam !== null && m.slot === world.playerTeam;
-  c.globalAlpha = m.alive ? (field ? 1 : 0.82) : 0.4;
-  c.fillStyle = field ? 'rgba(60,46,20,0.95)' : 'rgba(20,14,12,0.88)';
-  c.fillRect(x, y, w, h);
-  c.fillStyle = TEAM_COLOR[m.team];
-  c.fillRect(x, y, w, 2 * dpr);
-  if (field) { c.strokeStyle = '#ffe066'; c.lineWidth = 2 * dpr; c.strokeRect(x + dpr, y + dpr, w - 2 * dpr, h - 2 * dpr); }
-  let tx = x + pad;
+  c.globalAlpha = m.alive ? (field ? 1 : 0.85) : 0.45;
+  panel(c, x, y, w, h, field ? GOLD : TEAM_COLOR[m.team], dpr);
+  // Retrato à esquerda (some quando o cartão fica estreito demais).
+  const ps = (w >= 96 * dpr ? 26 : w >= 64 * dpr ? 17 : 0) * dpr;
+  // Retrato grande empurra o cartão todo; o pequeno só divide a linha do nome.
+  if (ps) portrait(c, r, m, x + pad, y + (ps > 20 * dpr ? pad : 3 * dpr), ps, field ? GOLD : '#3a4a6a', dpr);
+  if (ps > 20 * dpr) { x += ps + 3 * dpr; w -= ps + 3 * dpr; }
+  let tx = x + pad + (ps && ps <= 20 * dpr ? ps + 3 * dpr : 0);
   if (mine) {
     // Tecla de troca: verde = pode trocar agora; cinza = recarga/indisponível.
     const ready = canSwitchTo(world, m);
     c.fillStyle = field ? '#ffe066' : ready ? '#4ac05a' : '#3a2e28';
-    c.fillRect(tx, y + 6 * dpr, 12 * dpr, 12 * dpr);
-    text(c, String(idx + 1), tx + 6 * dpr, y + 16 * dpr, 7, field || ready ? '#100a08' : '#887', 'center', dpr);
-    tx += 16 * dpr;
+    if (ps) {
+      // Com retrato: a tecla vira um selo no canto do retrato (sobra espaço para o nome).
+      const kx = x - (ps > 20 * dpr ? ps + 3 * dpr : 0) + pad - 2 * dpr, ky = y + (ps > 20 * dpr ? pad : 3 * dpr) + ps - 8 * dpr;
+      c.fillRect(kx, ky, 10 * dpr, 10 * dpr);
+      text(c, String(idx + 1), kx + 5 * dpr, ky + 8.5 * dpr, 6, field || ready ? '#100a08' : '#887', 'center', dpr);
+    } else {
+      c.fillRect(tx, y + 6 * dpr, 12 * dpr, 12 * dpr);
+      text(c, String(idx + 1), tx + 6 * dpr, y + 16 * dpr, 7, field || ready ? '#100a08' : '#887', 'center', dpr);
+      tx += 16 * dpr;
+    }
   }
-  const nsz = fit(c, m.name.toUpperCase(), 7, x + w - pad - tx, dpr);
-  text(c, m.name.toUpperCase(), tx, y + 15 * dpr, nsz, ELEMENT_COLOR[m.element], 'left', dpr);
-  text(c, `${ELEMENT_NAME[m.element]} · Est.${m.stage}${m.evolved ? ' ★' : m.canEvolve ? ' PRONTO' : ''}`, x + pad, y + 28 * dpr, 5, m.canEvolve ? '#e8b8ff' : '#aa9', 'left', dpr);
+  const nsz = fit(c, m.name.toUpperCase(), 7, x + w - pad - tx - 8 * dpr, dpr);
+  text(c, m.name.toUpperCase(), tx, y + 15 * dpr, nsz, field ? '#ffd86a' : ELEMENT_COLOR[m.element], 'left', dpr);
+  elementGlyph(c, m.element, x + w - pad - 6 * dpr, y + 7 * dpr, 6 * dpr);
+  // Cartão estreito: o símbolo já diz o elemento; fica só o estágio (e a vida não se sobrepõe).
+  const narrow = w < 100 * dpr;
+  const sub = `${narrow ? '' : `${ELEMENT_NAME[m.element]} · `}Est.${m.stage}${m.evolved ? ' ★' : m.canEvolve ? (narrow ? ' !' : ' PRONTO') : ''}`;
+  text(c, sub, x + pad, y + 28 * dpr, 5, m.canEvolve ? '#e8b8ff' : '#8fa0c0', 'left', dpr);
   const shielded = m.alive && m.status.shield > 0 && m.shieldHp > 0;
   text(c, `${Math.ceil(Math.max(0, m.hp))}${shielded ? `+${Math.ceil(m.shieldHp)}` : `/${m.maxHp}`}`, x + w - pad, y + 28 * dpr, 5, shielded ? '#8fd8ff' : '#fff', 'right', dpr);
-  bar(c, x + pad, y + 32 * dpr, w - pad * 2, 6 * dpr, m.hp / m.maxHp, st.lagHp / m.maxHp, TEAM_COLOR[m.team], dpr);
+  bar(c, x + pad, y + 32 * dpr, w - pad * 2, 6 * dpr, m.hp / m.maxHp, st.lagHp / m.maxHp, hpColor(m, world), dpr);
   if (shielded) {
     // Escudo: faixa azul sobre a barra de vida (proporcional à vida máxima) + contorno enquanto durar.
     c.fillStyle = '#8fd8ff';
@@ -216,19 +290,26 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
   const slots = SLOTS.filter(([k]) => m.def.controls[k]);
   const evoSlot = !!m.def.evolvesTo && !m.evolved;
   const nSlots = slots.length + (evoSlot ? 1 : 0);
-  const bw = Math.min(64 * dpr, (aw - 150 * dpr) / nSlots - 4 * dpr), bh = 42 * dpr, gap = 4 * dpr;
+  // Bloco da esquerda: retrato grande + nome, vida, medidor da mecânica e status.
+  const pS = 46 * dpr, lw = 118 * dpr, left = pS + 6 * dpr + lw + 10 * dpr;
+  const bh = 46 * dpr, gap = 4 * dpr;
+  const bw = Math.max(40 * dpr, Math.min(66 * dpr, (aw - left - 16 * dpr) / nSlots - gap));
   const total = nSlots * bw + (nSlots - 1) * gap;
-  let x = ox + aw / 2 - total / 2 + 66 * dpr;
-  const px = x - 132 * dpr, lw = 120 * dpr;
-  text(c, m.name.toUpperCase(), px, y + 9 * dpr, fit(c, m.name.toUpperCase(), 7, lw, dpr), ELEMENT_COLOR[m.element], 'left', dpr);
-  bar(c, px, y + 13 * dpr, lw, 7 * dpr, m.hp / m.maxHp, m.hp / m.maxHp, TEAM_COLOR[m.team], dpr);
+  const x0 = Math.max(ox, ox + aw / 2 - (left + total) / 2);
+  panel(c, x0 - 5 * dpr, y - 5 * dpr, left + total + 10 * dpr, bh + 10 * dpr, GOLD, dpr, 6);
+  portrait(c, r, m, x0, y, pS, GOLD, dpr);
+  const px = x0 + pS + 6 * dpr;
+  let x = x0 + left;
+  elementGlyph(c, m.element, px, y + 1 * dpr, 7 * dpr);
+  text(c, m.name.toUpperCase(), px + 10 * dpr, y + 9 * dpr, fit(c, m.name.toUpperCase(), 7, lw - 56 * dpr, dpr), '#ffd86a', 'left', dpr);
+  bar(c, px, y + 13 * dpr, lw, 7 * dpr, m.hp / m.maxHp, m.hp / m.maxHp, hpColor(m, world), dpr);
   if (m.status.shield > 0 && m.shieldHp > 0) { c.fillStyle = '#8fd8ff'; c.fillRect(px, y + 13 * dpr, lw * Math.min(1, m.shieldHp / m.maxHp), 3 * dpr); }
   text(c, `${Math.ceil(m.hp)}${m.status.shield > 0 && m.shieldHp > 0 ? `+${Math.ceil(m.shieldHp)}` : `/${m.maxHp}`}`, px + lw, y + 9 * dpr, 5, m.status.shield > 0 && m.shieldHp > 0 ? '#8fd8ff' : '#fff', 'right', dpr);
   // Medidor da mecânica própria (Fornalha, Ímpeto, Casco, Sentinelas, Cópias, Marcas).
   const gge = sigGauge(world, m);
   if (gge) {
     const blink = gge.blink && Math.floor(performance.now() / 160) % 2;
-    text(c, gge.label, px, y + 30 * dpr, fit(c, gge.label, 5.5, lw, dpr), blink ? '#ffffff' : gge.color, 'left', dpr);
+    text(c, gge.label, px, y + 30 * dpr, fit(c, gge.label, 5.5, lw * 0.56, dpr), blink ? '#ffffff' : gge.color, 'left', dpr);
     c.fillStyle = '#100a08'; c.fillRect(px - dpr, y + 33 * dpr, lw + 2 * dpr, 6 * dpr);
     c.fillStyle = '#2a201a'; c.fillRect(px, y + 34 * dpr, lw, 4 * dpr);
     c.fillStyle = blink ? '#ffffff' : gge.color; c.fillRect(px, y + 34 * dpr, lw * Math.max(0, Math.min(1, gge.k)), 4 * dpr);
@@ -237,7 +318,7 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
   {
     const ok = m.breakCd <= 0 && m.energy >= COMBO_BREAK.cost;
     const s = m.breakCd > 0 ? `COMBO ${Math.ceil(m.breakCd)}s` : ok ? 'COMBO PRONTO' : 'COMBO: SEM ENERGIA';
-    text(c, s, px + lw, y + 30 * dpr, 4.5, ok ? '#ffb04a' : '#776a5a', 'right', dpr);
+    text(c, s, px + lw, y + 30 * dpr, fit(c, s, 4.5, lw * 0.4, dpr), ok ? '#ffb04a' : '#6a7488', 'right', dpr);
   }
   // Status atuais do seu monstro, com nome (fácil de ler).
   const sts = statusList(m);
@@ -255,20 +336,25 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     const using = m.action?.ab === ab;
     const locked = m.status.exhaust > 0 && m.isSpecial?.(ab.id);
     const denied = deny && deny.slot === slot && Math.floor(deny.t * 14) % 2 === 0;
-    c.fillStyle = using ? '#5a4a1a' : denied ? '#5a1414' : 'rgba(20,14,12,0.92)';
-    c.fillRect(x, y, bw, bh);
-    c.strokeStyle = denied ? '#ff4a4a' : using ? '#ffe066' : cd > 0 || locked ? '#3a302a' : ELEMENT_COLOR[m.element];
-    c.lineWidth = 2 * dpr;
-    c.strokeRect(x + dpr, y + dpr, bw - 2 * dpr, bh - 2 * dpr);
-    abilityIcon(c, ab.kind, x + 4 * dpr, y + 4 * dpr, 9 * dpr, cd > 0 || locked ? '#776a5a' : ELEMENT_COLOR[m.element]);
-    const ksz = fit(c, key, 6, bw - 18 * dpr, dpr);
-    text(c, key, x + bw / 2 + 5 * dpr, y + 11 * dpr, ksz, '#ffe9b0', 'center', dpr);
+    const off = cd > 0 || locked;
+    panel(c, x, y, bw, bh, denied ? '#ff4a4a' : using ? '#ffe066' : off ? '#34405a' : ELEMENT_COLOR[m.element], dpr, 4);
+    if (using) { c.fillStyle = 'rgba(255,224,102,0.16)'; bevel(c, x, y, bw, bh, 4 * dpr); c.fill(); }
+    // Etiqueta da tecla no canto (sem ícone: o nome da habilidade é o destaque).
+    const ksz = fit(c, key, 5, bw - 10 * dpr, dpr);
+    c.font = `${ksz * dpr}px ${FONT}`;
+    const kw = c.measureText(key).width + 6 * dpr;
+    c.fillStyle = off ? '#3a4458' : '#ffe9b0';
+    c.fillRect(x + 3 * dpr, y + 3 * dpr, kw, 9 * dpr);
+    c.fillStyle = off ? '#9aa4b8' : '#141a2a'; c.textAlign = 'left';
+    c.fillText(key, x + 6 * dpr, y + 10.5 * dpr);
     const words = ab.name.split(' ');
     const l1 = words.length > 1 ? words.slice(0, Math.ceil(words.length / 2)).join(' ') : ab.name;
     const l2 = words.length > 1 ? words.slice(Math.ceil(words.length / 2)).join(' ') : '';
     const nsz = Math.min(fit(c, l1, 6.5, bw - 6 * dpr, dpr), fit(c, l2 || l1, 6.5, bw - 6 * dpr, dpr));
-    text(c, l1, x + bw / 2, y + 25 * dpr, nsz, '#e8e0d0', 'center', dpr);
-    if (l2) text(c, l2, x + bw / 2, y + 34 * dpr, nsz, '#e8e0d0', 'center', dpr);
+    text(c, l1, x + bw / 2, y + 24 * dpr, nsz, off ? '#8a94a8' : '#f2ecdc', 'center', dpr);
+    if (l2) text(c, l2, x + bw / 2, y + 33 * dpr, nsz, off ? '#8a94a8' : '#f2ecdc', 'center', dpr);
+    // Recarga total da habilidade, embaixo (como no esboço).
+    if (!(cd > 0)) text(c, `${+ab.cooldown.toFixed(1)}s`, x + bw / 2, y + bh - 4 * dpr, 4.5, '#8fa0c0', 'center', dpr);
     if (ab.charges) {
       // Pontinhos de carga no canto e a barrinha da próxima carga recarregando.
       for (let k = 0; k < ab.charges; k++) {
@@ -283,7 +369,7 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     }
     if (cd > 0) {
       const f = Math.min(1, cd / (ab.charges && charges > 0 ? (ab.chargeGap ?? 0.6) : ab.cooldown));
-      c.fillStyle = 'rgba(0,0,0,0.6)';
+      c.fillStyle = 'rgba(4,8,18,0.62)';
       c.fillRect(x + 2 * dpr, y + 2 * dpr + (bh - 4 * dpr) * (1 - f), bw - 4 * dpr, (bh - 4 * dpr) * f);
       if (cd >= 0.95) text(c, cd.toFixed(0), x + bw / 2, y + bh / 2 + 5 * dpr, 9, '#fff', 'center', dpr);
     }
@@ -300,17 +386,13 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     const k = Math.min(1, m.energy / EVOLUTION.threshold);
     const ready = m.canEvolve;
     const blink = ready && Math.floor(performance.now() / 200) % 2;
-    c.fillStyle = 'rgba(20,14,12,0.92)';
-    c.fillRect(x, y, bw, bh);
-    c.fillStyle = ready ? (blink ? '#8a50c8' : '#5a2e8a') : '#3a2450';
+    panel(c, x, y, bw, bh, ready ? '#e8b8ff' : '#5a4a7a', dpr, 4);
+    c.fillStyle = ready ? (blink ? 'rgba(160,96,232,0.75)' : 'rgba(110,56,170,0.75)') : 'rgba(80,44,120,0.6)';
     c.fillRect(x + 2 * dpr, y + 2 * dpr + (bh - 4 * dpr) * (1 - k), bw - 4 * dpr, (bh - 4 * dpr) * k);
-    c.strokeStyle = ready ? '#e8b8ff' : '#5a4a6a';
-    c.lineWidth = 2 * dpr;
-    c.strokeRect(x + dpr, y + dpr, bw - 2 * dpr, bh - 2 * dpr);
-    abilityIcon(c, 'evolve', x + 4 * dpr, y + 4 * dpr, 9 * dpr, ready ? '#ffffff' : '#a080c0');
-    text(c, 'G', x + bw / 2 + 5 * dpr, y + 11 * dpr, 6, '#ffe9b0', 'center', dpr);
-    text(c, 'EVOLUIR', x + bw / 2, y + 25 * dpr, Math.min(6, bw / dpr / 9), '#fff', 'center', dpr);
-    text(c, ready ? 'PRONTO!' : `${Math.floor(k * 100)}%`, x + bw / 2, y + 35 * dpr, 5.5, ready ? '#e8b8ff' : '#bba', 'center', dpr);
+    c.fillStyle = '#ffe9b0'; c.fillRect(x + 3 * dpr, y + 3 * dpr, 11 * dpr, 9 * dpr);
+    c.font = `${5 * dpr}px ${FONT}`; c.fillStyle = '#141a2a'; c.textAlign = 'left'; c.fillText('G', x + 6 * dpr, y + 10.5 * dpr);
+    text(c, 'EVOLUIR', x + bw / 2, y + 26 * dpr, Math.min(6, bw / dpr / 9), '#fff', 'center', dpr);
+    text(c, ready ? 'PRONTO!' : `${Math.floor(k * 100)}%`, x + bw / 2, y + bh - 5 * dpr, 5.5, ready ? '#e8b8ff' : '#c8bce0', 'center', dpr);
   }
 }
 
@@ -337,8 +419,7 @@ function ffaPanels(c, world, slots, x0, x1, y, dpr, oy) {
     const out = world.elim.some((e) => e.side === side), champ = world.over && world.winner === side;
     const alive = mons.filter((m) => m.alive).length;
     c.globalAlpha = out ? 0.5 : 1;
-    c.fillStyle = 'rgba(20,14,12,0.88)'; c.fillRect(x, y, pw, ph);
-    c.fillStyle = col; c.fillRect(x, y, pw, 3 * dpr);
+    panel(c, x, y, pw, ph, col, dpr);
     const nm = (world.slotNames?.[slot] || `Jogador ${slot + 1}`).toUpperCase();
     text(c, nm.slice(0, 12), x + 4 * dpr, y + 13 * dpr, 5.5, col, 'left', dpr);
     text(c, out ? 'ELIMINADO' : champ ? 'CAMPEÃO' : `${alive}/${mons.length}`, x + pw - 4 * dpr, y + 13 * dpr, 5, out ? '#ff6a6a' : champ ? '#ffe066' : '#bba', 'right', dpr);
@@ -346,7 +427,7 @@ function ffaPanels(c, world, slots, x0, x1, y, dpr, oy) {
     mons.forEach((m, i) => {
       const tx = x + 4 * dpr + i * (tw + 3 * dpr), ty = y + 20 * dpr;
       c.globalAlpha = (out ? 0.5 : 1) * (m.alive ? 1 : 0.35);
-      c.fillStyle = 'rgba(40,30,26,0.9)'; c.fillRect(tx, ty, tw, 24 * dpr);
+      c.fillStyle = 'rgba(30,44,72,0.9)'; c.fillRect(tx, ty, tw, 24 * dpr);
       c.fillStyle = ELEMENT_COLOR[m.element]; c.fillRect(tx, ty, tw, 2 * dpr);
       c.fillStyle = col; c.fillRect(tx + dpr, ty + 18 * dpr, (tw - 2 * dpr) * Math.max(0, m.hp / m.maxHp), 4 * dpr);
       if (m.alive && m.status.shield > 0 && m.shieldHp > 0) { c.fillStyle = '#8fd8ff'; c.fillRect(tx + dpr, ty + 16 * dpr, (tw - 2 * dpr) * Math.min(1, m.shieldHp / m.maxHp), 2 * dpr); }
@@ -404,7 +485,7 @@ export function drawHud(c, r, world, ui) {
   const left = world.teamOf(myTeam), right = world.teamOf(foeSlots[0]);
   const cw = Math.min(118 * dpr, (aw - 150 * dpr) / (ffa ? 8 : 6) - 4 * dpr);
   left.forEach((m, k) => card(c, r, world, m, k, ox + k * (cw + 4 * dpr), 6 * dpr, cw, dpr));
-  if (ffa) ffaPanels(c, world, foeSlots, ox + aw / 2 + 62 * dpr, ox + aw, 6 * dpr, dpr, oy);
+  if (ffa) ffaPanels(c, world, foeSlots, ox + aw / 2 + 74 * dpr, ox + aw, 6 * dpr, dpr, oy);
   else right.forEach((m, k) => card(c, r, world, m, k, ox + aw - (k + 1) * cw - k * 4 * dpr, 6 * dpr, cw, dpr));
   // 2v2: parceiro e segundo adversário aparecem em miniatura no alto da arena.
   const mini = (slot, x0, align) => {
@@ -438,6 +519,9 @@ export function drawHud(c, r, world, ui) {
   if (!ffa && foeSlots[1] !== undefined) mini(foeSlots[1], ox + aw - 4 * dpr, 'right');
 
   const mid = ox + aw / 2;
+  // Painel do cronômetro (centro do alto) e a aba de troca logo abaixo.
+  panel(c, mid - 68 * dpr, 3 * dpr, 136 * dpr, 39 * dpr, GOLD, dpr, 8);
+  panel(c, mid - 58 * dpr, 41 * dpr, 116 * dpr, 14 * dpr, '#3a5a8a', dpr, 4);
   const tm = world.over ? world.endTime : world.time;
   text(c, `${String(Math.floor(tm / 60)).padStart(2, '0')}:${String(Math.floor(tm % 60)).padStart(2, '0')}`, mid, 22 * dpr, 11, '#ffffff', 'center', dpr);
   const aliveSide = (side) => world.roster.filter((m) => m.team === side && m.alive).length;
@@ -476,6 +560,28 @@ export function drawHud(c, r, world, ui) {
   c.globalAlpha = 1;
 
   if (world.playerTeam !== null) abilityBar(c, world, ox, aw, oy + ah + 8 * dpr, dpr, r);
+  // Cantos de baixo, nas margens fora da arena: sala/ping (online) e modo/arena.
+  const cwid = Math.min(128 * dpr, ox - 14 * dpr);
+  if (cwid >= 84 * dpr) {
+    const cy = oy + ah + 6 * dpr, chh = 34 * dpr;
+    panel(c, 8 * dpr, cy, cwid, chh, '#3a5a8a', dpr, 4);
+    const net = ui.net;
+    if (net?.room || net?.rtt) {
+      const ms = Math.round(net.rtt || 0);
+      text(c, `SALA: ${net.room || '—'}`, 14 * dpr, cy + 14 * dpr, 5.5, '#e8ecf6', 'left', dpr);
+      text(c, `PING: ${ms ? ms + 'ms' : '...'}`, 14 * dpr, cy + 27 * dpr, 5.5, ms < 80 ? '#7ae07a' : ms < 160 ? '#ffe066' : '#ff6a6a', 'left', dpr);
+    } else {
+      text(c, world.training ? 'TREINO' : 'PARTIDA LOCAL', 14 * dpr, cy + 14 * dpr, fit(c, 'PARTIDA LOCAL', 5.5, cwid - 12 * dpr, dpr), '#e8ecf6', 'left', dpr);
+      text(c, 'contra a IA', 14 * dpr, cy + 27 * dpr, 5, '#8fa0c0', 'left', dpr);
+    }
+    const rx = c.canvas.width - 8 * dpr - cwid;
+    panel(c, rx, cy, cwid, chh, '#3a5a8a', dpr, 4);
+    const nSides = new Set(world.teams.map((t) => t.side)).size;
+    const mode = world.training ? 'TREINO' : ffa ? `TODOS × TODOS (${nSides})` : world.teams.length > 2 ? '2 × 2' : `DUELO ${left.length}×${right.length}`;
+    text(c, mode, rx + cwid - 6 * dpr, cy + 14 * dpr, fit(c, mode, 5.5, cwid - 12 * dpr, dpr), '#ffd86a', 'right', dpr);
+    const an = (world.arenaDef?.name || '').toUpperCase();
+    text(c, an, rx + cwid - 6 * dpr, cy + 27 * dpr, fit(c, an, 5, cwid - 12 * dpr, dpr), '#8fa0c0', 'right', dpr);
+  }
   comboPrompt(c, world, mid, oy + ah * 0.78, dpr);
   const help = world.training
     ? 'TREINO · T painel (bonecos, tiros, recargas, forma base) · B nº de bonecos · G evoluir · H ajuda · 1/2/3 trocar · Esc menu'

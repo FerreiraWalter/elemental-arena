@@ -410,17 +410,6 @@ function readInput() {
 
 const smooth = new NetSmoother(); // buffer de interpolação + predição do próprio monstro (net/smooth.js)
 
-function drawPing(c) {
-  if (!net || !net.rtt) return;
-  const ms = Math.round(net.rtt), u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
-  c.save();
-  c.font = `${6 * u}px "Press Start 2P", monospace`;
-  c.textAlign = 'right';
-  c.fillStyle = ms < 80 ? '#7ae07a' : ms < 160 ? '#ffe066' : '#ff6a6a';
-  c.fillText(`${ms} ms`, canvas.width - 8 * u, canvas.height - 6 * u);
-  c.restore();
-}
-
 function drawNotice(c, dt) {
   if (!notice) return;
   notice.t -= dt;
@@ -460,9 +449,9 @@ function frame(now) {
     if (!overlay) { readInput(); sendInput(now); }
     if (world.over) { overT += dt; if (overT > 1.5 && overlay !== 'end') { overlay = 'end'; ui.focus = 0; } }
     smooth.lead(now, dt, alpha, world, !!overlay, net?.rtt || 60);
+    hud.net = { rtt: net?.rtt || 0, room: session?.code || '' }; // sala e ping no canto da HUD
     renderer.render(world, alpha, dt, hud);
     drawNotice(c, dt);
-    drawPing(c);
     if (overlay) {
       const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
       ui.time += dt;
@@ -481,6 +470,7 @@ function frame(now) {
       }
       if (world.over) { overT += dt; if (overT > 1.5) { overlay = 'end'; ui.focus = 0; } }
     }
+    hud.net = null;
     renderer.render(world, Math.min(1, acc / DT), overlay === 'pause' || overlay === 'help' || overlay === 'training' ? 0 : dt * hud.speed, hud);
     if (overlay) {
       const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));

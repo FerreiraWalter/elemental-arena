@@ -12,7 +12,9 @@ const runs = [];
 const t0 = Date.now();
 
 for (let seed = 1; seed <= N; seed++) {
-  const w = World.match(seed, undefined, 0, ARENA_ORDER[(seed - 1) % ARENA_ORDER.length]); // alterna entre as arenas
+  // IA no nível 'hard': o jogador sintético joga como um veterano e a IA 'normal' foi deixada mais fácil de propósito
+  // (contra ela o bot vence 20×0). Com a 'hard' o resultado volta a sair dos dois lados (critério 9). DIFF=normal para comparar.
+  const w = World.match(seed, undefined, 0, ARENA_ORDER[(seed - 1) % ARENA_ORDER.length], process.env.DIFF || 'hard'); // alterna entre as arenas
   const r = {
     seed, ticks: 0, bothActive: 0, castWindows: new Map(), events: {}, castsSeq: [], hazardEpisodes: [], escapeEntries: 0,
     castsAfterEnd: 0, playerCasts: 0, enemyCastsDuringPlayerSwitch: 0, playerSwitchTicks: 0, enemyMoveDuringPlayerSwitch: 0,

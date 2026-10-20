@@ -63,6 +63,19 @@ export default {
       }
     });
     for (const i of rim) tr.setBase(i, T.WATER, 0.5);
+    // Fosso estreito (1–2 tiles de água rasa com chão dos DOIS lados, ex.: entre uma ponte e a ilha central) vira tábua de
+    // ponte: senão quem evita água (fogo) não passa de uma para a outra. A margem rasa continua onde dá para o mar.
+    const land = (j) => j >= 0 && tr.height[j] === 1 && tr.type[j] !== T.WATER && tr.type[j] !== T.DEEP;
+    const plank = [];
+    B.each((i, x, y, c, r) => {
+      if (tr.type[i] !== T.WATER || tr.height[i] !== 0.5) return;
+      for (const [dc, dr] of [[1, 0], [0, 1]]) {
+        let a = false, b = false;
+        for (let k = 1; k <= 2; k++) { if (land(tr.idx(c + dc * k, r + dr * k))) a = true; if (land(tr.idx(c - dc * k, r - dr * k))) b = true; }
+        if (a && b) { plank.push(i); return; }
+      }
+    });
+    for (const i of plank) tr.setBase(i, T.BRIDGE, 1);
     // Poças de maré (rasas, altura 1: todos andam).
     B.sym4([[110, 150, 16, 10]], (x, y, rx, ry) => B.blob(x, y, rx, ry, T.WATER, 1, 0.3, 5));
     // Templo central elevado e escadas largas (6 colunas) ao norte e ao sul.

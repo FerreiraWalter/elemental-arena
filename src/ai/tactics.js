@@ -300,7 +300,7 @@ export const TACTICS = {
   magmaLash(c) { return lash(c, 66); },
   // Ondas de choque: de perto, empurram para longe (bom para tirar inimigo de cima).
   shockWave(c) {
-    if (!c.vis || c.d > 100 || c.tGuarding) return null;
+    if (!c.vis || c.d > 115 || c.tGuarding) return null;
     return { score: 0.8 + (c.tBusy ? 0.15 : 0) + (c.d < 50 ? 0.1 : 0), target: c.t };
   },
   abyssShock(c) {

@@ -897,9 +897,9 @@ Object.assign(ABILITIES, {
   shockWave: {
     id: 'shockWave', name: 'Onda de Choque', element: 'water', kind: 'projectile', basic: true, wave: true,
     cooldown: 1.3, windup: 0.2, active: 0.05, recovery: 0.26,
-    move: [0.4, 0.7, 0.7], turn: [9, 0], range: 95, speed: 230,
+    move: [0.4, 0.7, 0.7], turn: [9, 0], range: 110, speed: 230,
     onActiveStart(w, m, a) {
-      w.spawnProjectile({ kind: 'wave', small: true, tag: this.id, owner: m, ang: a.aim, speed: 230, r: 8, r0: 8, rMax: 11, carryMax: 0, range: 95, dmg: 11, kb: 150, stun: 0.12, pierce: true, x: m.x + Math.cos(a.aim) * (m.r + 4), y: m.y + Math.sin(a.aim) * (m.r + 4), aimPoint: a.aimPoint });
+      w.spawnProjectile({ kind: 'wave', small: true, tag: this.id, owner: m, ang: a.aim, speed: 230, r: 8, r0: 8, rMax: 11, carryMax: 0, range: 110, dmg: 11, kb: 150, stun: 0.12, pierce: true, x: m.x + Math.cos(a.aim) * (m.r + 4), y: m.y + Math.sin(a.aim) * (m.r + 4), aimPoint: a.aimPoint });
     },
     desc: 'ONDA DE CHOQUE: onda curta que atravessa todos no caminho, EMPURRA, molha e apaga o fogo.',
   },
@@ -916,14 +916,14 @@ Object.assign(ABILITIES, {
   burstSeed: {
     id: 'burstSeed', name: 'Semente Explosiva', element: 'plant', kind: 'lob', basic: true,
     cooldown: 1.5, windup: 0.22, active: 0.05, recovery: 0.25,
-    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 160, radius: 18, flight: 0.5, dmg: 9, rootTiles: 3, slow: [1.4, 0.25],
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 160, radius: 18, flight: 0.5, dmg: 8, rootTiles: 3, slow: [1.4, 0.25],
     onActiveStart: lobBasic('splashSeed'),
     desc: 'SEMENTE DE SEIVA: arco até a mira; estoura em área, deixa raízes e cobre o alvo de seiva (LENTO 25% por 1,4 s).',
   },
   ancientSeed: {
     id: 'ancientSeed', name: 'Semente Ancestral', element: 'plant', kind: 'lob', basic: true,
     cooldown: 1.4, windup: 0.24, active: 0.05, recovery: 0.26,
-    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 170, radius: 24, flight: 0.52, dmg: 16.5, rootTiles: 4, slow: [1.8, 0.35],
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 170, radius: 24, flight: 0.52, dmg: 14, rootTiles: 4, slow: [1.8, 0.35],
     onActiveStart: lobBasic('splashSeed'),
     desc: 'SEMENTE ANCESTRAL: estouro maior, raízes e seiva grossa (LENTO 35% por 1,8 s).',
   },
@@ -971,7 +971,7 @@ Object.assign(ABILITIES, {
     cooldown: 0.8, windup: 0.13, active: 0.12, recovery: 0.2,
     move: [0.6, 1, 0.8], turn: [12, 2], range: 40,
     onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 170; m.ky += Math.sin(a.aim) * 170; },
-    ...melee({ reach: 40, arc: 2.4, dmg: 11, kb: 70, stun: 0.14, extra: {} }),
+    ...melee({ reach: 40, arc: 2.4, dmg: 13.5, kb: 70, stun: 0.14, extra: {} }),
     desc: 'RAJADA DE FOICES: avanço com foices largas.',
   },
 });
@@ -1004,7 +1004,7 @@ Object.assign(ABILITIES, {
     cooldown: 0.45, windup: 0.08, active: 0.08, recovery: 0.14,
     move: [0.7, 1, 0.9], turn: [12, 2], range: 20,
     onActiveStart: lunge(90),
-    ...melee({ reach: 20, arc: 1.4, dmg: 5.5, kb: 40, stun: 0.08, extra: {} }),
+    ...melee({ reach: 20, arc: 1.4, dmg: 5, kb: 40, stun: 0.08, extra: {} }),
     desc: 'JAB: soco rápido com passo à frente. Encadeia COMBO.',
   },
   cross: {
@@ -1097,7 +1097,7 @@ Object.assign(ABILITIES, {
 // REDUÇÃO DE DANO + CURA CONTÍNUA (mais forte no parceiro do que em você — no 1v1 a planta não fica imortal).
 function barkUp(w, m, B) {
   const allies = w.alliesOf(m).filter((t) => t.alive && t.onField && Math.hypot(t.x - m.x, t.y - m.y) <= B.range + t.r);
-  Elec.applyBark(w, m, B.time, B.self.dr, B.self.regen);
+  Elec.applyBark(w, m, B.selfTime ?? B.time, B.self.dr, B.self.regen); // no próprio Brotossauro a casca pode durar menos
   w.emit({ type: 'barkUp', m, x: m.x, y: m.y, self: true });
   for (const t of allies) {
     Elec.applyBark(w, t, B.time, B.ally.dr, B.ally.regen);
@@ -1121,9 +1121,9 @@ Object.assign(ABILITIES, {
     id: 'ancientBark', name: 'Casca da Montanha', element: 'plant', kind: 'buff', support: true,
     cooldown: 11, windup: 0.2, active: 0.12, recovery: 0.28, superArmor: true,
     move: [0.3, 0.3, 0.7], turn: [0, 0], range: 190,
-    bark: { range: 190, time: 5, self: { dr: 0.3, regen: 3 }, ally: { dr: 0.4, regen: 5, heal: 12 } },
+    bark: { range: 190, time: 5, selfTime: 4, self: { dr: 0.2, regen: 2 }, ally: { dr: 0.4, regen: 5, heal: 12 } },
     onActiveStart(w, m) { barkUp(w, m, this.bark); },
-    desc: 'CASCA DA MONTANHA: casca de pedra e raiz por 5 s em você e no parceiro (até 190 px): REDUZ o dano (40% / 30%) e CURA sem parar.',
+    desc: 'CASCA DA MONTANHA: casca de pedra e raiz no parceiro (5 s, até 190 px) e em você (4 s): REDUZ o dano (40% / 20%) e CURA sem parar.',
   },
 });
 ABILITIES.shellGuard.desc = 'CASCO REFLEXO: bloqueia QUALQUER ataque; devolve projéteis e, se baterem de perto, contra-ataca e molha.';
@@ -1169,10 +1169,10 @@ Object.assign(ABILITIES, {
   // ───── Raiolua (base) ─────
   sparkBall: {
     id: 'sparkBall', name: 'Bola de Raio', element: 'electric', kind: 'projectile', basic: true,
-    cooldown: 0.85, windup: 0.13, active: 0.02, recovery: 0.18,
+    cooldown: 0.95, windup: 0.13, active: 0.02, recovery: 0.18,
     move: [0.7, 0.7, 0.9], turn: [10, 0], range: 165, speed: 280,
     onActiveStart(w, m, a) {
-      w.spawnProjectile({ kind: 'spark', tag: this.id, owner: m, ang: a.aim, speed: 280, r: 3, range: 165, dmg: 5, stun: 0.05, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 4, aimPoint: a.aimPoint });
+      w.spawnProjectile({ kind: 'spark', tag: this.id, owner: m, ang: a.aim, speed: 280, r: 3, range: 165, dmg: 4.4, stun: 0.05, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 4, aimPoint: a.aimPoint });
     },
     desc: 'BOLA DE RAIO: tiro rápido e fraco. Cada acerto soma 1 CARGA.',
   },
@@ -1196,7 +1196,7 @@ Object.assign(ABILITIES, {
     cooldown: 10, windup: 0.3, active: 0.1, recovery: 0.32, superArmor: true,
     move: [0.3, 0.2, 0.6], turn: [0, 0], range: 62, radius: 62, dmg: 6, perCharge: 2, stun: 0.35,
     onActiveStart(w, m) { shockPull(w, m, this); },
-    desc: 'DESCARGA 110V: choque em volta que PUXA os inimigos para perto de você e ATORDOA. Gasta as cargas: +3 de dano e mais atordoamento por carga.',
+    desc: 'DESCARGA 110V: choque em volta que PUXA os inimigos para perto de você e ATORDOA. Gasta as cargas: +2 de dano e mais atordoamento por carga.',
   },
   boltDash: {
     id: 'boltDash', name: 'Corrente Relâmpago', element: 'electric', kind: 'dash',
@@ -1218,12 +1218,12 @@ Object.assign(ABILITIES, {
   // ───── Trovogato (evoluído) ─────
   voltSphere: {
     id: 'voltSphere', name: 'Esfera Voltaica', element: 'electric', kind: 'projectile', basic: true,
-    cooldown: 0.9, windup: 0.14, active: 0.02, recovery: 0.18,
+    cooldown: 1.05, windup: 0.14, active: 0.02, recovery: 0.18,
     move: [0.7, 0.7, 0.9], turn: [10, 0], range: 170, speed: 290,
     onActiveStart(w, m, a) {
-      w.spawnProjectile({ kind: 'voltOrb', tag: this.id, owner: m, ang: a.aim, speed: 290, r: 4, range: 170, dmg: 10, stun: 0.08, bounces: 2, bounceR: 130, x: m.x + Math.cos(a.aim) * (m.r + 3), y: m.y + Math.sin(a.aim) * (m.r + 3) - 6, aimPoint: a.aimPoint });
+      w.spawnProjectile({ kind: 'voltOrb', tag: this.id, owner: m, ang: a.aim, speed: 290, r: 4, range: 170, dmg: 6, stun: 0.08, bounces: 1, bounceR: 130, x: m.x + Math.cos(a.aim) * (m.r + 3), y: m.y + Math.sin(a.aim) * (m.r + 3) - 6, aimPoint: a.aimPoint });
     },
-    desc: 'ESFERA VOLTAICA: esfera que RICOCHETEIA entre inimigos (até 2 saltos). Cada acerto soma 1 CARGA.',
+    desc: 'ESFERA VOLTAICA: esfera que RICOCHETEIA para outro inimigo próximo (1 salto). Cada acerto soma 1 CARGA.',
   },
   conductClaws: {
     id: 'conductClaws', name: 'Garras Condutoras', element: 'electric', kind: 'melee',
@@ -1231,20 +1231,20 @@ Object.assign(ABILITIES, {
     move: [0.6, 1, 0.9], turn: [12, 4], range: 24, reach: 24, arc: 2.3,
     onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 160; m.ky += Math.sin(a.aim) * 160; },
     onActiveTick(w, m, a) {
-      const hit = { reach: 24, arc: 2.3, dmg: 7.5, kb: 50, stun: 0.12, extra: {} };
+      const hit = { reach: 24, arc: 2.3, dmg: 6.5, kb: 50, stun: 0.12, extra: {} };
       if (!a.data.s1) { a.data.s1 = true; meleeTick(w, m, a, hit); a.data.first = new Set(a.hit); return; }
       if (a.t >= 0.14 && !a.data.s2) {
         a.data.s2 = true;
         m.kx += Math.cos(a.aim) * 90; m.ky += Math.sin(a.aim) * 90;
         a.hit = new Set();
-        meleeTick(w, m, a, { ...hit, dmg: 8.5 });
+        meleeTick(w, m, a, { ...hit, dmg: 7.5 });
         // Acertou os dois golpes no mesmo alvo: choque extra.
         for (const id of a.hit) {
           if (!a.data.first.has(id)) continue;
           const t = w.monsters.find((q) => q.id === id);
           if (!t || !t.alive) continue;
           w.emit({ type: 'shockBurst', m: t, x: t.x, y: t.y - 4, src: m });
-          w.damage(t, 7, m, { tag: 'garrasCondutoras', element: 'electric', stun: 0.3, kb: 90, ang: a.aim, big: true });
+          w.damage(t, 5, m, { tag: 'garrasCondutoras', element: 'electric', stun: 0.3, kb: 90, ang: a.aim, big: true });
         }
       }
     },
@@ -1254,20 +1254,20 @@ Object.assign(ABILITIES, {
     id: 'thunderJudgment', name: 'Julgamento do Trovão', element: 'electric', kind: 'lob',
     cooldown: 8, windup: 0.25, active: 0.05, recovery: 0.25,
     move: [0.5, 0.5, 0.9], turn: [8, 0], range: 230, radius: 36, flight: 0.75,
-    onActiveStart(w, m, a) { thunderLob(w, m, a, this, { dmg: 22, stun: 0.45, zone: { r: 34, life: 3, dps: 7, slow: 0.35 } }); },
+    onActiveStart(w, m, a) { thunderLob(w, m, a, this, { dmg: 15, stun: 0.45, zone: { r: 34, life: 3, dps: 4, slow: 0.35 } }); },
     desc: 'JULGAMENTO DO TROVÃO: raio gigante na área marcada; atordoa e deixa o SOLO ELETRIFICADO por 3 s (choque e lentidão).',
   },
   overloadCore: {
     id: 'overloadCore', name: 'Núcleo de Sobrecarga', element: 'electric', kind: 'aoe', overload: true,
-    cooldown: 9.5, windup: 0.3, active: 0.32, recovery: 0.3, superArmor: true,
-    move: [0.2, 0.1, 0.6], turn: [0, 0], range: 74, radius: 74, dmg: 9, perCharge: 3, stun: 0.6,
+    cooldown: 13, windup: 0.3, active: 0.32, recovery: 0.3, superArmor: true,
+    move: [0.2, 0.1, 0.6], turn: [0, 0], range: 74, radius: 74, dmg: 6, perCharge: 1.8, stun: 0.6,
     onActiveStart(w, m, a) { a.data.n = shockPull(w, m, this); },
     onEnd(w, m, a) {
       const n = a.data.n || 0, R = 30 + 8 * n;
       w.emit({ type: 'overload', m, x: m.x, y: m.y, r: R, n });
       for (const t of w.enemiesOf(m)) {
         if (Math.hypot(t.x - m.x, t.y - m.y) > R + t.r) continue;
-        w.damage(t, 6 + 3 * n, m, { tag: 'sobrecarga', element: 'electric', kb: 170 + 15 * n, ang: Math.atan2(t.y - m.y, t.x - m.x), noVolt: true, big: true });
+        w.damage(t, 4 + 1.5 * n, m, { tag: 'sobrecarga', element: 'electric', kb: 170 + 15 * n, ang: Math.atan2(t.y - m.y, t.x - m.x), noVolt: true, big: true });
       }
       w.popDecoysIn(m.x, m.y, R, m.team);
     },
@@ -1278,8 +1278,8 @@ Object.assign(ABILITIES, {
     cooldown: 6.5, windup: 0.1, active: 0.3, recovery: 0.2, superArmor: true,
     move: [0.2, 1, 0.4], turn: [10, 0], range: 140, dash: { speed: 470 },
     onActiveTick(w, m, a) {
-      Elec.trail(w, m, a, { r: 12, life: 2.6, dps: 8, slow: 0.32, tag: 'rastroRaio' });
-      elecDashHit(w, m, a, { dmg: 12, kb: 0, stun: 0.3, tag: this.id });
+      Elec.trail(w, m, a, { r: 12, life: 1.8, dps: 4, slow: 0.32, tag: 'rastroRaio' });
+      elecDashHit(w, m, a, { dmg: 9, kb: 0, stun: 0.3, tag: this.id });
     },
     desc: 'RUPTURA RELÂMPAGO: investida que ATRAVESSA os inimigos (fere todos no caminho) e deixa um rastro elétrico.',
   },
@@ -1291,7 +1291,7 @@ Object.assign(ABILITIES, {
       w.emit({ type: 'thunderLand', m, x: m.x, y: m.y, r: 36 });
       for (const t of w.enemiesOf(m)) {
         if (Math.hypot(t.x - m.x, t.y - m.y) > 36 + t.r) continue;
-        w.damage(t, 8, m, { tag: 'instintoTrovao', element: 'electric', stun: 0.25, kb: 140, ang: Math.atan2(t.y - m.y, t.x - m.x) });
+        w.damage(t, 5, m, { tag: 'instintoTrovao', element: 'electric', stun: 0.25, kb: 140, ang: Math.atan2(t.y - m.y, t.x - m.x) });
       }
       w.popDecoysIn(m.x, m.y, 36, m.team);
     },

@@ -14,7 +14,7 @@ const WHITE = rgba('#ffffff');
 const FACES = {
   fire_1: -1, fire_2: 0, fire_3: 0,
   water_1: 1, water_2: 0, water_3: 0,
-  plant_1: 1, plant_2: 0, plant_3: 0, // plant_1: Brotossauro redesenhado (tools/pixelart) olha para a direita
+  plant_1: 0, plant_2: 0, plant_3: 0, // plant_1: Brotossauro = mini-ent de frente (tools/pixelart/brotossauro.txt)
   hedgehog_1: 1, hedgehog_3: 1,
   octo_1: 0, octo_3: 0,
   mantis_1: 1, mantis_3: -1, // Silvamante: cabeça e garras à esquerda, folhas para trás

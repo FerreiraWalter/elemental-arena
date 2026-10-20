@@ -32,6 +32,7 @@ function line(g, x0, y0, x1, y1, width, glow) {
     const x = x0 + (x1 - x0) * s / n, y = y0 + (y1 - y0) * s / n;
     g.set(x, y, VOLT_COL.core);
     if (width >= 1) { g.set(x + 1, y, VOLT_COL.mid); g.set(x, y + 1, VOLT_COL.mid); }
+    if (width >= 2) { g.set(x - 1, y, VOLT_COL.hot); g.set(x + 1, y, VOLT_COL.core); g.set(x + 2, y, VOLT_COL.mid); if (s % 2) g.set(x - 2, y, VOLT_COL.deep); }
     if (glow && s % 2 === 0) { g.set(x - 1, y, VOLT_COL.deep); g.set(x, y - 1, VOLT_COL.glow); }
   }
 }
@@ -123,4 +124,105 @@ export function drawBark(g, m, x, y, top, t) {
 // Seiva grudada (lento): gotas verdes escorrendo dos pés.
 export function sapDrip(P, x, y, r) {
   if (Math.random() < 0.18) P.add({ ramp: 'sap', x: x + (Math.random() - 0.5) * r * 1.6, y, z: 6 + Math.random() * 6, vz: -6, g: 120, life: 0.5 });
+}
+
+// Rastro do dash: liga os pedaços de solo eletrificado em um CAMINHO contínuo (brilho no chão + raio tremendo).
+export function drawTrails(g, zones, t) {
+  const tr = zones.filter((z) => !z.big).sort((a, b) => a.id - b.id);
+  for (let i = 1; i < tr.length; i++) {
+    const a = tr[i - 1], b = tr[i];
+    if (a.team !== b.team || Math.hypot(b.x - a.x, b.y - a.y) > 22) continue;
+    const fade = Math.min(1, Math.min(a.life, b.life) / 0.6);
+    const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y));
+    for (let s = 0; s <= n; s++) {
+      const x = a.x + (b.x - a.x) * s / n, y = a.y + (b.y - a.y) * s / n;
+      if (hash2(s + a.id * 31, Math.floor(t * 12), 6) > 0.35 + 0.6 * fade) continue;
+      g.set(x, y - 1, VOLT_COL.dark); g.set(x, y + 1, VOLT_COL.dark);
+      g.set(x, y, fade > 0.5 ? VOLT_COL.deep : VOLT_COL.dark);
+      if ((s + Math.floor(t * 20)) % 4 === 0) g.set(x, y, VOLT_COL.hot);
+    }
+    if (hash2(a.id, Math.floor(t * 18), 4) < 0.25 + 0.6 * fade) bolt(g, a.x, a.y - 1, b.x, b.y - 1, Math.floor(t * 30) + a.id, { width: 0, jag: 2, glow: false });
+  }
+}
+
+// Clarão de impacto do raio do céu: disco branco que encolhe para ciano, com o chão chamuscado nas bordas.
+export function drawImpact(g, f) {
+  const k = f.life / f.max, R = f.r * (0.55 + 0.45 * (1 - k));
+  for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+    const d = Math.hypot(dx, dy / 0.6) / R;
+    if (d > 1) continue;
+    if (d < k * 0.7) g.set(f.x + dx, f.y + dy, d < k * 0.35 ? VOLT_COL.core : VOLT_COL.hot);
+    else if (d > 0.82 && hash2(dx | 0, dy | 0, f.id) < 0.5) g.set(f.x + dx, f.y + dy, VOLT_COL.dark);
+  }
+}
+
+// Núcleo de Sobrecarga carregando: esfera que cresce no peito do gato, com arcos estalando para fora.
+export function drawCore(g, x, y, k, t, seed) {
+  const R = 2 + k * 6 + Math.sin(t * 40) * 0.6;
+  for (let dy = -R - 1; dy <= R + 1; dy++) for (let dx = -R - 1; dx <= R + 1; dx++) {
+    const d = Math.hypot(dx, dy) + (hash2(dx, dy, Math.floor(t * 30)) - 0.5) * 0.8;
+    if (d > R) continue;
+    g.set(x + dx, y + dy, d < R * 0.45 ? VOLT_COL.core : d < R * 0.8 ? VOLT_COL.hot : VOLT_COL.mid);
+  }
+  const arcs = 2 + Math.round(k * 3);
+  for (let i = 0; i < arcs; i++) {
+    const a = hash2(i, Math.floor(t * 24), seed) * Math.PI * 2, L = R + 4 + k * 10 * hash2(i, Math.floor(t * 24), 7);
+    bolt(g, x + Math.cos(a) * R * 0.8, y + Math.sin(a) * R * 0.8, x + Math.cos(a) * L, y + Math.sin(a) * L, Math.floor(t * 30) + i, { width: 0, jag: 2, glow: false });
+  }
+}
+
+// Cauda de raio dos gatos elétricos (Raiolua/Trovogato): haste que sai do quadril, sobe e termina num caracol
+// azul que balança e solta faíscas. Desenhada direto no contexto 2D, ANTES do sprite (fica atrás do corpo).
+const TAIL_COL = ['#1d2f9e', '#3f7cff', '#8fe8ff', '#e8fdff'];
+export function drawTail(l, x, y, face, size, t, seed, speed = 0, off = 0) {
+  const back = -face, k = size;
+  const run = Math.min(1, speed / 90);                 // correndo, a cauda deita para trás
+  const sway = Math.sin(t * 4 + seed) * 1.2;
+  const pts = [];
+  // Haste: curva do quadril até o início do caracol.
+  const rx = x + back * off * 0.6, ry = y;
+  const ex = x + back * (off + (7 + run * 5) * k) + sway * back, ey = y - (9 - run * 5) * k;
+  const cx1 = x + back * (off + 7 * k), cy1 = y + 1;
+  const NS = Math.round(14 * k);
+  for (let i = 0; i <= NS; i++) {
+    const u = i / NS, a = (1 - u) * (1 - u), b = 2 * u * (1 - u), c = u * u;
+    pts.push([a * rx + b * cx1 + c * ex, a * ry + b * cy1 + c * ey]);
+  }
+  // Caracol: gira para cima e de volta na direção do corpo, fechando.
+  const R0 = (4 + Math.sin(t * 6 + seed) * 0.4) * k, total = Math.PI * 2 * 1.15;
+  const ccx = ex - back * R0, ccy = ey, base = Math.atan2(0, back);
+  const NC = Math.round(30 * k);
+  for (let i = 1; i <= NC; i++) {
+    const d = (i / NC) * total, r = R0 * (1 - 0.72 * d / total);
+    const a = base - back * d;
+    pts.push([ccx + Math.cos(a) * r, ccy + Math.sin(a) * r]);
+  }
+  const best = new Map();
+  pts.forEach(([qx, qy], i) => {
+    const u = i / (pts.length - 1);
+    const th = (2.1 - 1.5 * u) * k * 0.75;
+    const R = Math.ceil(th + 1.3);
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const dd = Math.hypot(dx, dy);
+      const c = dd <= th * 0.35 ? 3 : dd <= th * 0.75 ? 2 : dd <= th + 0.3 ? 1 : dd <= th + 1.1 ? 0 : -1;
+      if (c < 0) continue;
+      const key = (Math.round(qy + dy) << 12) | (Math.round(qx + dx) & 4095);
+      if ((best.get(key) ?? -1) < c) best.set(key, c);
+    }
+  });
+  // Brilho correndo pela cauda (pulso de energia indo até a ponta).
+  const pulse = Math.floor(((t * 1.6 + seed * 0.1) % 1) * pts.length);
+  for (let j = -1; j <= 1; j++) { const q = pts[pulse + j]; if (q) best.set((Math.round(q[1]) << 12) | (Math.round(q[0]) & 4095), 3); }
+  for (let c = 0; c < 4; c++) {
+    l.fillStyle = TAIL_COL[c];
+    for (const [key, cc] of best) if (cc === c) l.fillRect(key & 4095, key >> 12, 1, 1);
+  }
+  // Faíscas soltas em volta do caracol.
+  l.fillStyle = TAIL_COL[3];
+  for (let i = 0; i < 3; i++) {
+    const f = Math.floor(t * 12);
+    if (hash2(i, f, seed) < 0.45) continue;
+    const a = hash2(i, f, seed + 1) * Math.PI * 2, r = R0 + 2 + hash2(i, f, seed + 2) * 3 * k;
+    l.fillRect(Math.round(ccx + Math.cos(a) * r), Math.round(ccy + Math.sin(a) * r), 1, 1);
+  }
 }

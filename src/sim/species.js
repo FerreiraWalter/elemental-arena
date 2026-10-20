@@ -71,7 +71,7 @@ export const SPECIES = {
   hidrocascoAbissal: {
     key: 'hidrocascoAbissal', line: 'hidrocasco', stage: 2,
     name: 'Hidrocasco Abissal', title: 'Água Abissal', element: 'water', sprite: 'water_3',
-    hp: 205, speed: 74, radius: 12, mass: 1.5,
+    hp: 214, speed: 74, radius: 12, mass: 1.5,
     abilities: [A.abyssPincer, A.abyssShock, A.tidalWave, A.whirlpool, A.abyssGuard, A.abyssCurrent],
     dodge: A.abyssCurrent,
     controls: { primary: 'abyssShock', melee: 'abyssPincer', q: 'tidalWave', e: 'whirlpool', f: 'abyssGuard', dodge: 'abyssCurrent' },
@@ -110,7 +110,7 @@ export const SPECIES = {
   brotossauroAncestral: {
     key: 'brotossauroAncestral', line: 'brotossauro', stage: 2,
     name: 'Brotossauro Ancestral', title: 'Planta Ancestral', element: 'plant', sprite: 'plant_3',
-    hp: 250, speed: 56, radius: 13, mass: 2,
+    hp: 240, speed: 56, radius: 13, mass: 2,
     abilities: [A.ancientWhip, A.ancientSeed, A.ancientRoots, A.ancientSentry, A.ancientBark, A.barkStep],
     dodge: A.barkStep,
     controls: { primary: 'ancientSeed', melee: 'ancientWhip', q: 'ancientRoots', e: 'ancientSentry', f: 'ancientBark', dodge: 'barkStep' },
@@ -222,7 +222,7 @@ export const SPECIES = {
   silvamante: {
     key: 'silvamante', line: 'mantifolha', stage: 2,
     name: 'Silvamante', title: 'Mantis Ancestral', element: 'plant', sprite: 'mantis_3',
-    hp: 225, speed: 74, radius: 12, mass: 1.5,
+    hp: 252, speed: 74, radius: 12, mass: 1.5,
     abilities: [A.mantisClaw, A.mantisFlurry, A.sporeStorm, A.ancientRoots, A.skyLeap, A.wingDash],
     dodge: A.wingDash,
     controls: { primary: 'mantisFlurry', melee: 'mantisClaw', q: 'sporeStorm', e: 'ancientRoots', f: 'skyLeap', dodge: 'wingDash' },
@@ -242,7 +242,7 @@ export const SPECIES = {
   pugilar: {
     key: 'pugilar', line: 'pugilar', stage: 1, evolvesTo: 'lutapacho',
     name: 'Pugilar', title: 'Forma base', element: 'earth', sprite: 'brawler_1',
-    hp: 150, speed: 88, radius: 9, mass: 1.05,
+    hp: 142, speed: 88, radius: 9, mass: 1.05,
     abilities: [A.jab, A.cross, A.kangarooHop, A.tailSweep, A.counterGuard, A.bobWeave],
     dodge: A.bobWeave,
     controls: { primary: 'jab', melee: 'cross', q: 'kangarooHop', e: 'tailSweep', f: 'counterGuard', dodge: 'bobWeave' },
@@ -280,11 +280,11 @@ export const SPECIES = {
   raiolua: {
     key: 'raiolua', line: 'raiolua', stage: 1, evolvesTo: 'trovogato',
     name: 'Raiolua', title: 'Forma base', element: 'electric', sprite: 'cat_1',
-    hp: 124, speed: 80, radius: 8, mass: 0.9,
+    hp: 126, speed: 80, radius: 8, mass: 0.9,
     abilities: [A.scratch, A.sparkBall, A.strike220, A.shock110, A.boltDash, A.catLeap],
     dodge: A.catLeap,
     controls: { primary: 'sparkBall', melee: 'scratch', q: 'strike220', e: 'shock110', f: 'boltDash', dodge: 'catLeap' },
-    sig: { kind: 'volt', name: 'Eletricidade Estática', voltMax: 3, desc: 'Cada golpe elétrico que acerta soma 1 CARGA (máx. 3). Com 3 fica ELETRIZADO (+10% de velocidade). A Descarga 110V (E) gasta as cargas para bater mais forte. Alvo MOLHADO leva +15% de dano elétrico.' },
+    sig: { kind: 'volt', name: 'Eletricidade Estática', voltMax: 3, desc: 'Cada golpe elétrico que acerta soma 1 CARGA (máx. 3). Com 3 fica ELETRIZADO (+10% de velocidade). A Descarga 110V (E) gasta as cargas para bater mais forte. Alvo MOLHADO leva +12% de dano elétrico.' },
     traits: ['Cargas: acerte, carregue e descarregue no E', 'Puxa e atordoa de perto; raio do céu de longe', 'Pulo do Gato com 2 cargas'],
     tips: 'Ponto fraco: frágil; depois do E e da investida fica sem fuga. Terra resiste ao choque.',
     difficulty: 2,
@@ -298,7 +298,7 @@ export const SPECIES = {
   trovogato: {
     key: 'trovogato', line: 'raiolua', stage: 2,
     name: 'Trovogato', title: 'Senhor do Trovão', element: 'electric', sprite: 'cat_3',
-    hp: 214, speed: 78, radius: 12, mass: 1.45,
+    hp: 184, speed: 72, radius: 12, mass: 1.45,
     abilities: [A.conductClaws, A.voltSphere, A.thunderJudgment, A.overloadCore, A.lightningRupture, A.thunderInstinct],
     dodge: A.thunderInstinct,
     controls: { primary: 'voltSphere', melee: 'conductClaws', q: 'thunderJudgment', e: 'overloadCore', f: 'lightningRupture', dodge: 'thunderInstinct' },

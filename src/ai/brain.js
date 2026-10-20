@@ -642,10 +642,12 @@ export class Brain {
     if (this.unstick) { gx += this.unstick.x * 1.2; gy += this.unstick.y * 1.2; this.unstick.t -= dt; if (this.unstick.t <= 0) this.unstick = null; }
 
     // Caminho em volta de obstáculos, ilhas e penhascos quando a linha reta não é caminhável.
+    let following = false;
     if ((mode === 'approach' || mode === 'goto') && throttle > 0) {
       const goal = mode === 'goto' ? this.goalPt : { x: tx, y: ty };
       const wp = goal && this.waypoint(goal);
       if (wp) {
+        following = true;
         const ex = wp.x - m.x, ey = wp.y - m.y, el = Math.hypot(ex, ey) || 1;
         gx = ex / el; gy = ey / el;
         if (this.unstick) { gx += this.unstick.x * 0.6; gy += this.unstick.y * 0.6; }
@@ -665,7 +667,9 @@ export class Brain {
       for (const [k, wb, wt] of PROBES) {
         const x = m.x + dir.x * k, y = m.y + dir.y * k;
         if (w.blockedFor(m, x, y, m.r * 0.8)) danger += wb;
-        else danger += this.tileCost(x, y) * wt;
+        // Seguindo um caminho do A* (que já pesou água, espinhos e fogo), o terreno pesa pouco: se o único caminho
+        // cruza um trecho de água rasa, o monstro de fogo atravessa em vez de travar na margem.
+        else danger += this.tileCost(x, y) * wt * (following ? 0.3 : 1);
       }
       for (const th of projThreats) {
         const fx = m.x + dir.x * spd * th.time, fy = m.y + dir.y * spd * th.time;

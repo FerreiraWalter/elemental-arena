@@ -45,11 +45,11 @@ export const EVOLUTION = {
 export const ELEMENT_MULT = {
   // Valores ajustados por simulação (tools/balance.mjs). O fogo ainda tem a vantagem ambiental (queimadura,
   // grama inflamável) contra a planta, por isso o bônus dele é um pouco menor que o dos outros.
-  water: { fire: 1.12, plant: 0.9 },
+  water: { fire: 1.12, plant: 0.95 },
   fire: { plant: 1.1, water: 0.9 },
-  plant: { water: 1.12, fire: 0.9 },
+  plant: { water: 1.06, fire: 0.9 },
   // Elétrico (Raiolua): forte contra água, fraco contra planta; a terra aterra o choque.
-  electric: { water: 1.06, plant: 0.92, earth: 0.92 },
+  electric: { water: 0.94, plant: 0.96, earth: 0.92 },
   earth: { electric: 1.1 },
 };
 
@@ -76,7 +76,7 @@ export const MATCH = { suddenDeath: 150 };
 // mais rápido que antes. Assim o ciclo é: entra, acerta o básico, solta a skill, sai.
 export const COMBAT = {
   closeRange: 52, // golpes dados a menos que isto (centro a centro) contam como "de perto"
-  closeMult: 0.82, // redução do dano de perto (equilíbrio: corpo a corpo estava forte demais)
+  closeMult: 0.92, // redução do dano de perto (equilíbrio: corpo a corpo estava forte demais)
   rhythm: 0.6, // segundos que cada golpe básico acertado tira das recargas de Q/E/F
   rhythmGap: 0.3, // no máximo um "ritmo" a cada 0,3 s (rajadas contam uma vez)
   skillCdMult: 0.7, // recarga das habilidades Q/E/F em relação ao balanceamento antigo
