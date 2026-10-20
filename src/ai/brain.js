@@ -102,7 +102,7 @@ export class Brain {
     m.stats.states[this.state] = (m.stats.states[this.state] || 0) + dt;
     this.perceive();
     if (w.over) { this.setState('victory'); m.move.throttle = 0; return; }
-    if (m.status.stun > 0) { this.setState('recover'); m.move.throttle = 0; return; }
+    if (m.status.stun > 0 || m.status.charm > 0) { this.setState('recover'); m.move.throttle = 0; return; }
     if (this.state === 'recover') this.setState('acquire');
 
     this.scanThreats();

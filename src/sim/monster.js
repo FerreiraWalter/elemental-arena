@@ -30,9 +30,10 @@ export class Monster {
     // overheat/exhaust: Fornalha (Brasalisco); cloak: camuflagem de tinta (Gotapus).
     // bubble: preso na Bolha Prisão do Gotapus (desenho; o efeito real é o enraizamento).
     // slow: lento (slowK = fração perdida); dr: casca (drK = redução de dano); regen: cura contínua (regenK por s).
-    this.status = { burn: 0, wet: 0, stun: 0, invuln: 0, root: 0, shield: 0, overheat: 0, exhaust: 0, cloak: 0, bubble: 0, slow: 0, dr: 0, regen: 0 };
+    this.status = { burn: 0, wet: 0, stun: 0, invuln: 0, root: 0, shield: 0, overheat: 0, exhaust: 0, cloak: 0, bubble: 0, slow: 0, dr: 0, regen: 0, charm: 0, charmImm: 0 };
     this.slowK = 0; this.drK = 0; this.regenK = 0;
     this.volt = 0; this.voltT = 0; // cargas elétricas (Raiolua/Trovogato)
+    this.trance = 0; this.tranceT = 0; this.charmBy = null; // transe e hipnose (Sapomental)
     this.heat = 0; // Fornalha (0..100)
     this.heatIdle = 0;
     this.momentum = 0; // Ímpeto do Ouriflama (0..100)
@@ -89,7 +90,7 @@ export class Monster {
   get locked() { return !!this.switchState || this.evolveT > 0; } // trocando ou evoluindo: não age
   get canEvolve() { return !!this.def.evolvesTo && !this.evolved && this.alive && this.energy >= EVOLUTION.threshold; }
   ready(id) {
-    if (!this.alive || !this.onField || this.locked || this.action || this.status.stun > 0 || !(this.cd[id] <= 0)) return false;
+    if (!this.alive || !this.onField || this.locked || this.action || this.status.stun > 0 || this.status.charm > 0 || !(this.cd[id] <= 0)) return false;
     if (this.ch[id] !== undefined && this.ch[id] <= 0) return false; // sem cargas
     if (this.status.root > 0 && this.ability(id)?.dash) return false; // enraizado não consegue investir/esquivar
     if (this.status.exhaust > 0 && this.isSpecial(id)) return false; // exausto: sem poderes especiais
@@ -97,7 +98,7 @@ export class Monster {
   }
   isSpecial(id) { const c = this.def.controls; return id === c.q || id === c.e || id === c.f;
   }
-  get busy() { return !!this.action || this.status.stun > 0; }
+  get busy() { return !!this.action || this.status.stun > 0 || this.status.charm > 0; }
 
   // Inicia uma habilidade. params: { aim, aimPoint, target, point, dir, purpose }
   cast(w, ab, params = {}) {

@@ -49,8 +49,9 @@ export const ELEMENT_MULT = {
   fire: { plant: 1.1, water: 0.9 },
   plant: { water: 1.06, fire: 0.9 },
   // Elétrico (Raiolua): forte contra água, fraco contra planta; a terra aterra o choque.
-  electric: { water: 0.94, plant: 0.96, earth: 0.92 },
+  electric: { water: 0.94, plant: 0.96, earth: 0.92, psychic: 1.12 },
   earth: { electric: 1.1 },
+  psychic: { earth: 1.08, electric: 0.9 },
 };
 
 // Fogo: queimadura (status) e chão em chamas. Valores revistos para que o fogo pressione sem prender o

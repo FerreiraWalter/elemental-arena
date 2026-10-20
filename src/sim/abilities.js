@@ -3,6 +3,7 @@ import { TILE, WORLD_W, WORLD_H } from '../config.js';
 import { T } from './tiles.js';
 import { thorns, spawnDecoy, SIG, isGuarding } from './signature.js';
 import * as Elec from './electric.js';
+import * as Psy from './psychic.js';
 
 // Cada habilidade tem fases reais: preparação (windup, telegrafada), ativa (hitbox/efeito) e recuperação.
 // move = multiplicador de deslocamento em cada fase; turn = rad/s de rastreio da mira em windup/ativa.
@@ -1296,5 +1297,108 @@ Object.assign(ABILITIES, {
       w.popDecoysIn(m.x, m.y, 36, m.team);
     },
     desc: 'INSTINTO DO TROVÃO: salto evasivo invulnerável; ao aterrissar solta uma descarga que atordoa quem estiver perto.',
+  },
+});
+
+// ───────────── Psíquico: Sapomental → Sapofilósofo ─────────────
+// Acertos psíquicos somam TRANSE (máx. 3); cheio, o alvo fica HIPNOTIZADO (anda até o sapo, sem habilidades).
+Object.assign(ABILITIES, {
+  psyBubble: {
+    id: 'psyBubble', name: 'Bolha Psíquica', element: 'psychic', kind: 'projectile', basic: true,
+    cooldown: 0.9, windup: 0.14, active: 0.02, recovery: 0.18,
+    move: [0.7, 0.7, 0.9], turn: [10, 0], range: 165, speed: 220,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'psyBolt', tag: this.id, owner: m, ang: a.aim, speed: 220, r: 4, range: 165, dmg: 4.5, homing: 2.2, x: m.x + Math.cos(a.aim) * (m.r + 3), y: m.y + Math.sin(a.aim) * (m.r + 3) - 8, aimPoint: a.aimPoint });
+    },
+    desc: 'BOLHA PSÍQUICA: bolha que vai virando atrás do inimigo mais perto. Soma 1 TRANSE.',
+  },
+  tongueLash: {
+    id: 'tongueLash', name: 'Língua Hipnótica', element: 'psychic', kind: 'melee', basic: true,
+    cooldown: 0.85, windup: 0.12, active: 0.08, recovery: 0.2,
+    move: [0.6, 1, 0.9], turn: [12, 2], range: 46, reach: 46, arc: 0.5,
+    onActiveStart(w, m, a) { Psy.tongue(w, m, a, { reach: 46, dmg: 5, tag: this.id }); },
+    desc: 'LÍNGUA HIPNÓTICA: linguada comprida que PUXA o primeiro inimigo na mira para perto. Soma 1 TRANSE.',
+  },
+  hypnoSpiral: {
+    id: 'hypnoSpiral', name: 'Espiral Hipnótica', element: 'psychic', kind: 'lob',
+    cooldown: 9, windup: 0.3, active: 0.05, recovery: 0.25,
+    move: [0.5, 0.5, 0.9], turn: [8, 0], range: 170, radius: 34, flight: 0.01,
+    onActiveStart(w, m, a) { Psy.spiral(w, m, a, this, { r: 34, life: 3, dps: 2, slow: 0.25, pulse: 1 }); },
+    desc: 'ESPIRAL HIPNÓTICA: espiral no chão por 3 s que deixa LENTO; a cada pulso soma 1 TRANSE em quem está dentro.',
+  },
+  mindOrbs: {
+    id: 'mindOrbs', name: 'Orbes Mentais', element: 'psychic', kind: 'buff',
+    cooldown: 10, windup: 0.2, active: 0.05, recovery: 0.2,
+    move: [0.5, 0.5, 0.9], turn: [0, 0], range: 30,
+    onActiveStart(w, m) { Psy.spawnOrbs(w, m, this, { n: 3, life: 6, dmg: 5, rad: 22 }); },
+    desc: 'ORBES MENTAIS: 3 esferas orbitam você por 6 s: batem em quem encosta (TRANSE) e BLOQUEIAM projéteis inimigos.',
+  },
+  mindSwap: {
+    id: 'mindSwap', name: 'Troca Mental', element: 'psychic', kind: 'lob',
+    cooldown: 8, windup: 0.18, active: 0.05, recovery: 0.22,
+    move: [0.4, 0.4, 0.8], turn: [10, 0], range: 170, radius: 18, flight: 0.01, blink: 90, dmg: 4, stun: 0.3,
+    onActiveStart(w, m, a) { Psy.mindSwap(w, m, a, this); },
+    desc: 'TROCA MENTAL: TROCA DE LUGAR com o inimigo mirado (até 170 px), atordoa e soma TRANSE. Sem alvo, teletransporta 90 px.',
+  },
+  levitate: {
+    id: 'levitate', name: 'Levitação', element: 'psychic', kind: 'dodge', air: true,
+    cooldown: 3, windup: 0, active: 0.24, recovery: 0.08,
+    move: [1, 1, 0.7], turn: [0, 0], dash: { speed: 290, invuln: true },
+    desc: 'LEVITAÇÃO: flutua invulnerável por cima de pedras e de água.',
+  },
+
+  // ───── Sapofilósofo (evoluído) ─────
+  astralOrb: {
+    id: 'astralOrb', name: 'Orbe Transcendental', element: 'psychic', kind: 'projectile', basic: true,
+    cooldown: 1, windup: 0.14, active: 0.02, recovery: 0.18,
+    move: [0.7, 0.7, 0.9], turn: [10, 0], range: 170, speed: 240,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'psyBolt', big: true, tag: this.id, owner: m, ang: a.aim, speed: 240, r: 5, range: 170, dmg: 6, homing: 3, x: m.x + Math.cos(a.aim) * (m.r + 3), y: m.y + Math.sin(a.aim) * (m.r + 3) - 10, aimPoint: a.aimPoint });
+    },
+    desc: 'ORBE TRANSCENDENTAL: orbe maior e mais teleguiado. Soma 1 TRANSE.',
+  },
+  astralPalms: {
+    id: 'astralPalms', name: 'Palmas Astrais', element: 'psychic', kind: 'melee',
+    cooldown: 0.95, windup: 0.12, active: 0.3, recovery: 0.18,
+    move: [0.6, 1, 0.9], turn: [12, 4], range: 30, reach: 30, arc: 2.6,
+    onActiveTick(w, m, a) {
+      const hit = { reach: 30, arc: 2.6, dmg: 6, kb: 60, stun: 0.1, extra: {} };
+      if (!a.data.s1) { a.data.s1 = true; meleeTick(w, m, a, hit); return; }
+      if (a.t >= 0.15 && !a.data.s2) {
+        a.data.s2 = true; a.hit = new Set();
+        meleeTick(w, m, a, { ...hit, dmg: 7, kb: 150 });
+        for (const id of a.hit) { const t = w.monsters.find((q) => q.id === id); if (t) Psy.addTrance(w, t, m, 1); }
+      }
+    },
+    desc: 'PALMAS ASTRAIS: os quatro braços batem duas vezes em leque; o segundo golpe empurra e soma TRANSE.',
+  },
+  awakeningMandala: {
+    id: 'awakeningMandala', name: 'Mandala do Despertar', element: 'psychic', kind: 'lob',
+    cooldown: 11, windup: 0.32, active: 0.05, recovery: 0.25,
+    move: [0.5, 0.5, 0.9], turn: [8, 0], range: 190, radius: 46, flight: 0.01,
+    onActiveStart(w, m, a) { Psy.spiral(w, m, a, this, { r: 46, life: 3.5, dps: 3, slow: 0.3, pulse: 0.9, burst: 9 }); },
+    desc: 'MANDALA DO DESPERTAR: lótus enorme no chão (3,5 s): deixa LENTO, pulsa TRANSE e, no fim, se fecha num ESTOURO.',
+  },
+  orbChorus: {
+    id: 'orbChorus', name: 'Coro de Orbes', element: 'psychic', kind: 'buff',
+    cooldown: 11, windup: 0.22, active: 0.05, recovery: 0.2,
+    move: [0.5, 0.5, 0.9], turn: [0, 0], range: 30,
+    onActiveStart(w, m) { Psy.spawnOrbs(w, m, this, { n: 5, life: 4, dmg: 5, rad: 26, launchAt: 1 }); },
+    desc: 'CORO DE ORBES: 5 esferas giram em volta (bloqueiam tiros) e, depois de 1 s, DISPARAM teleguiadas nos inimigos.',
+  },
+  astralProjection: {
+    id: 'astralProjection', name: 'Projeção Astral', element: 'psychic', kind: 'dash', ghost: true,
+    cooldown: 7, windup: 0.12, active: 0.34, recovery: 0.2, superArmor: true,
+    move: [0.2, 1, 0.4], turn: [10, 0], range: 150, dash: { speed: 440, invuln: true },
+    onActiveStart(w, m, a) { a.data.body = { x: m.x, y: m.y }; w.emit({ type: 'astralStart', m, x: m.x, y: m.y }); },
+    onActiveTick(w, m, a) { Psy.astralHit(w, m, a, { dmg: 8, tag: this.id }); },
+    onEnd(w, m, a) { Psy.astralReturn(w, m, a); },
+    desc: 'PROJEÇÃO ASTRAL: o espírito sai do corpo, ATRAVESSA os inimigos (dano e TRANSE) e volta para onde você estava.',
+  },
+  astralLevitate: {
+    id: 'astralLevitate', name: 'Levitação Astral', element: 'psychic', kind: 'dodge', air: true,
+    cooldown: 3.4, windup: 0, active: 0.28, recovery: 0.1,
+    move: [1, 1, 0.7], turn: [0, 0], dash: { speed: 300, invuln: true },
+    desc: 'LEVITAÇÃO ASTRAL: flutua invulnerável por cima de tudo.',
   },
 });

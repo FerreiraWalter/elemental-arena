@@ -12,7 +12,7 @@ import { drawTail } from '../render/electricfx.js';
 // Tudo desenhado no canvas no mesmo estilo pixel art; mouse e teclado funcionam em todas as telas.
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico' };
 const KEY_LABEL = { primary: 'MOUSE E', melee: 'MOUSE D', q: 'Q', e: 'E', f: 'F', dodge: 'ESPAÇO' };
 const DIFF_NAME = ['', 'fácil de jogar', 'médio', 'exige prática'];
 // Dificuldade em losangos de pixel (a fonte não tem estrelas). Retorna a largura desenhada.
@@ -256,44 +256,99 @@ export class UI {
 
   renderMenu(u, W, H) {
     const c = this.c;
-    const cx = W / 2;
-    // Título com as cores dos três elementos.
+    const cx = W / 2, t = this.time;
+    // Fundo: a luta de demonstração fica escurecida por uma vinheta, com brilhos subindo nas cores dos elementos.
+    const vg = c.createRadialGradient(cx, H * 0.45, H * 0.15, cx, H * 0.45, Math.max(W, H) * 0.75);
+    vg.addColorStop(0, 'rgba(12,10,26,0.25)'); vg.addColorStop(1, 'rgba(6,4,14,0.9)');
+    c.fillStyle = vg; c.fillRect(0, 0, W, H);
+    const MOTE = ['#ff8a3a', '#46b4ff', '#7ad84a', '#d8a060', '#ffe24a', '#d07aff'];
+    for (let k = 0; k < 46; k++) {
+      const h1 = ((k * 97.3) % 1000) / 1000, h2 = ((k * 61.7) % 1000) / 1000;
+      const x = h1 * W + Math.sin(t * 0.7 + k) * 10 * u;
+      const y = H - ((t * (12 + h2 * 22) * u + h2 * H) % (H + 20 * u));
+      c.globalAlpha = 0.25 + 0.45 * Math.abs(Math.sin(t * 1.5 + k));
+      c.fillStyle = MOTE[k % MOTE.length];
+      const sz = (k % 3 ? 1 : 2) * u;
+      c.fillRect(Math.round(x), Math.round(y), sz, sz);
+    }
+    c.globalAlpha = 1;
+
+    // Título: letras nas cores dos elementos, sombra funda e um brilho que passa por cima.
     const title = 'ELEMENTAL ARENA';
     const ts = Math.min(30, (W / u) / 22);
     c.font = `${ts * u}px ${FONT}`;
     const tw = c.measureText(title).width;
+    const ty = H * 0.13;
+    const cols = ['#ff8a3a', '#ffb040', '#ffd860', '#ffe24a', '#8fd8ff', '#46b4ff', '#7ad84a', '#a8f070', '#d8a060', '#d07aff', '#ff9ae6'];
+    const sweep = ((t * 0.35) % 1.6) - 0.3; // posição do brilho (0..1 = da esquerda à direita)
     let x = cx - tw / 2;
-    const cols = ['#ff8a3a', '#ffb040', '#ffd860', '#8fd8ff', '#46b4ff', '#7ad84a', '#a8f070'];
     for (let k = 0; k < title.length; k++) {
-      const ch = title[k];
-      const y = H * 0.15 + Math.sin(this.time * 3 + k * 0.5) * 3 * u;
-      text(this.c, ch, x, y, ts, cols[Math.floor((k / title.length) * cols.length)], 'left', u);
-      x += c.measureText(ch).width;
+      const ch = title[k], y = ty + Math.sin(t * 2.4 + k * 0.5) * 2.5 * u;
+      const cw = c.measureText(ch).width;
+      text(c, ch, x + 3 * u, y + 3 * u, ts, '#120a1e', 'left', u, false);
+      const shine = Math.abs((x + cw / 2 - (cx - tw / 2)) / tw - sweep) < 0.06;
+      text(c, ch, x, y, ts, shine ? '#ffffff' : cols[Math.floor((k / title.length) * cols.length)], 'left', u);
+      x += cw;
     }
-    text(c, 'Duelo de monstros elementais em tempo real · 6 monstros · online até 4 jogadores (1v1, 2v2, todos contra todos)', cx, H * 0.15 + 22 * u, 6, '#e8dcc0', 'center', u);
-    // Os seis monstros (forma base) com as evoluções esmaecidas ao fundo.
-    const gap = Math.min(104 * u, W / 6.6);
-    ROSTER.forEach((key, k) => {
-      const base = SPECIES[key], evo = SPECIES[base.evolvesTo];
-      const mx = cx + (k - 2.5) * gap, my = H * 0.43;
-      this.c.globalAlpha = 0.3;
-      this.drawMonsterArt(evo, mx + 14 * u, my - 6 * u, Math.max(1, Math.round(1.3 * u)), k + 10);
-      this.c.globalAlpha = 1;
-      this.drawMonsterArt(base, mx - 4 * u, my + Math.sin(this.time * 2 + k) * 2 * u, Math.max(1, Math.round(2 * u)), k);
-      text(c, base.name.toUpperCase(), mx, my + 14 * u, fitSize(c, base.name.toUpperCase(), 6, gap - 4 * u, u), ELEMENT_COLOR[base.element], 'center', u);
-    });
-    const bw = 230 * u, bh = 28 * u;
-    let by = H * 0.53;
+    text(c, `Duelo de monstros elementais em tempo real · ${ROSTER.length} monstros · 6 elementos · online até 4 jogadores`, cx, ty + 22 * u, 6, '#e8dcc0', 'center', u);
+
+    // Palco giratório: os monstros num anel em perspectiva (os da frente maiores e mais claros).
+    const N = ROSTER.length, sy = H * 0.43, rx = Math.min(W * 0.36, 300 * u), ry = 34 * u;
+    c.save();
+    const pg = c.createRadialGradient(cx, sy, 4 * u, cx, sy, rx + 30 * u);
+    pg.addColorStop(0, 'rgba(70,52,110,0.55)'); pg.addColorStop(1, 'rgba(20,14,36,0)');
+    c.fillStyle = pg; c.beginPath(); c.ellipse(cx, sy, rx + 30 * u, ry + 14 * u, 0, 0, Math.PI * 2); c.fill();
+    for (let k = 0; k < 64; k++) { // anel pontilhado girando nas cores dos elementos
+      const a = (k / 64) * Math.PI * 2 + t * 0.25;
+      c.fillStyle = MOTE[k % MOTE.length]; c.globalAlpha = 0.35 + 0.35 * Math.max(0, Math.cos(a));
+      c.fillRect(Math.round(cx + Math.sin(a) * (rx + 12 * u)), Math.round(sy + Math.cos(a) * (ry + 6 * u)), 2 * u, u);
+    }
+    c.restore();
+    const items = ROSTER.map((key, k) => {
+      const a = t * 0.32 + (k / N) * Math.PI * 2;
+      return { key, k, x: cx + Math.sin(a) * rx, depth: Math.cos(a), y: sy + Math.cos(a) * ry };
+    }).sort((p, q) => p.depth - q.depth);
+    const front = items[items.length - 1];
+    for (const it of items) {
+      const base = SPECIES[it.key], f = (it.depth + 1) / 2; // 0 = fundo, 1 = frente
+      const scale = Math.max(1, Math.round((1.1 + 1.2 * f) * u));
+      c.globalAlpha = 0.35 + 0.65 * f;
+      c.fillStyle = 'rgba(0,0,0,0.45)';
+      c.beginPath(); c.ellipse(it.x, it.y + 2 * u, (10 + 8 * f) * u, (3 + 2 * f) * u, 0, 0, Math.PI * 2); c.fill();
+      if (it === front) {
+        // Destaque: a evolução aparece como um fantasma atrás, e um anel na cor do elemento no chão.
+        const evo = SPECIES[base.evolvesTo];
+        c.globalAlpha = 0.22;
+        this.drawMonsterArt(evo, it.x + 26 * u, it.y - 10 * u, Math.max(1, Math.round(1.6 * u)), it.k + 20);
+        c.globalAlpha = 0.6 + 0.4 * Math.sin(t * 5);
+        c.strokeStyle = ELEMENT_COLOR[base.element]; c.lineWidth = 1.5 * u;
+        c.beginPath(); c.ellipse(it.x, it.y + 2 * u, 20 * u, 6 * u, 0, 0, Math.PI * 2); c.stroke();
+        c.globalAlpha = 1;
+      }
+      this.drawMonsterArt(base, it.x, it.y + Math.sin(t * 2 + it.k) * 1.5 * u * f, scale, it.k, it.x > cx + 4 * u);
+      c.globalAlpha = 1;
+    }
+    // Ficha do monstro em destaque.
+    {
+      const def = SPECIES[front.key], col = ELEMENT_COLOR[def.element];
+      const fy = sy + ry + 20 * u;
+      text(c, def.name.toUpperCase(), cx, fy, 11, col, 'center', u);
+      text(c, `${ELEMENT_NAME[def.element]} · ${def.profile.personality}${def.sig ? ` · ${def.sig.name}` : ''}`, cx, fy + 12 * u, 6, '#e8dcc0', 'center', u);
+    }
+
+    // Botões (embaixo do palco).
+    const bw = 230 * u, bh = 24 * u, gapB = 6 * u;
+    let by = Math.max(sy + ry + 44 * u, H - 5 * (bh + gapB) - 18 * u);
     this.button(cx - bw / 2, by, bw, bh, 'JOGAR CONTRA A IA', () => { this.team = []; this.flow = 'local'; this.go('team'); }, { size: 10 });
-    by += bh + 8 * u;
+    by += bh + gapB;
     this.button(cx - bw / 2, by, bw, bh, 'MULTIPLAYER ONLINE', () => { this.team = this.team.length === 3 ? this.team : []; this.flow = 'mp'; this.go('team'); }, { color: '#ff8a3a', size: 10 });
-    by += bh + 8 * u;
+    by += bh + gapB;
     this.button(cx - bw / 2, by, bw, bh, 'TREINAMENTO', () => { this.team = []; this.flow = 'training'; this.go('team'); }, { color: '#d8c08a' });
-    by += bh + 8 * u;
+    by += bh + gapB;
     this.button(cx - bw / 2, by, bw, bh, 'MONSTROS', () => this.go('bestiary'), { color: '#7ad84a' });
-    by += bh + 8 * u;
+    by += bh + gapB;
     this.button(cx - bw / 2, by, bw, bh, 'OPÇÕES', () => this.go('options'), { color: '#46b4ff' });
-    text(c, 'Mouse ou setas + Enter · arte dos monstros: folhas do usuário', cx, H - 12 * u, 5, '#887', 'center', u);
+    text(c, 'Mouse ou setas + Enter', cx, H - 8 * u, 5, '#887', 'center', u);
   }
 
   renderTeam(u, W, H) {

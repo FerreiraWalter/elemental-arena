@@ -71,7 +71,7 @@ export const SPECIES = {
   hidrocascoAbissal: {
     key: 'hidrocascoAbissal', line: 'hidrocasco', stage: 2,
     name: 'Hidrocasco Abissal', title: 'Água Abissal', element: 'water', sprite: 'water_3',
-    hp: 214, speed: 74, radius: 12, mass: 1.5,
+    hp: 224, speed: 74, radius: 12, mass: 1.5,
     abilities: [A.abyssPincer, A.abyssShock, A.tidalWave, A.whirlpool, A.abyssGuard, A.abyssCurrent],
     dodge: A.abyssCurrent,
     controls: { primary: 'abyssShock', melee: 'abyssPincer', q: 'tidalWave', e: 'whirlpool', f: 'abyssGuard', dodge: 'abyssCurrent' },
@@ -110,7 +110,7 @@ export const SPECIES = {
   brotossauroAncestral: {
     key: 'brotossauroAncestral', line: 'brotossauro', stage: 2,
     name: 'Brotossauro Ancestral', title: 'Planta Ancestral', element: 'plant', sprite: 'plant_3',
-    hp: 240, speed: 56, radius: 13, mass: 2,
+    hp: 218, speed: 56, radius: 13, mass: 2,
     abilities: [A.ancientWhip, A.ancientSeed, A.ancientRoots, A.ancientSentry, A.ancientBark, A.barkStep],
     dodge: A.barkStep,
     controls: { primary: 'ancientSeed', melee: 'ancientWhip', q: 'ancientRoots', e: 'ancientSentry', f: 'ancientBark', dodge: 'barkStep' },
@@ -313,6 +313,44 @@ export const SPECIES = {
       fireCost: 1.2, wetCost: 0.05, waterCost: 0.8,
     },
   },
+
+  // ───────────── PSÍQUICO ─────────────
+  sapomental: {
+    key: 'sapomental', line: 'sapomental', stage: 1, evolvesTo: 'sapofilosofo',
+    name: 'Sapomental', title: 'Forma base', element: 'psychic', sprite: 'frog_1',
+    hp: 128, speed: 70, radius: 10, mass: 1.1,
+    abilities: [A.tongueLash, A.psyBubble, A.hypnoSpiral, A.mindOrbs, A.mindSwap, A.levitate],
+    dodge: A.levitate,
+    controls: { primary: 'psyBubble', melee: 'tongueLash', q: 'hypnoSpiral', e: 'mindOrbs', f: 'mindSwap', dodge: 'levitate' },
+    sig: { kind: 'trance', name: 'Hipnose Coletiva', desc: 'Cada acerto psíquico soma 1 TRANSE no alvo (máx. 3). Com 3, o alvo fica HIPNOTIZADO por 1 s: anda até você e não usa habilidades (depois fica imune por um tempo).' },
+    traits: ['Hipnose: 3 de transe e o alvo vem até você', 'Orbes que bloqueiam tiros', 'Troca de lugar com o inimigo'],
+    tips: 'Ponto fraco: lento e sem dano alto; quem resiste à hipnose (imune por 3 s) pode partir para cima.',
+    difficulty: 3,
+    profile: {
+      personality: 'Controlador',
+      range: [60, 150], aggression: 0.6, retreatHp: 0.35, reaction: 0.2, dodgeSkill: 0.65,
+      accuracy: 0.07, lead: 0.85,
+      fireCost: 1.2, wetCost: 0, waterCost: 0.7,
+    },
+  },
+  sapofilosofo: {
+    key: 'sapofilosofo', line: 'sapomental', stage: 2,
+    name: 'Sapofilósofo', title: 'Transcendental', element: 'psychic', sprite: 'frog_3',
+    hp: 186, speed: 64, radius: 13, mass: 1.6,
+    abilities: [A.astralPalms, A.astralOrb, A.awakeningMandala, A.orbChorus, A.astralProjection, A.astralLevitate],
+    dodge: A.astralLevitate,
+    controls: { primary: 'astralOrb', melee: 'astralPalms', q: 'awakeningMandala', e: 'orbChorus', f: 'astralProjection', dodge: 'astralLevitate' },
+    sig: { kind: 'trance', name: 'Transcendência Mental', desc: 'Transe evoluído: a hipnose dura 1,25 s. A Mandala pulsa transe e estoura; o Coro de Orbes dispara teleguiado; a Projeção Astral atravessa e volta.' },
+    traits: ['Mandala que pulsa e estoura', 'Coro de Orbes teleguiados', 'Projeção Astral: ataca e volta ao corpo'],
+    tips: 'Ponto fraco: grande e lento; fogo e ataques rápidos de perto antes da hipnose.',
+    difficulty: 3,
+    profile: {
+      personality: 'Transcendental',
+      range: [60, 160], aggression: 0.65, retreatHp: 0.3, reaction: 0.2, dodgeSkill: 0.6,
+      accuracy: 0.07, lead: 0.85,
+      fireCost: 1.2, wetCost: 0, waterCost: 0.7,
+    },
+  },
 };
 
 // Espécies escolhíveis no time (formas base) e time padrão (partidas rápidas e testes).
@@ -327,6 +365,6 @@ export const SPECIES = {
   }
 }
 
-export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha', 'pugilar', 'raiolua'];
+export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha', 'pugilar', 'raiolua', 'sapomental'];
 export const DEFAULT_TEAM = ['brasalisco', 'hidrocasco', 'brotossauro'];
 export const formsOf = (line) => Object.values(SPECIES).filter((s) => s.line === line).sort((a, b) => a.stage - b.stage);

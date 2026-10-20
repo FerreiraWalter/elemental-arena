@@ -11,6 +11,7 @@ import { TeamCoach } from '../ai/coach.js';
 import { DEFAULT_TEAM } from './species.js';
 import * as Sig from './signature.js';
 import * as Elec from './electric.js';
+import * as Psy from './psychic.js';
 import * as Training from './training.js';
 
 const OBSTACLE_DEFS = {
@@ -29,7 +30,7 @@ const OBSTACLE_DEFS = {
   // Brotos Sentinela (Brotossauro): torres vivas; o fogo as derruba rápido.
   // Sentinelas do Brotossauro: flores carnívoras que atiram de longe (deixam lento) e mordem quem encosta.
   sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 1.4, healR: 54, shot: { kind: 'seed', dmg: 2, every: 1.5, range: 175, speed: 250, slow: [0.6, 0.15] }, bite: { reach: 10, dmg: 4, every: 1.4, slow: 0.3, slowTime: 1 } },
-  ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 2.1, healR: 60, shot: { kind: 'thorn', dmg: 3.5, every: 1.5, range: 200, speed: 250, slow: [1.2, 0.25] }, bite: { reach: 12, dmg: 7, every: 1.1, slow: 0.4, slowTime: 1.4 } },
+  ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 2.1, healR: 60, shot: { kind: 'thorn', dmg: 3, every: 1.5, range: 200, speed: 250, slow: [1.2, 0.25] }, bite: { reach: 12, dmg: 7, every: 1.1, slow: 0.4, slowTime: 1.4 } },
 };
 
 // Dificuldade da IA (multiplica o perfil do monstro). think: intervalo entre decisões (mais lento = ataca e reage
@@ -695,13 +696,13 @@ export class World {
   // Quebra de combo: preso (atordoado/erguido), gasta energia de evolução para se libertar.
   canBreakCombo(m) {
     return !!m && m.alive && m.onField && !m.locked && !this.over && m.breakCd <= 0 && m.energy >= COMBO_BREAK.cost
-      && (m.status.stun >= COMBO_BREAK.minStun || m.lift > 0);
+      && (m.status.stun >= COMBO_BREAK.minStun || m.status.charm >= COMBO_BREAK.minStun || m.lift > 0);
   }
   breakCombo(m) {
     if (!this.canBreakCombo(m)) return false;
     m.energy -= COMBO_BREAK.cost;
     m.breakCd = COMBO_BREAK.cooldown;
-    m.status.stun = 0; m.status.root = 0; m.lift = 0; m.ccGuard = 0.6;
+    m.status.stun = 0; m.status.root = 0; m.status.charm = 0; m.trance = 0; m.lift = 0; m.ccGuard = 0.6;
     m.status.invuln = Math.max(m.status.invuln, COMBO_BREAK.invuln);
     for (const e of this.enemiesOf(m)) {
       const d = Math.hypot(e.x - m.x, e.y - m.y);
@@ -977,6 +978,7 @@ export class World {
     if (st.burn > 0 && m.element !== 'fire') this.damage(m, FIRE.burnDps * dt, null, { dot: true, element: 'fire', tag: 'queimadura' });
     if (st.regen > 0) this.heal(m, (m.regenK || 0) * dt);
     Elec.updateVolt(this, m, dt);
+    Psy.updateTrance(this, m, dt);
     if (!m.alive) return;
     Sig.update(this, m, dt);
 
@@ -1000,6 +1002,9 @@ export class World {
     } else {
       let dx = 0, dy = 0;
       if (st.stun <= 0 && st.root <= 0 && !m.locked) { dx = m.move.x * m.move.throttle * spd; dy = m.move.y * m.move.throttle * spd; }
+      // Hipnotizado: anda devagar em direção ao sapo, ignorando o controle.
+      const lure = st.root <= 0 && st.stun <= 0 ? Psy.charmPull(m) : null;
+      if (lure) { dx = lure.x * spd * Psy.PSY.charmSpeed; dy = lure.y * spd * Psy.PSY.charmSpeed; }
       const acc = Math.min(1, 12 * dt);
       m.vx += (dx - m.vx) * acc;
       m.vy += (dy - m.vy) * acc;
@@ -1084,6 +1089,9 @@ export class World {
         }
         continue;
       }
+      // Psíquico: esferas em órbita (não andam em linha) e projéteis teleguiados.
+      if (p.orbit && Psy.updateOrbit(this, p, dt)) continue;
+      if (p.homing) Psy.steerHoming(this, p, dt);
       const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
       let best = 2, hitM = null, hitO = null, hitWall = false, hitGuard = null, hitDecoy = null;
       for (const m of this.monsters) {
@@ -1195,6 +1203,8 @@ export class World {
     const base = { ang, x: p.x, y: p.y, proj: true, minor: !!(p.fromSentry || p.fromDecoy) };
     if (p.kind === 'spark' || p.kind === 'voltOrb') {
       Elec.projectileHit(this, p, m);
+    } else if (p.kind === 'psyBolt' || p.kind === 'psyOrb') {
+      Psy.projectileHit(this, p, m);
     } else if (p.kind === 'ember') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'ember', burn: 1.5, kb: 70, stun: 0.1, element: 'fire' });
       this.igniteTile(this.terrain.at(p.x, p.y), 1, p.owner);

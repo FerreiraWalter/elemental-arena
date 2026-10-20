@@ -15,6 +15,7 @@ const RAMPS = {
   leafFall: ['#d49a3e', '#b8702c', '#7aac50', '#5a8c3a'],
   pollen: ['#fff6a0', '#ffe066', '#f4f0d0'],
   volt: ['#ffffff', '#d8fbff', '#8fe8ff', '#3fa9ff', '#2a4cff'],
+  psy: ['#ffffff', '#f4c8ff', '#ff9ae6', '#d07aff', '#9a4ad8'],
   petal: ['#ffd6ea', '#ff9ac8', '#ff6fae'],
   sap: ['#c8ff7a', '#8ad84a', '#5aa83c'],
 };

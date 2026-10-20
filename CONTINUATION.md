@@ -83,6 +83,14 @@ Modificados (missão FFA/arenas): `src/config.js` (COLS 128/ROWS 72 → mundo 10
 - **Gatos menores:** `SIZE` em `artsprites.js` (Raiolua 0,82, Trovogato 0,8); cauda acompanha.
 - **Sentinelas do Brotossauro:** alcance do tiro 150→175 (Ancestral 175→200).
 
+## 6f. Novo monstro PSÍQUICO e menu novo (2026-10-20, 4ª rodada)
+- **Sapomental → Sapofilósofo** (elemento `psychic`, sprites `frog_1`/`frog_3` recortados de arte do usuário por `tools/extract_frogs.py <imagem>`). Mecânica em `src/sim/psychic.js`: acertos somam TRANSE (máx. 3); cheio → HIPNOTIZADO (`status.charm`, 1 s / 1,25 s evoluído): anda até o sapo, sem habilidades; depois `charmImm` 3 s; Quebra de Combo liberta.
+  - Sapomental: Bolha Psíquica (teleguiada), Língua Hipnótica (puxa), Espiral Hipnótica (zona `psy`: lento + pulso de transe), Orbes Mentais (orbitam, batem e BLOQUEIAM tiros), Troca Mental (troca de lugar com o alvo; sem alvo, teleporte), Levitação (voo).
+  - Sapofilósofo: Orbe Transcendental, Palmas Astrais (2 golpes), Mandala do Despertar (zona maior que estoura), Coro de Orbes (giram e disparam teleguiados), Projeção Astral (atravessa e volta ao corpo), Levitação Astral.
+  - ELEMENT_MULT: psíquico 1,08 vs terra, 0,9 vs elétrico; elétrico 1,12 vs psíquico (Raiolua 45%, Sapomental 51% depois disso). Efeitos em `src/render/psyfx.js`; HUD com HIPNOTIZADO/TRANSE; snapshot sincroniza transe, hipnose e zonas `psy`. Teste: `test/sapomental.mjs` (10 cenários, no `npm test`).
+  - Balanceamento (3 seeds): Sapomental 52% (quick.mjs); estágio 2 entre 45% e 57% (Sapofilósofo 51%). Brotossauro Ancestral perdeu vida (alcance maior das sentinelas o deixou forte); Hidrocasco Abissal ganhou vida.
+- **Menu inicial novo:** palco giratório com os monstros em perspectiva (o da frente ganha ficha e o fantasma da evolução), vinheta, brilhos nas cores dos elementos e título com brilho; antes a fila era fixa para 6 monstros e vazava da tela com 9.
+
 ## 7. Próximos passos (ordem)
 1. Confirmar no navegador real (com GPU) a HUD nova em 1280×720 e em janelas menores; o painel de testes desta sessão não renderizava em segundo plano.
 2. Extremos de confronto (ver 6c) — decidir se mexe em mecânica.

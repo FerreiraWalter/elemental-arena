@@ -5,7 +5,7 @@ import { SIG } from '../sim/signature.js';
 import { meter } from '../sim/training.js';
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', neutral: 'Treino' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico', neutral: 'Treino' };
 const SLOTS = [['primary', 'MOUSE E'], ['melee', 'MOUSE D'], ['q', 'Q'], ['e', 'E'], ['f', 'F'], ['dodge', 'ESPAÇO']];
 
 function text(c, s, x, y, size, color, align = 'left', dpr = 1) {
@@ -74,6 +74,7 @@ function elementGlyph(c, el, x, y, s) {
     case 'water': P(2.5, 0, 1, 1, '#8fd8ff'); P(2, 1, 2, 1, '#5ab4ff'); P(1, 2, 4, 3, '#3a8cff'); P(1.5, 2.5, 1, 1.5, '#c8f0ff'); P(2, 5, 2, 1, '#2a6ad8'); break;
     case 'plant': P(3, 0, 3, 1, '#9be862'); P(2, 1, 4, 2, '#6ac84a'); P(1, 3, 3, 2, '#4aa83a'); P(0, 5, 2, 1, '#7a4a28'); break;
     case 'earth': P(1, 1, 4, 4, '#a8743e'); P(2, 0, 2, 1, '#c89a5a'); P(1, 2, 2, 1, '#c89a5a'); P(4, 3, 1, 2, '#6a4a28'); break;
+    case 'psychic': P(1, 2, 4, 2, '#d07aff'); P(0, 3, 6, 1, '#9a4ad8'); P(2, 2, 2, 2, '#ffffff'); P(2.5, 2.5, 1, 1, '#5a2a9a'); P(2, 0, 2, 1, '#ff9ae6'); P(2, 5, 2, 1, '#ff9ae6'); break;
     case 'electric': P(3, 0, 2, 1, '#ffe24a'); P(2, 1, 2, 1, '#ffe24a'); P(1, 2, 4, 1, '#ffffff'); P(3, 3, 2, 1, '#ffe24a'); P(2, 4, 2, 1, '#ffe24a'); P(2, 5, 1, 1, '#c8a838'); break;
   }
 }
@@ -143,14 +144,15 @@ export function statusIcon(c, kind, x, y, s) {
     case 'slow': P(1, 1, 4, 1, '#9be862'); P(1.5, 2, 1, 2, '#9be862'); P(3.5, 2, 1, 3, '#5aa83c'); P(2.5, 4, 1, 1, '#c8ff7a'); break;
     case 'dr': P(1, 1, 4, 4, '#7a4a28'); P(2, 2, 2, 2, '#a8743e'); P(4, 1, 1, 1, '#9be862'); break;
     case 'regen': P(2.5, 1, 1, 4, '#7ad84a'); P(1, 2.5, 4, 1, '#7ad84a'); break;
+    case 'charm': P(1, 1, 4, 1, '#ff9ae6'); P(4, 2, 1, 2, '#ff9ae6'); P(2, 4, 3, 1, '#d07aff'); P(2, 2.5, 1, 1.5, '#d07aff'); P(3, 2.5, 1, 1, '#ffffff'); break;
     case 'volt': P(3, 0.5, 2, 1, '#8fe8ff'); P(2, 1.5, 2, 1, '#8fe8ff'); P(1.5, 2.5, 3, 1, '#ffffff'); P(2.5, 3.5, 2, 1, '#8fe8ff'); P(2, 4.5, 1, 1, '#3fa9ff'); break;
   }
 }
 
-export const STATUS_NAME = { burn: 'queimando', wet: 'molhado', root: 'preso', stun: 'atordoado', shield: 'escudo', overheat: 'superaquecido', exhaust: 'exausto', cloak: 'camuflado', charged: 'em disparada', slow: 'lento (seiva/choque)', dr: 'casca (menos dano)', regen: 'regenerando', volt: 'eletrizado' };
+export const STATUS_NAME = { burn: 'queimando', wet: 'molhado', root: 'preso', stun: 'atordoado', shield: 'escudo', overheat: 'superaquecido', exhaust: 'exausto', cloak: 'camuflado', charged: 'em disparada', slow: 'lento (seiva/choque)', dr: 'casca (menos dano)', regen: 'regenerando', volt: 'eletrizado', charm: 'hipnotizado' };
 export function statusList(m) {
   const st = m.status, out = [];
-  for (const k of ['stun', 'root', 'burn', 'wet', 'slow', 'dr', 'shield', 'overheat', 'exhaust', 'cloak']) if (st[k] > 0 && (k !== 'shield' || m.shieldHp > 0)) out.push(k);
+  for (const k of ['stun', 'charm', 'root', 'burn', 'wet', 'slow', 'dr', 'shield', 'overheat', 'exhaust', 'cloak']) if (st[k] > 0 && (k !== 'shield' || m.shieldHp > 0)) out.push(k);
   if (m.charged) out.push('charged');
   if (m.def?.sig?.kind === 'volt' && m.volt >= (m.def.sig.voltMax ?? 3)) out.push('volt');
   return out;
@@ -268,6 +270,12 @@ function sigGauge(world, m) {
     case 'volt': {
       const max = sig.voltMax ?? 3, n = m.volt || 0;
       return { label: n >= max ? `ELETRIZADO! ${n}/${max} (E descarrega)` : `CARGAS ${n}/${max}`, k: n / max, color: SIG_COLOR.volt, blink: n >= max };
+    }
+    case 'trance': {
+      const foes = world.monsters.filter((o) => o.alive && o.team !== m.team);
+      if (foes.some((o) => o.status.charm > 0 && o.charmBy === m)) return { label: 'HIPNOTIZADO!', k: 1, color: '#ff9ae6', blink: true };
+      const n = Math.max(0, ...foes.map((o) => o.trance || 0));
+      return { label: `TRANSE NO ALVO ${n}/3`, k: n / 3, color: '#d07aff', blink: n >= 2 };
     }
     case 'marks': {
       const foe = world.monsters.find((o) => o.alive && o.marks?.by === m.id && o.marks.n > 0);

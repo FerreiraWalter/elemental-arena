@@ -403,6 +403,60 @@ export const TACTICS = {
   lightningRupture(c) { return TACTICS.boltDash(c); },
   catLeap() { return null; },
   thunderInstinct() { return null; },
+  // ───── Psíquico: Sapomental e Sapofilósofo ─────
+  psyBubble(c) {
+    if (c.tGuarding || !c.vis || c.d < 20 || c.d > 170) return null;
+    return { score: 0.58 + (c.d > 70 ? 0.1 : 0) + ((c.t.trance || 0) >= 2 ? 0.12 : 0), target: c.t };
+  },
+  astralOrb(c) { return TACTICS.psyBubble(c); },
+  tongueLash(c) {
+    if (!c.vis || c.d > reach(c, 46) || c.tGuarding) return null;
+    return { score: 0.8 + (c.d > 30 ? 0.15 : 0) + (c.tRetreating ? 0.2 : 0), target: c.t };
+  },
+  astralPalms(c) {
+    if (!c.vis || c.d > reach(c, 30) || c.tGuarding) return null;
+    return { score: 0.92 + (c.tBusy || c.t.status.charm > 0 ? 0.25 : 0), target: c.t };
+  },
+  hypnoSpiral(c) {
+    if (c.d < 30 || c.d > 180 || c.sinceSeen > 1) return null;
+    let s = 0.5;
+    if (c.tChanneling || c.t.status.stun > 0 || c.t.status.root > 0 || c.t.status.charm > 0) s += 0.35;
+    if (c.tSpeed < 25 || c.t.status.slow > 0) s += 0.2;
+    return { score: s, target: c.t, lob: true };
+  },
+  awakeningMandala(c) {
+    const r = TACTICS.hypnoSpiral(c);
+    if (!r) return null;
+    const near = c.w.enemiesOf(c.m).filter((e) => Math.hypot(e.x - c.t.x, e.y - c.t.y) < 60).length;
+    return { ...r, score: r.score + (near > 1 ? 0.25 : 0) };
+  },
+  // Orbes: de perto, ou quando há tiros vindo.
+  mindOrbs(c) {
+    if (c.w.projectiles.some((p) => p.orbit && p.owner === c.m)) return null;
+    const shots = c.w.projectiles.some((p) => !p.dead && !p.lob && p.team !== c.m.team && Math.hypot(p.x - c.m.x, p.y - c.m.y) < 120);
+    if (shots) return { score: 0.75, target: c.t };
+    if (c.vis && c.d < 110) return { score: 0.6, target: c.t };
+    return null;
+  },
+  orbChorus(c) {
+    if (c.w.projectiles.some((p) => p.orbit && p.owner === c.m)) return null;
+    if (c.vis && c.d < 200) return { score: 0.66 + (c.d < 100 ? 0.1 : 0), target: c.t };
+    return null;
+  },
+  // Troca Mental: puxa o inimigo para a espiral/sentinelas ou foge trocando de lugar quando apertado.
+  mindSwap(c) {
+    if (!c.vis || c.d < 40 || c.d > 165 || c.tGuarding) return null;
+    const inMine = c.w.zones.some((z) => z.kind === 'psy' && z.team === c.m.team && Math.hypot(z.x - c.m.x, z.y - c.m.y) < z.r);
+    if (inMine) return { score: 0.85, target: c.t, lob: true };
+    if (c.hpF < 0.35 || c.inEnemyArea || c.hazardHere > 0.3) return { score: 0.65, target: c.t, lob: true };
+    return { score: 0.3 + (c.t.status.charm > 0 ? 0.2 : 0), target: c.t, lob: true };
+  },
+  astralProjection(c) {
+    if (c.vis && c.d > 40 && c.d < 140 && !c.tGuarding) return { score: 0.62 + (c.tBusy ? 0.2 : 0), target: c.t };
+    return null;
+  },
+  levitate() { return null; },
+  astralLevitate() { return null; },
   rockThrow(c) {
     if (!c.vis || c.d < 45 || c.d > 225 || c.tGuarding) return null;
     return { score: 0.7 + (c.tChanneling ? 0.3 : 0) + (c.tSpeed < 25 ? 0.1 : 0), target: c.t };

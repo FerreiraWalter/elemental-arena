@@ -5,14 +5,15 @@ import { PixelBuf, rgba, makeCanvas } from './pixel.js';
 import { drawBrasalisco, drawHidrocasco, drawBrotossauro, drawDummy, rockSprite, crateSprite, bushSprite, stumpSprite } from './sprites.js';
 import { ArtSprites } from './artsprites.js';
 import * as EF from './electricfx.js';
+import * as PF from './psyfx.js';
 import { paintTile, paintWalls, paletteFor } from './terrainpaint.js';
 import { pillarSprite, rootSprite, lighthouseSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient, sentrySprite } from './scenery.js';
 import { Particles } from './particles.js';
 import { drawHud } from './hud.js';
 
 const SPRITE_FN = { brasalisco: drawBrasalisco, hidrocasco: drawHidrocasco, brotossauro: drawBrotossauro, dummy: drawDummy };
-export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3'];
-const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890', electric: '#bff6ff' };
+export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3', 'frog_1', 'frog_3'];
+const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890', electric: '#bff6ff', psychic: '#f0c8ff' };
 export const TEAM_COLOR = ['#ffd23a', '#ff4a5a', '#46b4ff', '#7ad84a'];
 // Cor do seu lado é sempre dourada (no online, quem joga no lado B vê as cores trocadas).
 // 1v1/2v2: o seu lado é sempre dourado. Todos-contra-todos: cor fixa por vaga (a mesma para todos os jogadores).
@@ -22,7 +23,7 @@ export function setPerspective(side, ffa = false) {
   TEAM_COLOR[2] = TEAM_COLOR[0]; TEAM_COLOR[3] = TEAM_COLOR[1];
 }
 const PUNCH_HAND = { jab: 'L', armoredJab: 'L', cross: 'R', clawRip: 'R' };
-export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', neutral: '#d8c08a' };
+export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', psychic: '#d07aff', neutral: '#d8c08a' };
 const ROOT = [rgba('#4a2e16'), rgba('#6e4624'), rgba('#94653a'), rgba('#5aa83c'), rgba('#84c858')];
 const FLAME = ['#fff7c2', '#ffd84a', '#ff9a1f', '#f2541b', '#b3200f'].map((h) => rgba(h));
 const EMBER = [rgba('#7a1e0a', 200), rgba('#b3300f', 220), rgba('#e0561a', 230), rgba('#ff8a2a', 240)];
@@ -82,6 +83,7 @@ export class Renderer {
     this.bolts = []; // raios desenhados por alguns quadros: { x0, y0, x1, y1, life, w, jag }
     this.stars = []; // estrelas de impacto dos golpes fortes
     this.swings = []; // arcos de corte dos golpes corpo a corpo
+    this.tongues = []; this.psyLinks = []; // língua do sapo e ligações psíquicas
     this.shake = 0;
     this.hitstop = 0;
     this.excite = 0.2;
@@ -174,7 +176,7 @@ export class Renderer {
             // Quem apanha encolhe e treme; faíscas saem na direção do golpe; golpe forte ganha estrela de impacto.
             if (e.m) { const vs = this.ms(e.m); vs.hurt = e.big ? 1 : 0.7; }
             const ka = e.src && e.m ? Math.atan2(e.m.y - e.src.y, e.m.x - e.src.x) : Math.random() * 6.28;
-            const ramp = fire ? 'spark' : e.element === 'plant' ? 'leaf' : e.element === 'electric' ? 'volt' : e.element === 'earth' ? 'dust' : 'water';
+            const ramp = fire ? 'spark' : e.element === 'plant' ? 'leaf' : e.element === 'electric' ? 'volt' : e.element === 'psychic' ? 'psy' : e.element === 'earth' ? 'dust' : 'water';
             for (let k = 0; k < (e.big ? 10 : 5); k++) {
               const a2 = ka + (Math.random() - 0.5) * 1.1, sp = 70 + Math.random() * (e.big ? 110 : 60);
               P.add({ ramp, x: e.x, y: e.y - 6, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp * 0.7, vz: 20 + Math.random() * 40, g: 160, life: 0.3 + Math.random() * 0.15, add: fire || e.element === 'electric' });
@@ -274,6 +276,56 @@ export class Renderer {
           P.burst(e.tx, e.ty - 4, 8, { ramp: 'leaf', speed: 50, life: 0.35 });
           this.rings.push({ x: e.tx, y: e.ty - 4, r: 7, max: 1, t: 0, color: '#ff6fae', thick: true });
           this.addText({ x: e.tx, y: e.ty - 24, text: 'NHAC!', t: 0, color: '#ff8ab8' });
+          break;
+        // ───── Psíquico ─────
+        case 'trance':
+          P.burst(e.x, e.y - 14, 5 + e.n * 2, { ramp: 'psy', speed: 40, life: 0.35, add: true });
+          break;
+        case 'hypnotized':
+          this.rings.push({ x: e.x, y: e.y - 8, r: 22, max: 3, t: 0, color: '#ff9ae6', thick: true });
+          this.rings.push({ x: e.x, y: e.y - 8, r: 3, max: 18, t: 0, color: '#d07aff', thick: true });
+          P.burst(e.x, e.y - 10, 22, { ramp: 'psy', speed: 70, life: 0.6, add: true, vz: 30 });
+          this.addText({ x: e.x, y: e.y - 36, text: 'HIPNOTIZADO!', t: 0, color: '#ff9ae6', big: true });
+          this.shake = Math.max(this.shake, 2);
+          break;
+        case 'tongue':
+          this.tongues.push({ x0: e.x0, y0: e.y0, x: e.x, y: e.y, life: 0.18, max: 0.18 });
+          if (e.hit) P.burst(e.x, e.y, 6, { ramp: 'psy', speed: 40, life: 0.25, add: true });
+          break;
+        case 'mindSwap':
+          for (const [px, py] of [[e.x0, e.y0], [e.x, e.y]]) {
+            this.rings.push({ x: px, y: py - 6, r: 3, max: 16, t: 0, color: '#d07aff', thick: true });
+            P.burst(px, py - 8, 14, { ramp: 'psy', speed: 60, life: 0.4, add: true });
+          }
+          this.psyLinks.push({ x0: e.x0, y0: e.y0 - 8, x1: e.x, y1: e.y - 8, life: 0.3 });
+          this.addText({ x: e.x, y: e.y - 34, text: e.blink ? 'TELEPORTE' : 'TROCA MENTAL!', t: 0, color: '#f4c8ff' });
+          break;
+        case 'spiral':
+          this.rings.push({ x: e.x, y: e.y, r: 3, max: e.r, t: 0, color: '#ff9ae6', thick: true });
+          P.burst(e.x, e.y, e.big ? 20 : 12, { ramp: 'psy', speed: 60, life: 0.45, add: true });
+          break;
+        case 'spiralPulse':
+          this.rings.push({ x: e.x, y: e.y, r: e.r * 0.4, max: e.r, t: 0, color: '#d07aff' });
+          break;
+        case 'spiralBurst':
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r + 10, t: 0, color: '#ffffff', thick: true });
+          P.burst(e.x, e.y, 36, { ramp: 'psy', speed: 130, life: 0.55, add: true, vz: 40, size: 2 });
+          this.shake = Math.max(this.shake, 4); this.flash = Math.max(this.flash, 0.06);
+          break;
+        case 'orbs':
+          this.rings.push({ x: e.x, y: e.y - 6, r: 4, max: 26, t: 0, color: '#d07aff', thick: true });
+          break;
+        case 'psyBlock':
+          P.burst(e.x, e.y, 10, { ramp: 'psy', speed: 70, life: 0.3, add: true });
+          this.rings.push({ x: e.x, y: e.y, r: 2, max: 9, t: 0, color: '#ffffff' });
+          break;
+        case 'astralStart':
+          this.rings.push({ x: e.x, y: e.y - 6, r: 4, max: 20, t: 0, color: '#f4c8ff', thick: true });
+          P.burst(e.x, e.y - 8, 16, { ramp: 'psy', speed: 50, life: 0.5, add: true, vz: 20 });
+          break;
+        case 'astralReturn':
+          this.psyLinks.push({ x0: e.x0, y0: e.y0 - 8, x1: e.x, y1: e.y - 8, life: 0.3 });
+          this.rings.push({ x: e.x, y: e.y - 6, r: 18, max: 3, t: 0, color: '#d07aff', thick: true });
           break;
         // ───── Elétrico ─────
         case 'zap':
@@ -639,13 +691,13 @@ export class Renderer {
     this.fxT.clear();
     this.drawTerrainFx(world, t);
     for (const h of world.hazards) drawHazard(h, this.fxG, this.fxT, t, this.dotCircle.bind(this));
-    if (world.zones?.length) EF.drawTrails(this.fxG, world.zones, t);
+    if (world.zones?.length) EF.drawTrails(this.fxG, world.zones.filter((z) => z.kind !== 'psy'), t);
     // Clarão do raio do céu no chão (por baixo dos monstros).
     if (this.impacts) {
       for (const f of this.impacts) { f.life -= dt; if (f.life > 0) EF.drawImpact(this.fxG, f); }
       this.impacts = this.impacts.filter((f) => f.life > 0);
     }
-    for (const z of world.zones || []) EF.drawZone(this.fxG, z, t);
+    for (const z of world.zones || []) { if (z.kind === 'psy') PF.drawSpiral(this.fxG, z, t); else EF.drawZone(this.fxG, z, t); }
     this.toDrawn(world, alpha, true);
     this.drawTelegraphs(world, t);
     this.drawGroundAbilityFx(world, t, dt);
@@ -670,6 +722,11 @@ export class Renderer {
     for (const f of this.rootFx) { this.drawRootCage(f, t, true); f.t += dt; }
     this.rootFx = this.rootFx.filter((f) => f.t < f.dur);
     this.drawTentacles(dt, t);
+    // Língua do sapo e ligações psíquicas (troca mental, volta da projeção).
+    for (const tg of this.tongues) { tg.life -= dt; if (tg.life > 0) PF.drawTongue(this.fxT, tg); }
+    this.tongues = this.tongues.filter((tg) => tg.life > 0);
+    for (const ln of this.psyLinks) { ln.life -= dt; if (ln.life > 0) PF.drawLink(this.fxT, ln, t); }
+    this.psyLinks = this.psyLinks.filter((ln) => ln.life > 0);
     // Arcos de corte (golpes corpo a corpo) e estrelas de impacto.
     for (const sw of this.swings) { sw.life -= dt; if (sw.life > 0) this.drawSwing(sw); }
     this.swings = this.swings.filter((sw) => sw.life > 0);
@@ -1086,7 +1143,7 @@ export class Renderer {
       this.evolveParticles(m, evoK, t);
     }
     if (m.hitFlash > 0 && Math.floor(t * 30) % 2 === 0) pose.flash = true;
-    if (!m.alive) pose.tint = [m.element === 'fire' ? '#5a5250' : m.element === 'plant' ? '#6a7a4a' : m.element === 'electric' ? '#5a6a8a' : '#9ac8e8', Math.min(0.8, m.deathT)];
+    if (!m.alive) pose.tint = [m.element === 'fire' ? '#5a5250' : m.element === 'plant' ? '#6a7a4a' : m.element === 'electric' ? '#5a6a8a' : m.element === 'psychic' ? '#6a5a7a' : '#9ac8e8', Math.min(0.8, m.deathT)];
     // Troca: saída vira um feixe de luz e some; entrada surge do feixe e cresce.
     let wScale = 1, hScale = 1, beam = 0;
     if (m.switchState === 'exiting') {
@@ -1223,7 +1280,10 @@ export class Renderer {
       if (m.evolved && Math.random() < 0.08) { const sd = Math.random() < 0.5 ? -1 : 1; this.bolts.push({ x0: x + sd * m.r * 0.7, y0: y - lift - frame.top * 0.45, x1: x + sd * (m.r + 6 + Math.random() * 6), y1: y - lift - frame.top * (0.3 + Math.random() * 0.5), life: 0.06, w: 0, jag: 2 }); }
       if (dashing && Math.random() < 0.8) this.particles.add({ ramp: 'volt', x, y, z: 4, vx: -m.vx * 0.2, vy: -m.vy * 0.2, life: 0.3, add: true, size: 2 });
     }
-    // Brotossauro: pétalas da cerejeira das costas caindo de vez em quando.
+    // Psíquico: aura do sapo; transe e hipnose aparecem sobre a cabeça de quem foi afetado.
+    if (m.alive && m.element === 'psychic') PF.drawFrogAura(this.fxT, m, x, y - lift, frame.top, t, this.particles);
+    if (m.alive && m.trance > 0 && !(m.status.charm > 0)) PF.drawTrance(this.fxT, m, x, y - lift, frame.top, t);
+    if (m.alive && m.status.charm > 0) PF.drawCharm(this.fxT, m, x, y - lift, frame.top, t, this.particles);
     // Casca Viva (redução de dano) e seiva (lento).
     if (m.alive && m.status.dr > 0) EF.drawBark(this.fxT, m, x, y, frame.top, t);
     if (m.alive && m.status.slow > 0) EF.sapDrip(this.particles, x, y, m.r);
@@ -1268,7 +1328,7 @@ export class Renderer {
     const a = m.alive ? m.action : null, ab = a?.ab, col = ELEMENT_COLOR[m.element] || '#ffffff';
     const out = { w: 1, h: 1, dx: 0 };
     const P = this.particles, top = frame.top || 24;
-    const RAMP = { fire: 'spark', water: 'water', plant: 'leaf', electric: 'volt', earth: 'dust' };
+    const RAMP = { fire: 'spark', water: 'water', plant: 'leaf', electric: 'volt', earth: 'dust', psychic: 'psy' };
     const key = a ? a.ab.id + ':' + a.phase : '';
     if (key !== st.jKey) {
       // Chegada de uma esquiva/investida: poeirinha onde parou.
@@ -1469,6 +1529,7 @@ export class Renderer {
     const g = this.fxT;
     for (const p of world.projectiles) {
       const x = p.lob ? p.x : p.px + (p.x - p.px) * alpha, y = p.lob ? p.y : p.py + (p.y - p.py) * alpha;
+      if (p.kind === 'psyBolt' || p.kind === 'psyOrb') { PF.drawPsyProj(g, p, x, y, t, this.particles); continue; }
       if (p.kind === 'ember') {
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
           const d = Math.hypot(dx, dy);
