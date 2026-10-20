@@ -53,8 +53,12 @@ Como funciona (servidor autoritativo):
 - **Skills mais frequentes:** recargas 30% menores; algumas têm **cargas** (Meteoro e Brotos Sentinela: 2).
 - Ajustes em `src/config.js` (`COMBAT`). Nas simulações IA × IA, as skills passaram a causar mais dano que os golpes básicos (36% contra 31%; antes 25% contra 47%).
 
-## Os 6 monstros e suas mecânicas próprias
+## Os 7 monstros e suas mecânicas próprias
 Triângulo: **Fogo > Planta > Água > Fogo** (+10–12% de dano). Cada linha tem uma **mecânica própria** (`src/sim/signature.js`) que muda o jeito de jogar com ela e contra ela; a evolução aprofunda essa mecânica. Arte: sprites extraídos das folhas do usuário (`assets/source/`).
+
+**Pugilar → Lutapacho (Terra, corpo a corpo):** elemento neutro no triângulo (sem vantagem nem fraqueza). Jab rápido e Direto pesado; **Combo**: 3 acertos e o próximo golpe de perto vira **NOCAUTE**. Pugilar: Salto Canguru, Rabada (giro em volta), Contra-Golpe (bloqueia e devolve). Lutapacho: **Arremesso de Pedra** (arranca uma pedra do chão; quem leva fica atordoado), Tremor (salta e soca o chão), Couraça. Sprites extraídos com `tools/extract_brawlers.py`.
+
+**Dificuldade da IA** (`DIFFICULTY_MODS` em `src/sim/world.js`): além de reação, esquiva e mira, a IA pensa mais devagar e é menos agressiva nos níveis baixos. Medida contra a IA sem limitações, que vence 87% contra o Fácil, 68% contra o Normal e 58% contra o Difícil.
 
 | Linha | Mecânica | Como joga | Ponto fraco |
 |---|---|---|---|

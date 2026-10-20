@@ -134,6 +134,8 @@ export class Sfx {
         return;
       }
       case 'impact': if (e.ground && this.ok('impact', 0.08)) this.hiss({ type: 'lowpass', f0: 900, f1: 200, dur: 0.08, vol: 0.06, x }); return;
+      case 'rockHit': if (this.ok('rock', 0.08)) { this.tone({ type: 'triangle', f0: 160, f1: 60, dur: 0.18, vol: 0.22, x }); this.hiss({ type: 'lowpass', f0: 900, f1: 200, dur: 0.15, vol: 0.14, x }); } return;
+      case 'quake': this.tone({ type: 'sine', f0: 90, f1: 35, dur: 0.5, vol: 0.32, x }); this.hiss({ type: 'lowpass', f0: 600, f1: 120, dur: 0.45, vol: 0.2, x }); return;
       case 'explosion': case 'burrowEruption': case 'heatNova':
         if (!this.ok('boom', 0.08)) return;
         this.hiss({ type: 'lowpass', f0: 1200, f1: 120, dur: 0.6, vol: 0.4, x });

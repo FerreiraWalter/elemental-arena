@@ -30,10 +30,13 @@ const OBSTACLE_DEFS = {
   ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 0.9, healR: 50, shot: { kind: 'thorn', dmg: 4.5, every: 1.5, range: 115, speed: 235 } },
 };
 
+// Dificuldade da IA (multiplica o perfil do monstro). think: intervalo entre decisões (mais lento = ataca e reage
+// menos); aggression: vontade de chegar perto; reaction: atraso de reação; dodgeSkill: chance de esquivar;
+// accuracy: erro de mira; lead: quanto antecipa o movimento do alvo.
 export const DIFFICULTY_MODS = {
-  easy: { reaction: 1.8, dodgeSkill: 0.5, accuracy: 2.2, lead: 0.7 },
-  normal: { reaction: 1.4, dodgeSkill: 0.75, accuracy: 1.6, lead: 0.85 },
-  hard: { reaction: 1.1, dodgeSkill: 0.95, accuracy: 1.15, lead: 0.95 },
+  easy: { reaction: 2.6, dodgeSkill: 0.3, accuracy: 3.2, lead: 0.5, think: 3.2, aggression: 0.6 },
+  normal: { reaction: 1.9, dodgeSkill: 0.5, accuracy: 2.3, lead: 0.7, think: 2.2, aggression: 0.8 },
+  hard: { reaction: 1.35, dodgeSkill: 0.75, accuracy: 1.5, lead: 0.85, think: 1.5, aggression: 0.92 },
 };
 
 const makeSlot = (side) => ({ side, field: null, pending: null, cooldown: 0, deadT: 0, lastOut: null, lastOutT: -99, switches: 0 });
@@ -991,6 +994,11 @@ export class World {
       p.x = ox + (nx - ox) * k;
       p.y = oy + (ny - oy) * k;
       const seg = Math.hypot(p.x - ox, p.y - oy);
+      // Bola Infernal: cresce em voo e deixa um rastro de chamas.
+      if (p.kind === 'inferno') {
+        if (p.rMax) p.r = p.r0 + (p.rMax - p.r0) * Math.min(1, (p.traveled + seg) / 140);
+        this.igniteTile(this.terrain.at(p.x, p.y), 1.6, p.owner);
+      }
       if (p.kind === 'wave') {
         for (let s = 0; s <= seg; s += 4) this.douseArea(ox + (p.x - ox) * (s / (seg || 1)), oy + (p.y - oy) * (s / (seg || 1)), 9, 6, p.owner);
         // Cresce enquanto avança e carrega quem já pegou (enquanto o alvo estiver na frente dela).
@@ -1047,6 +1055,13 @@ export class World {
     } else if (p.kind === 'magma') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'magmaBall', burn: 1.8, kb: 90, stun: 0.12, element: 'fire' });
       this.igniteArea(p.x, p.y, 8, 2, p.owner);
+    } else if (p.kind === 'inferno') {
+      this.damage(m, p.dmg, p.owner, { ...base, tag: 'infernoOrb', burn: 2, kb: 200, stun: 0.25, element: 'fire' });
+      this.infernoBlast(p, m);
+    } else if (p.kind === 'rock') {
+      // Pedra do Lutapacho: pancada que ATORDOA.
+      this.damage(m, p.dmg, p.owner, { ...base, tag: 'rockThrow', kb: 160, stun: 0.9, element: 'earth' });
+      this.emit({ type: 'rockHit', x: p.x, y: p.y, m });
     } else if (p.kind === 'wave') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'tidalWave', wet: p.small ? 3 : 4, kb: p.kb ?? 330, stun: p.stun ?? 0.35, element: 'water' });
     } else if (p.kind === 'thorn') {
@@ -1073,6 +1088,11 @@ export class World {
       this.sprout(p.x - Math.cos(Math.atan2(p.vy, p.vx)) * 6, p.y - Math.sin(Math.atan2(p.vy, p.vx)) * 6, p.kind === 'thorn' ? T.THORNS : T.GRASS, p.owner);
     } else if (p.kind === 'wave') {
       this.waveCrash(p);
+    } else if (p.kind === 'inferno') {
+      this.infernoBlast(p);
+    } else if (p.kind === 'rock') {
+      if (o) this.hurtObstacle(o, 12);
+      this.emit({ type: 'rockHit', x: p.x, y: p.y });
     } else {
       if (o) { this.hurtObstacle(o, p.dmg * 0.5); if (o.burning > 0) this.douseObstacle(o, p.owner); }
       this.douseArea(p.x, p.y, 12, 6, p.owner);
@@ -1086,7 +1106,26 @@ export class World {
     else if (p.kind === 'seed') this.sprout(p.x, p.y, T.GRASS, p.owner);
     else if (p.kind === 'thorn') this.sprout(p.x, p.y, T.THORNS, p.owner);
     else if (p.kind === 'wave') this.waveCrash(p);
+    else if (p.kind === 'inferno') this.infernoBlast(p);
+    else if (p.kind === 'rock') this.emit({ type: 'rockHit', x: p.x, y: p.y });
     else this.douseArea(p.x, p.y, 12, 6, p.owner);
+  }
+
+  // Bola Infernal explode: área de fogo que fere quem está perto (menos quem já levou o impacto direto).
+  infernoBlast(p, skip = null) {
+    const R = p.r + 16;
+    this.emit({ type: 'explosion', x: p.x, y: p.y, r: R, src: p.owner });
+    for (const m of this.monsters) {
+      if (!m.alive || m.team === p.team || m === skip || Math.hypot(m.x - p.x, m.y - p.y) > R + m.r) continue;
+      this.damage(m, 8, p.owner, { tag: 'infernoOrb', burn: 1.5, kb: 160, ang: Math.atan2(m.y - p.y, m.x - p.x), element: 'fire', proj: true });
+    }
+    this.popDecoysIn(p.x, p.y, R, p.team);
+    this.igniteArea(p.x, p.y, R - 4, 3, p.owner);
+    for (const o of this.obstacles) {
+      if (o.destroyed || Math.hypot(o.x - p.x, o.y - p.y) > R + o.r) continue;
+      this.hurtObstacle(o, 14);
+      if (o.flammable && !o.destroyed) this.igniteObstacle(o, p.owner);
+    }
   }
 
   // A onda arrebenta: estouro de água que atinge quem estiver perto (inclusive quem ela carregou).

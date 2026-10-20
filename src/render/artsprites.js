@@ -18,6 +18,7 @@ const FACES = {
   hedgehog_1: 1, hedgehog_3: 1,
   octo_1: 0, octo_3: 0,
   mantis_1: 1, mantis_3: -1, // Silvamante: cabeça e garras à esquerda, folhas para trás
+  brawler_1: 1, brawler_3: 1, // Pugilar e Lutapacho olham para a direita
 };
 
 function classify(r, g, b) {

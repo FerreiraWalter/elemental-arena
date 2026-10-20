@@ -5,7 +5,7 @@ import { SIG } from '../sim/signature.js';
 import { meter } from '../sim/training.js';
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', neutral: 'Treino' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', neutral: 'Treino' };
 const SLOTS = [['primary', 'MOUSE E'], ['melee', 'MOUSE D'], ['q', 'Q'], ['e', 'E'], ['f', 'F'], ['dodge', 'ESPAÇO']];
 
 function text(c, s, x, y, size, color, align = 'left', dpr = 1) {
@@ -181,6 +181,8 @@ function sigGauge(world, m) {
     case 'marks': {
       const foe = world.monsters.find((o) => o.alive && o.marks?.by === m.id && o.marks.n > 0);
       const n = foe ? foe.marks.n : 0;
+      // Lutadores (Terra) chamam de Combo/Nocaute; o Mantifolha, de Marcas/Execução.
+      if (m.element === 'earth') return { label: n >= 3 ? 'NOCAUTE! (próximo golpe de perto)' : `COMBO ${n}/3`, k: n / 3, color: '#e8c890', blink: n >= 3 };
       return { label: n >= 3 ? 'EXECUTE! (foice ou salto)' : `MARCAS NO ALVO ${n}/3`, k: n / 3, color: SIG_COLOR.marks, blink: n >= 3 };
     }
   }

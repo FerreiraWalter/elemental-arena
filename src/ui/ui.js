@@ -11,7 +11,7 @@ import { abilityIcon, statusIcon } from '../render/hud.js';
 // Tudo desenhado no canvas no mesmo estilo pixel art; mouse e teclado funcionam em todas as telas.
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra' };
 const KEY_LABEL = { primary: 'MOUSE E', melee: 'MOUSE D', q: 'Q', e: 'E', f: 'F', dodge: 'ESPAÇO' };
 const DIFF_NAME = ['', 'fácil de jogar', 'médio', 'exige prática'];
 // Dificuldade em losangos de pixel (a fonte não tem estrelas). Retorna a largura desenhada.
@@ -68,6 +68,7 @@ function panel(c, x, y, w, h, u, border = '#5a4636', fill = 'rgba(18,12,10,0.92)
   c.fillRect(x + 2 * u, y + 2 * u, w - 4 * u, 2 * u);
 }
 const matchText = (el) => {
+  if (!ELEMENT_MULT[el]) return 'Neutro: sem vantagem nem fraqueza no triângulo';
   const strong = Object.keys(ELEMENT_MULT[el]).find((k) => ELEMENT_MULT[el][k] > 1);
   const weak = Object.keys(ELEMENT_MULT).find((k) => ELEMENT_MULT[k][el] > 1);
   return `Forte contra ${ELEMENT_NAME[strong]} · fraco contra ${ELEMENT_NAME[weak]}`;
@@ -284,15 +285,16 @@ export class UI {
     const c = this.c, cx = W / 2;
     const training = this.flow === 'training';
     text(c, this.flow === 'mp' ? 'SEU TIME PARA O ONLINE' : training ? 'TREINAMENTO' : 'MONTE SEU TIME', cx, 30 * u, 13, '#ffe9b0', 'center', u);
-    text(c, training ? 'Escolha de 1 a 3 monstros para treinar contra bonecos de pano (troque com 1/2/3).' : 'Escolha 3 dos 6 monstros, na ordem em que vão entrar (o 1º começa em campo).', cx, 46 * u, 6, '#d8ccb0', 'center', u);
+    text(c, training ? 'Escolha de 1 a 3 monstros para treinar contra bonecos de pano (troque com 1/2/3).' : `Escolha 3 dos ${ROSTER.length} monstros, na ordem em que vão entrar (o 1º começa em campo).`, cx, 46 * u, 6, '#d8ccb0', 'center', u);
     const gap = 8 * u, top = 56 * u, btnH = 28 * u, btnY = H - btnH - 10 * u, orderH = 30 * u;
     const avail = btnY - orderH - 10 * u - top;
-    const ch = Math.floor((avail - gap) / 2);
-    const cw = Math.min(Math.floor((W - 24 * u - gap * 2) / 3), 240 * u);
-    const x0 = cx - (cw * 3 + gap * 2) / 2;
+    const COLS = ROSTER.length > 6 ? 4 : 3, ROWS = Math.ceil(ROSTER.length / COLS);
+    const ch = Math.floor((avail - gap * (ROWS - 1)) / ROWS);
+    const cw = Math.min(Math.floor((W - 24 * u - gap * (COLS - 1)) / COLS), 240 * u);
+    const x0 = cx - (cw * COLS + gap * (COLS - 1)) / 2;
     ROSTER.forEach((key, k) => {
       const def = SPECIES[key];
-      const x = x0 + (k % 3) * (cw + gap), y = top + Math.floor(k / 3) * (ch + gap);
+      const x = x0 + (k % COLS) * (cw + gap), y = top + Math.floor(k / COLS) * (ch + gap);
       const idx = this.team.indexOf(key);
       const hover = this.mouse.x >= x && this.mouse.x <= x + cw && this.mouse.y >= y && this.mouse.y <= y + ch;
       panel(c, x, y, cw, ch, u, idx >= 0 ? '#ffd23a' : hover ? ELEMENT_COLOR[def.element] : '#5a4636');
@@ -505,8 +507,8 @@ export class UI {
     // Abas das linhas evolutivas.
     ROSTER.forEach((key, k) => {
       const def = SPECIES[key];
-      const bw = Math.min(112 * u, (W - 40 * u) / 6 - 4 * u);
-      const b = this.button(cx + (k - 2.5) * (bw + 4 * u) - bw / 2, 44 * u, bw, 22 * u, def.name.toUpperCase(), () => { this.bestiaryLine = key; }, { color: ELEMENT_COLOR[def.element], size: 6 });
+      const bw = Math.min(112 * u, (W - 40 * u) / ROSTER.length - 4 * u);
+      const b = this.button(cx + (k - (ROSTER.length - 1) / 2) * (bw + 4 * u) - bw / 2, 44 * u, bw, 22 * u, def.name.toUpperCase(), () => { this.bestiaryLine = key; }, { color: ELEMENT_COLOR[def.element], size: 6 });
       if (this.bestiaryLine === key) b.label = '» ' + b.label + ' «';
     });
     const [base, evo] = formsOf(this.bestiaryLine);

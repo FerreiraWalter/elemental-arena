@@ -52,7 +52,7 @@ export class Brain {
   // Perfil da forma atual (muda ao evoluir), com os modificadores de dificuldade.
   applyProfile() {
     const p = { ...this.m.def.profile };
-    if (this.mods) for (const k in this.mods) p[k] *= this.mods[k];
+    if (this.mods) for (const k in this.mods) p[k] = (p[k] ?? 1) * this.mods[k];
     this.p = p;
   }
 
@@ -109,7 +109,7 @@ export class Brain {
     this.considerEvolve();
     if (m.locked) { m.move.throttle = 0; return; }
     this.reactToThreats();
-    if (this.thinkT <= 0) { this.thinkT = 0.1 + w.rng() * 0.08; this.think(); }
+    if (this.thinkT <= 0) { this.thinkT = (0.1 + w.rng() * 0.08) * (this.p.think ?? 1); this.think(); }
 
     // Rastreio da mira durante a preparação/ativação de uma habilidade.
     const a = m.action;

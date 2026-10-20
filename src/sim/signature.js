@@ -133,9 +133,9 @@ function mark(w, t, src, o) {
   if (close && t.marks.n >= M.max) {
     t.marks.n = 0;
     w.emit({ type: 'execute', m: t, src, x: t.x, y: t.y });
-    w.say(`${src.name} EXECUTOU ${t.name}!`, '#b4f08a');
-    w.damage(t, sig.exec, src, { tag: 'execucao', element: 'plant', noMark: true, root: M.root, x: t.x, y: t.y, big: true });
-    const leap = src.def.controls.f;
+    w.say(src.element === 'earth' ? `${src.name} NOCAUTEOU ${t.name}!` : `${src.name} EXECUTOU ${t.name}!`, '#b4f08a');
+    w.damage(t, sig.exec, src, { tag: 'execucao', element: src.element, noMark: true, root: M.root, x: t.x, y: t.y, big: true });
+    const leap = sig.resetId || src.def.controls.f; // habilidade que a execução recarrega
     if (leap && src.cd[leap] > 0) src.cd[leap] *= sig.leapReset ?? 0;
     return;
   }
@@ -164,8 +164,9 @@ export function counter(w, t, src) {
   a.data.countered = true;
   const ang = Math.atan2(src.y - t.y, src.x - t.x);
   w.emit({ type: 'counter', m: t, target: src, x: t.x, y: t.y, ang });
-  w.damage(src, ab.counter.dmg, t, { tag: 'contraMare', element: 'water', kb: 260, ang, stun: 0.35, wet: 2.5, counter: true, proj: true });
-  w.douseArea(t.x + Math.cos(ang) * 14, t.y + Math.sin(ang) * 14, 14, 6, t);
+  const C = ab.counter, water = !C.element || C.element === 'water';
+  w.damage(src, C.dmg, t, { tag: C.tag || 'contraMare', element: C.element || 'water', kb: C.kb ?? 260, ang, stun: C.stun ?? 0.35, ...(water ? { wet: 2.5 } : {}), counter: true, proj: true });
+  if (water) w.douseArea(t.x + Math.cos(ang) * 14, t.y + Math.sin(ang) * 14, 14, 6, t);
   // Contra-ataque bem-sucedido encerra o bloqueio com recuperação curta.
   a.phase = 'recovery'; a.t = Math.max(0, ab.recovery - 0.12);
 }
@@ -192,7 +193,7 @@ export function reflect(w, p, m) {
   p.dmg = Math.round(p.dmg * 0.8);
   p.closest = Infinity; p.closestM = null;
   p.level = w.terrain.heightAt(m.x, m.y);
-  if (p.kind === 'ember' || p.kind === 'magma') p.kind = 'waterBolt';
+  if ((p.kind === 'ember' || p.kind === 'magma') && m.element === 'water') p.kind = 'waterBolt'; // casco molhado apaga o fogo
   p.reflected = true;
   w.emit({ type: 'reflect', m, x: p.x, y: p.y, kind: p.kind });
   if (isGuarding(m)) blocked(w, m, null, { proj: true });

@@ -167,7 +167,7 @@ export const ABILITIES = {
   whirlpool: {
     id: 'whirlpool', name: 'Redemoinho', element: 'water', kind: 'aoe',
     cooldown: 9, windup: 0.3, active: 1.4, recovery: 0.35, superArmor: true,
-    move: [0.25, 0.8, 0.5], turn: [0, 0], range: 46, radius: 46,
+    move: [0.4, 1.15, 0.7], turn: [0, 0], range: 46, radius: 46, // gira e AVANÇA: mais rápido que andando
     onActiveTick(w, m, a, dt) {
       const R = this.radius * Math.min(1, a.t / 0.35);
       a.data.R = R;
@@ -921,7 +921,7 @@ Object.assign(ABILITIES, {
   ancientSeed: {
     id: 'ancientSeed', name: 'Semente Ancestral', element: 'plant', kind: 'lob', basic: true,
     cooldown: 1.4, windup: 0.24, active: 0.05, recovery: 0.26,
-    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 160, radius: 24, flight: 0.52, dmg: 15, rootTiles: 4,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 160, radius: 24, flight: 0.52, dmg: 16.5, rootTiles: 4,
     onActiveStart: lobBasic('splashSeed'),
     desc: 'SEMENTE ANCESTRAL: estouro maior que cobre o chão de raízes.',
   },
@@ -937,7 +937,7 @@ Object.assign(ABILITIES, {
     id: 'magmaFan', name: 'Leque de Magma', element: 'fire', kind: 'projectile', basic: true,
     cooldown: 1.2, windup: 0.18, active: 0.02, recovery: 0.22,
     move: [0.6, 0.6, 0.85], turn: [9, 0], range: 112, speed: 280,
-    onActiveStart: fan(5, 0.32, 112, 3.0),
+    onActiveStart: fan(5, 0.32, 112, 2.8),
     desc: 'LEQUE DE MAGMA: 5 espinhos de magma em leque curto.',
   },
   // Gotapus: bolha lenta em arco que estoura, molha e apaga o fogo.
@@ -971,5 +971,121 @@ Object.assign(ABILITIES, {
     onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 170; m.ky += Math.sin(a.aim) * 170; },
     ...melee({ reach: 40, arc: 2.4, dmg: 11, kb: 70, stun: 0.14, extra: {} }),
     desc: 'RAJADA DE FOICES: avanço com foices largas.',
+  },
+});
+
+// ───────────── Brasalisco Ascendido: Bola Infernal ─────────────
+ABILITIES.infernoOrb = {
+  id: 'infernoOrb', name: 'Bola Infernal', element: 'fire', kind: 'projectile', heat: 25,
+  cooldown: 8.5, windup: 0.45, active: 0.05, recovery: 0.4, superArmor: true,
+  move: [0.2, 0.2, 0.6], turn: [5, 0], range: 240, speed: 210,
+  onActiveStart(w, m, a) {
+    w.spawnProjectile({ kind: 'inferno', owner: m, ang: a.aim, speed: 210, r: 8, r0: 8, rMax: 15, range: 240, dmg: 18, x: m.x + Math.cos(a.aim) * (m.r + 6), y: m.y + Math.sin(a.aim) * (m.r + 6) - 3, aimPoint: a.aimPoint });
+  },
+  desc: 'BOLA INFERNAL: bola de fogo enorme que cresce em voo, deixa rastro de chamas e EXPLODE em área ao bater.',
+};
+
+// ───────────── Linha corpo a corpo (Terra): Pugilar e Lutapacho ─────────────
+// Lutadores: golpe rápido no botão esquerdo, golpe pesado no direito; as skills aproximam, afastam e punem.
+// Elemento Terra: neutro no triângulo (sem vantagem nem fraqueza).
+const lunge = (k) => function onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * k; m.ky += Math.sin(a.aim) * k; };
+function landHit(r, dmg, tag) {
+  return function onEnd(w, m) {
+    w.emit({ type: 'leapLand', x: m.x, y: m.y, r, m });
+    for (const t of w.enemiesOf(m)) if (Math.hypot(t.x - m.x, t.y - m.y) < r + t.r) w.damage(t, dmg, m, { tag, kb: 200, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.3, element: 'earth', leap: true });
+    w.popDecoysIn(m.x, m.y, r, m.team);
+  };
+}
+Object.assign(ABILITIES, {
+  jab: {
+    id: 'jab', name: 'Jab', element: 'earth', kind: 'melee', basic: true,
+    cooldown: 0.45, windup: 0.08, active: 0.08, recovery: 0.14,
+    move: [0.7, 1, 0.9], turn: [12, 2], range: 20,
+    onActiveStart: lunge(90),
+    ...melee({ reach: 20, arc: 1.4, dmg: 5.5, kb: 40, stun: 0.08, extra: {} }),
+    desc: 'JAB: soco rápido com passo à frente. Encadeia COMBO.',
+  },
+  cross: {
+    id: 'cross', name: 'Direto', element: 'earth', kind: 'melee', superArmor: true,
+    cooldown: 1.4, windup: 0.26, active: 0.1, recovery: 0.3,
+    move: [0.3, 1, 0.4], turn: [10, 1], range: 24,
+    onActiveStart: lunge(170),
+    ...melee({ reach: 24, arc: 1.2, dmg: 15, kb: 240, stun: 0.3, extra: {} }),
+    desc: 'DIRETO: soco pesado que avança, ARREMESSA e atordoa.',
+  },
+  kangarooHop: {
+    id: 'kangarooHop', name: 'Salto Canguru', element: 'earth', kind: 'dash', leap: true,
+    cooldown: 8, windup: 0.18, active: 0.36, recovery: 0.2,
+    move: [0.1, 1, 0.4], turn: [8, 0], range: 120, minRange: 30, landR: 24, dash: { speed: 333, invuln: true },
+    onEnd: landHit(24, 11, 'kangarooHop'),
+    desc: 'SALTO CANGURU: pulo até a mira (por cima de tudo); cai com um soco que atordoa.',
+  },
+  tailSweep: {
+    id: 'tailSweep', name: 'Rabada', element: 'earth', kind: 'melee', superArmor: true,
+    cooldown: 9, windup: 0.22, active: 0.14, recovery: 0.3,
+    move: [0.2, 0.6, 0.4], turn: [0, 0], range: 32,
+    ...melee({ reach: 32, arc: 6.3, dmg: 10, kb: 250, stun: 0.25, extra: {} }),
+    desc: 'RABADA: giro com a cauda que acerta TODOS em volta e empurra longe.',
+  },
+  counterGuard: {
+    id: 'counterGuard', name: 'Contra-Golpe', element: 'earth', kind: 'guard',
+    cooldown: 8, windup: 0, active: 0.5, recovery: 0.3,
+    move: [0.3, 0.3, 0.6], turn: [0, 0], counter: { dmg: 16, element: 'earth', tag: 'contraGolpe', kb: 300, stun: 0.45 },
+    desc: 'CONTRA-GOLPE: guarda alta. Bloqueia e, se baterem de perto, devolve um soco que atordoa.',
+  },
+  bobWeave: {
+    id: 'bobWeave', name: 'Gingado', element: 'earth', kind: 'dodge',
+    cooldown: 2.4, windup: 0, active: 0.18, recovery: 0.08,
+    move: [1, 1, 0.7], turn: [0, 0], dash: { speed: 340, invuln: true },
+    desc: 'Esquiva curta e rápida de boxeador.',
+  },
+  armoredJab: {
+    id: 'armoredJab', name: 'Soco Blindado', element: 'earth', kind: 'melee', basic: true,
+    cooldown: 0.55, windup: 0.1, active: 0.1, recovery: 0.16,
+    move: [0.6, 1, 0.85], turn: [11, 2], range: 24,
+    onActiveStart: lunge(90),
+    ...melee({ reach: 24, arc: 1.5, dmg: 10, kb: 60, stun: 0.1, extra: {} }),
+    desc: 'SOCO BLINDADO: soco rápido de couraça. Encadeia COMBO.',
+  },
+  clawRip: {
+    id: 'clawRip', name: 'Garra Rasgante', element: 'earth', kind: 'melee', superArmor: true,
+    cooldown: 1.5, windup: 0.3, active: 0.12, recovery: 0.32,
+    move: [0.3, 1, 0.4], turn: [10, 1], range: 30,
+    onActiveStart: lunge(160),
+    ...melee({ reach: 30, arc: 1.6, dmg: 19, kb: 250, stun: 0.35, extra: {} }),
+    desc: 'GARRA RASGANTE: garrada pesada que arremessa e atordoa.',
+  },
+  rockThrow: {
+    id: 'rockThrow', name: 'Arremesso de Pedra', element: 'earth', kind: 'projectile', superArmor: true,
+    cooldown: 9, windup: 0.55, active: 0.05, recovery: 0.35,
+    move: [0.3, 0.3, 0.7], turn: [6, 0], range: 230, speed: 250,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'rock', owner: m, ang: a.aim, speed: 250, r: 5, range: 230, dmg: 14, x: m.x + Math.cos(a.aim) * (m.r + 4), y: m.y + Math.sin(a.aim) * (m.r + 4) - 10, aimPoint: a.aimPoint });
+    },
+    desc: 'ARREMESSO DE PEDRA: arranca uma pedra do chão e arremessa. Quem for atingido fica ATORDOADO.',
+  },
+  // Tremor: salta até a mira e cai socando o chão (aproxima o lutador lento e atordoa todos em volta).
+  quakeSlam: {
+    id: 'quakeSlam', name: 'Tremor', element: 'earth', kind: 'dash', leap: true, superArmor: true,
+    cooldown: 11, windup: 0.3, active: 0.42, recovery: 0.4,
+    move: [0.1, 1, 0.3], turn: [8, 0], range: 130, minRange: 30, landR: 40, dash: { speed: 310, invuln: true },
+    onEnd(w, m) {
+      w.emit({ type: 'quake', m, x: m.x, y: m.y, r: 44 });
+      for (const t of w.enemiesOf(m)) if (Math.hypot(t.x - m.x, t.y - m.y) < 44 + t.r) w.damage(t, 14, m, { tag: 'quakeSlam', kb: 220, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.45, element: 'earth', leap: true });
+      w.popDecoysIn(m.x, m.y, 44, m.team);
+    },
+    desc: 'TREMOR: salta até a mira e cai socando o chão; todos em volta são arremessados e atordoados.',
+  },
+  armorGuard: {
+    id: 'armorGuard', name: 'Couraça', element: 'earth', kind: 'guard',
+    cooldown: 8, windup: 0, active: 0.75, recovery: 0.32,
+    move: [0.2, 0.2, 0.6], turn: [0, 0], counter: { dmg: 20, element: 'earth', tag: 'contraGolpe', kb: 320, stun: 0.5 },
+    desc: 'COURAÇA: fecha a carapaça. Bloqueia e contra-ataca quem bater de perto.',
+  },
+  armorRoll: {
+    id: 'armorRoll', name: 'Rolagem Blindada', element: 'earth', kind: 'dodge',
+    cooldown: 3, windup: 0, active: 0.3, recovery: 0.1,
+    move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 300, invuln: true },
+    desc: 'Enrola-se como um tatu e rola para longe.',
   },
 });

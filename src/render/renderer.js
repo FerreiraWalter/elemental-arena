@@ -10,12 +10,12 @@ import { Particles } from './particles.js';
 import { drawHud } from './hud.js';
 
 const SPRITE_FN = { brasalisco: drawBrasalisco, hidrocasco: drawHidrocasco, brotossauro: drawBrotossauro, dummy: drawDummy };
-export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3'];
-const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070' };
+export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3'];
+const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890' };
 export const TEAM_COLOR = ['#ffd23a', '#ff4a5a'];
 // Cor do seu lado é sempre dourada (no online, quem joga no lado B vê as cores trocadas).
 export function setPerspective(side) { TEAM_COLOR[0] = side === 0 ? '#ffd23a' : '#ff4a5a'; TEAM_COLOR[1] = side === 0 ? '#ff4a5a' : '#ffd23a'; }
-export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', neutral: '#d8c08a' };
+export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', neutral: '#d8c08a' };
 const ROOT = [rgba('#4a2e16'), rgba('#6e4624'), rgba('#94653a'), rgba('#5aa83c'), rgba('#84c858')];
 const FLAME = ['#fff7c2', '#ffd84a', '#ff9a1f', '#f2541b', '#b3200f'].map((h) => rgba(h));
 const EMBER = [rgba('#7a1e0a', 200), rgba('#b3300f', 220), rgba('#e0561a', 230), rgba('#ff8a2a', 240)];
@@ -187,6 +187,18 @@ export class Renderer {
           P.burst(e.x, e.y, 16, { ramp: 'steam', speed: 50, life: 0.7, size: 2, grow: 3, alpha: 0.8 });
           this.rings.push({ x: e.x, y: e.y, r: 2, max: 14, t: 0, color: '#ffffff' });
           this.addText({ x: e.x, y: e.y - 10, text: 'VAPOR!', t: 0, color: '#e8f6ff' });
+          break;
+        case 'rockHit':
+          P.burst(e.x, e.y, 16, { ramp: 'rock', speed: 90, life: 0.6, vz: 80, g: 260 });
+          P.burst(e.x, e.y, 8, { ramp: 'dust', speed: 50, life: 0.5, vz: 30 });
+          if (e.m) { this.addText({ x: e.x, y: e.y - 26, text: 'ATORDOADO!', t: 0, color: '#e8c890' }); this.shake = Math.max(this.shake, 4); }
+          break;
+        case 'quake':
+          this.rings.push({ x: e.x, y: e.y, r: 6, max: e.r + 8, t: 0, color: '#d8a060', thick: true });
+          this.rings.push({ x: e.x, y: e.y, r: 2, max: e.r - 6, t: 0, color: '#8a6a40', thick: true });
+          P.burst(e.x, e.y, 30, { ramp: 'dust', speed: 110, life: 0.6, vz: 50 });
+          P.burst(e.x, e.y, 14, { ramp: 'rock', speed: 80, life: 0.7, vz: 90, g: 260 });
+          this.shake = Math.max(this.shake, 6);
           break;
         case 'explosion':
           P.burst(e.x, e.y, 46, { ramp: 'fire', speed: 120, life: 0.7, add: true, vz: 60, size: 2 });
@@ -432,8 +444,10 @@ export class Renderer {
           P.burst(e.x, e.y - 18, 4 + e.n * 2, { ramp: 'leaf', speed: 30, life: 0.35 });
           break;
         case 'execute':
-          this.addText({ x: e.x, y: e.y - 38, text: 'EXECUÇÃO!', t: 0, color: SIG_COLOR.marks, big: true });
-          P.burst(e.x, e.y - 8, 30, { ramp: 'leaf', speed: 130, life: 0.6, vz: 40, size: 2 });
+          { const ko = e.src?.element === 'earth'; // lutadores: NOCAUTE com poeira; Mantifolha: execução com folhas
+            this.addText({ x: e.x, y: e.y - 38, text: ko ? 'NOCAUTE!' : 'EXECUÇÃO!', t: 0, color: ko ? '#ffe9b0' : SIG_COLOR.marks, big: true });
+            P.burst(e.x, e.y - 8, 30, { ramp: ko ? 'dust' : 'leaf', speed: 130, life: 0.6, vz: 40, size: 2 });
+            if (ko) this.shake = Math.max(this.shake, 6); }
           this.slashes = this.slashes || [];
           this.slashes.push({ x: e.x, y: e.y - 8, t: 0 });
           this.hitstop = Math.max(this.hitstop, 0.12); this.shake = Math.max(this.shake, 6);
@@ -1200,6 +1214,28 @@ export class Renderer {
           if (d <= 2.6) g.set(x + dx, y + dy, W[Math.min(3, Math.floor(d))]);
         }
         this.particles.add({ ramp: 'water', x, y, vx: -p.vx * 0.12 + (Math.random() - 0.5) * 16, vy: -p.vy * 0.12 + (Math.random() - 0.5) * 16, life: 0.3 });
+      } else if (p.kind === 'inferno') {
+        // Bola Infernal: núcleo quase branco, bordas vermelhas, cresce com p.r; faíscas atrás.
+        const R = p.r, hy = y - 4;
+        for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+          const d = Math.hypot(dx, dy) + Math.sin(t * 20 + dx * 0.7 + dy) * 0.6;
+          if (d > R) continue;
+          g.set(x + dx, hy + dy, FLAME[Math.min(4, Math.floor((d / R) * 4.6))]);
+        }
+        for (let k = 0; k < 3; k++) this.particles.add({ ramp: 'fire', x: x - (p.vx / 210) * R + (Math.random() - 0.5) * R, y: hy + (Math.random() - 0.5) * R, vz: 20, life: 0.4, add: true, size: 2 });
+        if (Math.random() < 0.3) this.particles.add({ ramp: 'smoke', x, y: hy, life: 0.9, size: 2, grow: 3, alpha: 0.4 });
+      } else if (p.kind === 'rock') {
+        // Pedra arremessada: bloco cinza com contorno escuro, girando, com sombra no chão.
+        const l = this.l;
+        l.globalAlpha = 0.3; l.fillStyle = '#000';
+        l.beginPath(); l.ellipse(Math.round(x), Math.round(y + 8), 4, 2, 0, 0, Math.PI * 2); l.fill(); l.globalAlpha = 1;
+        const hy = y - 2, rot = Math.floor(t * 14) % 4;
+        for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+          const d = Math.max(Math.abs(dx), Math.abs(dy)) * 0.6 + Math.hypot(dx, dy) * 0.5;
+          if (d > 5) continue;
+          const shade = d > 4.2 ? '#2a2620' : ((dx + dy + rot) & 3) === 0 ? '#a8a090' : dy < 0 ? '#8a8270' : '#625a4c';
+          g.set(x + dx, hy + dy, rgba(shade));
+        }
       } else if (p.kind === 'splashSeed') {
         // Semente Explosiva em voo: sombra no chão + semente verde e marrom girando.
         const l = this.l, k = p.t / p.flight;
@@ -1270,6 +1306,16 @@ export class Renderer {
         const x = m.x + Math.cos(a.aim) * (m.r + 3), y = m.y + Math.sin(a.aim) * (m.r + 3) - 3;
         for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (Math.hypot(dx, dy) <= r) g.set(x + dx, y + dy, Math.hypot(dx, dy) < r * 0.5 ? rgba('#ffffff') : rgba('#5ab4ff'));
         if (Math.random() < 0.6) { const an = Math.random() * 6.28; this.particles.add({ ramp: 'water', x: x + Math.cos(an) * 14, y: y + Math.sin(an) * 14, vx: -Math.cos(an) * 60, vy: -Math.sin(an) * 60, life: 0.22, drag: 0 }); }
+      } else if (ab.id === 'rockThrow' && a.phase === 'windup') {
+        // Arranca a pedra do chão: ela sobe do pé até acima da cabeça durante a preparação.
+        const k = Math.min(1, a.t / ab.windup);
+        const rx = Math.round(m.x + Math.cos(a.aim) * 4), ry = Math.round(m.y + 4 - k * (m.r + 18));
+        for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+          const d = Math.hypot(dx, dy);
+          if (d > 5.2) continue;
+          g.set(rx + dx, ry + dy, rgba(d > 4.3 ? '#2a2620' : dy < -1 ? '#a8a090' : '#6e6656'));
+        }
+        if (k < 0.25 && Math.random() < 0.6) this.particles.add({ ramp: 'dust', x: m.x + (Math.random() - 0.5) * 10, y: m.y + 4, vz: 30, life: 0.4 });
       } else if (ab.id === 'whirlpool' && a.phase === 'active') {
         // Crista de espuma na metade da frente (o redemoinho envolve o monstro) e respingos jogados de lado.
         const R = a.data.R || 4;
@@ -1368,7 +1414,8 @@ export class Renderer {
       g.globalAlpha = 0.9;
       if (p.kind === 'wave') { g.globalAlpha = 0.6; g.drawImage(this.glows.blue, p.x - p.r * 1.6, p.y - p.r * 1.6 - 6, p.r * 3.2, p.r * 3.2); }
       else if (p.kind === 'waterBolt') g.drawImage(this.glows.blue, p.x - 9, p.y - 9, 18, 18);
-      else if (p.kind === 'seed' || p.kind === 'thorn' || p.kind === 'roots') continue;
+      else if (p.kind === 'seed' || p.kind === 'thorn' || p.kind === 'roots' || p.kind === 'rock' || p.kind === 'splashSeed' || p.kind === 'splashBubble') continue;
+      else if (p.kind === 'inferno') { g.globalAlpha = 0.9; g.drawImage(this.glows.fire, p.x - p.r * 2.5, p.y - p.r * 2.5 - 4, p.r * 5, p.r * 5); }
       else g.drawImage(this.glows.fire, p.x - 10, (p.lob ? p.y - p.h : p.y) - 10, 20, 20);
     }
     for (const m of world.monsters) {

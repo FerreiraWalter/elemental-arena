@@ -327,4 +327,32 @@ export const TACTICS = {
     if (!c.vis || c.d > reach(c, 54) || c.tGuarding) return null;
     return { score: 0.95 + (c.tBusy ? 0.2 : 0) + execReady(c), target: c.t };
   },
+  // ───── Terra: lutadores ─────
+  jab(c) {
+    if (!c.vis || c.d > reach(c, 24) || c.tGuarding) return null;
+    return { score: 0.88 + (c.tBusy ? 0.15 : 0) + execReady(c), target: c.t };
+  },
+  armoredJab(c) { return TACTICS.jab(c); },
+  cross(c) {
+    if (!c.vis || c.d > reach(c, 28) || c.tGuarding) return null;
+    return { score: 0.92 + (c.tBusy ? 0.25 : 0) + charged(c) + execReady(c), target: c.t };
+  },
+  clawRip(c) { return TACTICS.cross(c); },
+  kangarooHop(c) {
+    if (!c.vis || c.d < 50 || c.d > 125 || c.tGuarding) return null;
+    return { score: 0.62 + (c.tBusy ? 0.2 : 0) + execReady(c), target: c.t };
+  },
+  tailSweep(c) {
+    if (!c.vis || c.d > reach(c, 32)) return null;
+    const near = c.w.enemiesOf(c.m).filter((e) => Math.hypot(e.x - c.m.x, e.y - c.m.y) < e.r + c.m.r + 32).length;
+    return { score: 0.7 + (near > 1 ? 0.3 : 0) + (c.tBusy ? 0.1 : 0), target: c.t };
+  },
+  quakeSlam(c) {
+    if (!c.vis || c.d < 40 || c.d > 135 || c.tGuarding) return null;
+    return { score: 0.72 + (c.tBusy ? 0.2 : 0) + (c.tChanneling ? 0.2 : 0), target: c.t };
+  },
+  rockThrow(c) {
+    if (!c.vis || c.d < 45 || c.d > 225 || c.tGuarding) return null;
+    return { score: 0.7 + (c.tChanneling ? 0.3 : 0) + (c.tSpeed < 25 ? 0.1 : 0), target: c.t };
+  },
 };

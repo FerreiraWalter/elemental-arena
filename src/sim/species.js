@@ -33,9 +33,9 @@ export const SPECIES = {
     key: 'brasaliscoAscendido', line: 'brasalisco', stage: 2,
     name: 'Brasalisco Ascendido', title: 'Fogo Ascendido', element: 'fire', sprite: 'fire_3',
     hp: 224, speed: 72, radius: 13, mass: 1.6,
-    abilities: [A.volcanicClaw, A.magmaLash, A.infernoBreath, A.eruptionDash, A.meteor, A.heavyHop],
+    abilities: [A.volcanicClaw, A.magmaLash, A.infernoOrb, A.eruptionDash, A.meteor, A.heavyHop],
     dodge: A.heavyHop,
-    controls: { primary: 'magmaLash', melee: 'volcanicClaw', q: 'infernoBreath', e: 'meteor', f: 'eruptionDash', dodge: 'heavyHop' },
+    controls: { primary: 'magmaLash', melee: 'volcanicClaw', q: 'infernoOrb', e: 'meteor', f: 'eruptionDash', dodge: 'heavyHop' },
     sig: { kind: 'heat', name: 'Núcleo Vulcânico', desc: 'Fornalha evoluída: ao SUPERAQUECER solta uma onda de calor que afasta todos por perto; a exaustão dura menos.', nova: true, exhaust: 1.5 },
     traits: ['Núcleo Vulcânico: superaquecer explode ao redor', 'Muito dano e pressão; lava no chão', 'Pouca defesa: esquiva demora a recarregar'],
     tips: 'Ponto fraco: esquiva demora a voltar; a onda de calor só sai quando a barra enche.',
@@ -227,7 +227,7 @@ export const SPECIES = {
     dodge: A.wingDash,
     controls: { primary: 'mantisFlurry', melee: 'mantisClaw', q: 'sporeStorm', e: 'ancientRoots', f: 'skyLeap', dodge: 'wingDash' },
     sig: { kind: 'marks', name: 'Rainha Predadora', desc: 'Marcas duram mais; a execução causa +16 de dano e recarrega metade do Salto Celeste.', exec: 16, leapReset: 0.5, markLife: 6 },
-    traits: ['Execuções mais fortes', 'Salto celeste de 250 px que enraíza', 'Leque de três lâminas'],
+    traits: ['Execuções mais fortes', 'Salto celeste de 250 px que enraíza', 'Rajada de foices com avanço'],
     tips: 'Ponto fraco: esquive o pouso do Salto Celeste e a execução não acontece.',
     difficulty: 3,
     profile: {
@@ -235,6 +235,44 @@ export const SPECIES = {
       range: [12, 46], aggression: 0.7, retreatHp: 0.25, reaction: 0.2, dodgeSkill: 0.6,
       accuracy: 0.06, lead: 0.85,
       fireCost: 1.3, wetCost: -0.05, waterCost: 0.2,
+    },
+  },
+
+  // ───────────── TERRA (corpo a corpo) ─────────────
+  pugilar: {
+    key: 'pugilar', line: 'pugilar', stage: 1, evolvesTo: 'lutapacho',
+    name: 'Pugilar', title: 'Forma base', element: 'earth', sprite: 'brawler_1',
+    hp: 150, speed: 88, radius: 9, mass: 1.05,
+    abilities: [A.jab, A.cross, A.kangarooHop, A.tailSweep, A.counterGuard, A.bobWeave],
+    dodge: A.bobWeave,
+    controls: { primary: 'jab', melee: 'cross', q: 'kangarooHop', e: 'tailSweep', f: 'counterGuard', dodge: 'bobWeave' },
+    sig: { kind: 'marks', name: 'Combo', desc: 'Cada golpe que acerta soma COMBO (máx. 3). Com 3, o próximo golpe de perto vira NOCAUTE: +12 de dano, prende e recarrega o Salto Canguru.', exec: 12, resetId: 'kangarooHop', leapReset: 0, markLife: 3 },
+    traits: ['Combo: 3 acertos e o próximo golpe é NOCAUTE', 'Jab rapidíssimo e Direto que arremessa', 'Contra-Golpe pune quem bate de perto'],
+    tips: 'Ponto fraco: só luta de perto; mantenha distância e quebre o combo esquivando.',
+    difficulty: 2,
+    profile: {
+      personality: 'Boxeador',
+      range: [10, 34], aggression: 0.85, retreatHp: 0.25, reaction: 0.2, dodgeSkill: 0.65,
+      accuracy: 0.07, lead: 0.85,
+      fireCost: 1.0, wetCost: 0, waterCost: 0.6,
+    },
+  },
+  lutapacho: {
+    key: 'lutapacho', line: 'pugilar', stage: 2,
+    name: 'Lutapacho', title: 'Lutador Blindado', element: 'earth', sprite: 'brawler_3',
+    hp: 260, speed: 80, radius: 13, mass: 1.9,
+    abilities: [A.armoredJab, A.clawRip, A.rockThrow, A.quakeSlam, A.armorGuard, A.armorRoll],
+    dodge: A.armorRoll,
+    controls: { primary: 'armoredJab', melee: 'clawRip', q: 'rockThrow', e: 'quakeSlam', f: 'armorGuard', dodge: 'armorRoll' },
+    sig: { kind: 'marks', name: 'Lutador Blindado', desc: 'Combo evoluído: o NOCAUTE causa +16 de dano e recarrega metade do Arremesso de Pedra.', exec: 16, resetId: 'rockThrow', leapReset: 0.5, markLife: 3.5 },
+    traits: ['Arremessa pedras arrancadas do chão: quem leva fica ATORDOADO', 'Tremor atordoa todos em volta', 'Couraça bloqueia e contra-ataca'],
+    tips: 'Ponto fraco: lento; a pedra demora para sair (ele se abaixa para arrancá-la): esquive nessa hora.',
+    difficulty: 2,
+    profile: {
+      personality: 'Brigão',
+      range: [10, 40], aggression: 0.9, retreatHp: 0.2, reaction: 0.2, dodgeSkill: 0.5,
+      accuracy: 0.07, lead: 0.85,
+      fireCost: 1.0, wetCost: 0, waterCost: 0.6,
     },
   },
 };
@@ -251,6 +289,6 @@ export const SPECIES = {
   }
 }
 
-export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha'];
+export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha', 'pugilar'];
 export const DEFAULT_TEAM = ['brasalisco', 'hidrocasco', 'brotossauro'];
 export const formsOf = (line) => Object.values(SPECIES).filter((s) => s.line === line).sort((a, b) => a.stage - b.stage);

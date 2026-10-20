@@ -495,6 +495,57 @@ test('Ritmo: golpe básico que acerta adianta as recargas de Q/E/F (e não vale 
   assert(A2.cd.fireDash > 5 - 1.6, 'skill não deveria gerar Ritmo');
 });
 
+test('Lutapacho: Arremesso de Pedra arranca uma pedra e quem é atingido fica ATORDOADO', () => {
+  const { w, A, B } = setup('pugilar', 'brotossauro', { gap: 120, evolved: true });
+  assert(A.def.key === 'lutapacho', 'não evoluiu para Lutapacho');
+  const hp = B.hp;
+  assert(cast(w, A, 'rockThrow', { aimPoint: { x: B.x, y: B.y } }), 'não arremessou');
+  assert(A.action.phase === 'windup', 'devia se abaixar para arrancar a pedra (preparação)');
+  let stunned = false;
+  for (let k = 0; k < 1.5 / DT && !stunned; k++) { w.step(DT); w.drainEvents(); if (B.status.stun > 0.5) stunned = true; }
+  assert(B.hp < hp, 'pedra não feriu');
+  assert(stunned, 'pedra não atordoou');
+});
+
+test('Pugilar: 3 acertos de combo e o próximo golpe de perto é NOCAUTE (recarrega o Salto Canguru)', () => {
+  const { w, A, B } = setup('pugilar', 'brotossauro', { gap: 22 });
+  A.cd.kangarooHop = 5;
+  let ko = false;
+  for (let k = 0; k < 6 && !ko; k++) {
+    until(w, () => A.ready('jab'), 1.5);
+    B.x = A.x + 22; B.y = A.y; B.kx = B.ky = 0; B.hp = B.maxHp;
+    cast(w, A, 'jab', { aimPoint: { x: B.x, y: B.y } });
+    for (let i = 0; i < 0.35 / DT; i++) { w.step(DT); for (const e of w.drainEvents()) if (e.type === 'execute' && e.src === A) ko = true; }
+  }
+  assert(ko, 'nocaute não aconteceu depois do combo');
+  assert(A.cd.kangarooHop === 0, 'nocaute não recarregou o Salto Canguru');
+});
+
+test('Pugilar: Contra-Golpe bloqueia e devolve um soco de terra (sem molhar)', () => {
+  const { w, A, B } = setup('pugilar', 'brasalisco', { gap: 24 });
+  assert(cast(w, A, 'counterGuard'), 'guarda não subiu');
+  const hpB = B.hp;
+  w.damage(A, 10, B, { element: 'fire' });
+  step(w, 0.05);
+  assert(B.hp < hpB, 'não devolveu o golpe');
+  assert(!(B.status.wet > 0), 'contra-golpe de terra não deveria molhar');
+});
+
+test('Brasalisco Ascendido: Bola Infernal viaja, cresce e explode em área', () => {
+  const { w, A, B } = setup('brasalisco', 'brotossauro', { gap: 150, evolved: true });
+  assert(A.def.controls.q === 'infernoOrb', 'Q do Ascendido não é a Bola Infernal');
+  const hp = B.hp;
+  assert(cast(w, A, 'infernoOrb', { aimPoint: { x: B.x, y: B.y } }), 'não lançou');
+  let maxR = 0, blast = false;
+  for (let k = 0; k < 2 / DT && !blast; k++) { w.step(DT); for (const p of w.projectiles) if (p.kind === 'inferno') maxR = Math.max(maxR, p.r); for (const e of w.drainEvents()) if (e.type === 'explosion') blast = true; }
+  assert(maxR > 10, 'bola não cresceu em voo');
+  assert(blast && B.hp < hp, 'bola não explodiu no alvo');
+});
+
+test('Redemoinho: o Hidrocasco anda MAIS rápido girando do que caminhando', () => {
+  assert(ABILITIES.whirlpool.move[1] > 1, 'redemoinho não acelera o movimento');
+});
+
 let failed = 0;
 console.log('\nMecânicas próprias, limites do fogo e sincronização\n');
 for (const r of results) { console.log(`${r.ok ? '[OK] ' : '[FALHOU]'} ${r.name}${r.ok ? '' : '\n       ' + r.err}`); if (!r.ok) failed++; }
