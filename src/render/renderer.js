@@ -1224,7 +1224,7 @@ export class Renderer {
       if (dashing && Math.random() < 0.8) this.particles.add({ ramp: 'volt', x, y, z: 4, vx: -m.vx * 0.2, vy: -m.vy * 0.2, life: 0.3, add: true, size: 2 });
     }
     // Brotossauro: pétalas da cerejeira das costas caindo de vez em quando.
-    if (m.alive && m.def.key === 'brotossauro' && Math.random() < 0.06) this.particles.add({ ramp: 'petal', x: x + (Math.random() - 0.4) * m.r, y, z: frame.top * 0.9, vz: -6, vx: 8, life: 1.2 });
+    if (m.alive && m.def.key === 'brotossauro' && Math.random() < 0.05) this.particles.add({ ramp: 'leaf', x: x + (Math.random() - 0.4) * m.r, y, z: frame.top * 0.9, vz: -6, vx: 8, life: 1.2 });
     // Casca Viva (redução de dano) e seiva (lento).
     if (m.alive && m.status.dr > 0) EF.drawBark(this.fxT, m, x, y, frame.top, t);
     if (m.alive && m.status.slow > 0) EF.sapDrip(this.particles, x, y, m.r);
