@@ -1,9 +1,14 @@
 // Constantes globais da simulação. O mundo é medido em "pixels de arte" (resolução interna 640x360).
 export const TILE = 8;
-export const COLS = 88;
-export const ROWS = 50;
-export const WORLD_W = COLS * TILE; // 704
-export const WORLD_H = ROWS * TILE; // 400
+// Tamanho do mundo (1024×576 px de arte, 16:9). Escolhido para 4 jogadores: um monstro mede ~16–26 px de diâmetro,
+// anda 56–78 px/s e as habilidades alcançam 100–210 px; a arena anterior (704×400) dava ~140 000 px² por jogador
+// no 1v1 e só ~70 000 no 2v2/ffa. Agora são ~147 000 px² por jogador com 4 (a mesma densidade do duelo de antes),
+// o que deixa espaço para fugir/reposicionar sem passar muito tempo procurando o adversário (a distância entre
+// dois nascimentos vizinhos é ~700 px ≈ 10 s andando).
+export const COLS = 128;
+export const ROWS = 72;
+export const WORLD_W = COLS * TILE; // 1024
+export const WORLD_H = ROWS * TILE; // 576
 
 // Passo fixo da simulação (60 Hz). Toda a lógica de combate avança apenas por este passo.
 export const DT = 1 / 60;
@@ -43,6 +48,9 @@ export const ELEMENT_MULT = {
   water: { fire: 1.12, plant: 0.9 },
   fire: { plant: 1.1, water: 0.9 },
   plant: { water: 1.12, fire: 0.9 },
+  // Elétrico (Raiolua): forte contra água, fraco contra planta; a terra aterra o choque.
+  electric: { water: 1.06, plant: 0.92, earth: 0.92 },
+  earth: { electric: 1.1 },
 };
 
 // Fogo: queimadura (status) e chão em chamas. Valores revistos para que o fogo pressione sem prender o
@@ -67,10 +75,19 @@ export const MATCH = { suddenDeath: 150 };
 // repetido) e cada golpe básico que ACERTA adianta as recargas das habilidades Q/E/F (Ritmo). As skills recarregam
 // mais rápido que antes. Assim o ciclo é: entra, acerta o básico, solta a skill, sai.
 export const COMBAT = {
+  closeRange: 52, // golpes dados a menos que isto (centro a centro) contam como "de perto"
+  closeMult: 0.82, // redução do dano de perto (equilíbrio: corpo a corpo estava forte demais)
   rhythm: 0.6, // segundos que cada golpe básico acertado tira das recargas de Q/E/F
   rhythmGap: 0.3, // no máximo um "ritmo" a cada 0,3 s (rajadas contam uma vez)
   skillCdMult: 0.7, // recarga das habilidades Q/E/F em relação ao balanceamento antigo
 };
 
+// Quebra de combo: atordoado/erguido, o jogador (ou a IA) gasta energia de evolução para se libertar,
+// ganhar um instante de invulnerabilidade e afastar quem está por perto. Tem recarga longa.
+export const COMBO_BREAK = { cost: 35, cooldown: 14, invuln: 0.5, radius: 36, push: 280, minStun: 0.15 };
+
 // Controle: atordoamento e enraizamento seguidos perdem força (evita sequências inevitáveis).
 export const CONTROL = { guardTime: 1.2, chainMult: 0.4 };
+
+// Cores dos 4 jogadores no todos-contra-todos (1v1v1v1), por vaga: dourado, vermelho, azul, verde.
+export const FFA_COLORS = ['#ffd23a', '#ff4a5a', '#46b4ff', '#7ad84a'];

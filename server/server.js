@@ -141,7 +141,7 @@ export function createServer({
         if (msg.t === 'create') {
           if (rooms.size >= maxRooms) return fail('busy', 'Servidor lotado no momento. Tente de novo em instantes.');
           target = new Room(newCode((c) => rooms.has(c)), (code) => { rooms.delete(code); log('sala encerrada', code); }, { timeScale });
-          if (msg.mode === '2v2') target.mode = '2v2';
+          if (msg.mode === '2v2' || msg.mode === 'ffa') target.mode = msg.mode;
           rooms.set(target.code, target);
           log('sala criada', target.code);
         } else {

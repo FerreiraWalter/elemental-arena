@@ -46,7 +46,7 @@ export class Sfx {
     const c = this.ctx;
     if (x === undefined || !c.createStereoPanner) return this.master;
     const p = c.createStereoPanner();
-    p.pan.value = Math.max(-0.7, Math.min(0.7, (x / 704) * 1.4 - 0.7));
+    p.pan.value = Math.max(-0.7, Math.min(0.7, (x / 1024) * 1.4 - 0.7));
     p.connect(this.master);
     return p;
   }
@@ -112,6 +112,8 @@ export class Sfx {
         else if (k === 'wave') { this.hiss({ type: 'lowpass', f0: 1800, f1: 400, dur: 0.45, vol: 0.25, x }); this.tone({ f0: 160, f1: 90, dur: 0.4, vol: 0.15, x }); }
         else if (k === 'seed' || k === 'thorn') this.tone({ type: 'square', f0: 1500, f1: 700, dur: 0.05, vol: 0.07, x });
         else if (k === 'meteor') this.tone({ type: 'sine', f0: 1600, f1: 500, dur: 0.9, vol: 0.06, x });
+        else if (k === 'spark' || k === 'voltOrb') { this.tone({ type: 'square', f0: k === 'voltOrb' ? 900 : 1300, f1: 2400, dur: 0.06, vol: 0.07, x }); this.hiss({ type: 'highpass', f0: 4000, f1: 2500, dur: 0.06, vol: 0.06, x }); }
+        else if (k === 'thunder') this.hiss({ type: 'bandpass', f0: 2500, f1: 5000, q: 3, dur: 0.5, vol: 0.06, x });
         else if (k === 'roots' || k === 'sentrySeed') this.tone({ type: 'triangle', f0: 300, f1: 500, dur: 0.12, vol: 0.1, x });
         return;
       }
@@ -171,6 +173,20 @@ export class Sfx {
       case 'cloak': this.tone({ type: 'sine', f0: 900, f1: 200, dur: 0.35, vol: 0.08, x }); return;
       case 'marked': if (this.ok('marked', 0.08)) this.tone({ type: 'triangle', f0: 800 + (e.n || 1) * 200, dur: 0.06, vol: 0.07, x }); return;
       case 'execute': this.hiss({ type: 'bandpass', f0: 3000, f1: 800, q: 1.5, dur: 0.18, vol: 0.3, x }); [784, 988, 1318].forEach((f) => this.tone({ type: 'triangle', f0: f, dur: 0.35, vol: 0.08, at: 0.05, x })); return;
+      // ───── Elétrico ─────
+      case 'thunder': this.hiss({ type: 'highpass', f0: 3000, f1: 600, dur: 0.12, vol: 0.4, x }); this.tone({ type: 'sawtooth', f0: 90, f1: 40, dur: e.big ? 0.7 : 0.5, vol: 0.28, x }); this.hiss({ type: 'lowpass', f0: 900, f1: 120, dur: e.big ? 0.9 : 0.6, vol: 0.3, at: 0.05, x }); return;
+      case 'zap': if (this.ok('zap', 0.05)) this.tone({ type: 'square', f0: 1400 + Math.random() * 600, f1: 300, dur: 0.05, vol: e.small ? 0.03 : 0.07, x }); return;
+      case 'sparkPop': if (this.ok('sparkPop', 0.06)) this.tone({ type: 'square', f0: 1800, f1: 600, dur: 0.04, vol: 0.05, x }); return;
+      case 'shockPull': this.tone({ type: 'sawtooth', f0: 120, f1: 600, dur: 0.22, vol: 0.18, x }); this.hiss({ type: 'bandpass', f0: 3000, f1: 1200, q: 2, dur: 0.25, vol: 0.18, x }); return;
+      case 'overload': this.tone({ type: 'sawtooth', f0: 600, f1: 60, dur: 0.5, vol: 0.25, x }); this.hiss({ type: 'lowpass', f0: 3000, f1: 200, dur: 0.5, vol: 0.3, x }); return;
+      case 'shockBurst': this.tone({ type: 'square', f0: 900, f1: 1800, dur: 0.08, vol: 0.12, x }); this.tone({ type: 'square', f0: 1800, f1: 400, dur: 0.1, vol: 0.1, at: 0.06, x }); return;
+      case 'thunderLand': this.tone({ type: 'sawtooth', f0: 300, f1: 70, dur: 0.2, vol: 0.15, x }); return;
+      case 'voltFull': this.tone({ type: 'square', f0: 700, f1: 1400, dur: 0.12, vol: 0.08, x }); this.tone({ type: 'square', f0: 1400, f1: 2100, dur: 0.1, vol: 0.06, at: 0.1, x }); return;
+      // ───── Brotossauro ─────
+      case 'barkUp': this.tone({ type: 'triangle', f0: 180, f1: 260, dur: 0.25, vol: 0.14, x }); this.tone({ type: 'sine', f0: 520, f1: 780, dur: 0.2, vol: 0.08, at: 0.1, x }); return;
+      case 'sentryBite': if (this.ok('bite', 0.15)) { this.tone({ type: 'square', f0: 260, f1: 120, dur: 0.06, vol: 0.12, x }); this.tone({ type: 'square', f0: 220, f1: 100, dur: 0.06, vol: 0.1, at: 0.07, x }); } return;
+      case 'comboBreak': this.tone({ type: 'square', f0: 700, f1: 200, dur: 0.15, vol: 0.1, x }); this.tone({ type: 'sawtooth', f0: 220, f1: 440, dur: 0.12, vol: 0.08, at: 0.05, x }); return;
+      case 'lifePulse': this.tone({ type: 'sine', f0: 330, f1: 660, dur: 0.25, vol: 0.12, x }); this.tone({ type: 'triangle', f0: 495, f1: 880, dur: 0.25, vol: 0.08, at: 0.1, x }); return;
       case 'sentryGrow': this.tone({ type: 'triangle', f0: 400, f1: 600, dur: 0.1, vol: 0.1, x }); this.tone({ type: 'triangle', f0: 600, f1: 800, dur: 0.1, vol: 0.08, at: 0.08, x }); return;
       case 'sentryShot': if (this.ok('sentryShot', 0.08)) this.tone({ type: 'square', f0: 1200, f1: 600, dur: 0.04, vol: 0.04, x }); return;
       case 'bubbleBurst': this.tone({ type: 'sine', f0: 300, f1: 900, dur: 0.15, vol: 0.16, x }); this.hiss({ type: 'lowpass', f0: 1800, f1: 400, dur: 0.3, vol: 0.18, x }); return;

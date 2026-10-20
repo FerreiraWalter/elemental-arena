@@ -7,6 +7,7 @@
 //   field – índices dos monstros presentes na arena (em campo ou corpos sumindo)
 //   teams – por vaga: monstro em campo, recarga de troca, troca pendente
 //   proj, obs, haz, steam – projéteis, obstáculos, perigos e nuvens
+//   zones – solo eletrificado (rastros e Julgamento do Trovão)
 //   dec   – ilusões de tinta (cópias do Gotapus); obstáculos dinâmicos incluem sentinelas (lado e dono)
 //   terr  – deltas do terreno (fogo, umidade, raízes, tipo, fuligem), quantizados
 //   events, feed – eventos visuais/sonoros e mensagens novas desde o snapshot anterior
@@ -38,13 +39,14 @@ function monsterRec(m, idxOf) {
   const idxOfId = (id) => { for (const [mm, i] of idxOf) if (mm.id === id) return i; return -1; };
   const rec = {
     h: r1(m.hp), M: m.maxHp, a: +m.alive, f: +m.onField, d: m.def.key, e: r1(m.energy), ev: +m.evolved,
-    st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield), overheat: r2(m.status.overheat), exhaust: r2(m.status.exhaust), cloak: r2(m.status.cloak), bubble: r2(m.status.bubble) },
+    st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield), overheat: r2(m.status.overheat), exhaust: r2(m.status.exhaust), cloak: r2(m.status.cloak), bubble: r2(m.status.bubble), slow: r2(m.status.slow), dr: r2(m.status.dr), regen: r2(m.status.regen) },
+    sk: r2(m.slowK || 0), dk: r2(m.drK || 0), vt: m.volt || 0,
     ht: r1(m.heat), mo: r1(m.momentum), cg: +m.charged, mk: m.marks.n ? [m.marks.n, idxOfId(m.marks.by)] : 0,
     cd: Object.fromEntries(Object.entries(m.cd).map(([k, v]) => [k, r2(v)])),
     ...(Object.keys(m.ch).length ? { chg: Object.fromEntries(Object.keys(m.ch).map((k) => [k, [m.ch[k], r2(m.rc[k])]])) } : {}),
     x: r1(m.x), y: r1(m.y), vx: r1(m.vx), vy: r1(m.vy), fc: r2(m.facing),
     sw: m.switchState || 0, swT: r2(m.switchT), evT: r2(m.evolveT), hf: r2(m.hitFlash), dT: r2(m.deathT),
-    sh: r1(m.shieldHp), lv: m.level ?? 1, lf: r2(m.lift), lfM: r2(m.liftMax),
+    bc: r1(m.breakCd), sh: r1(m.shieldHp), lv: m.level ?? 1, lf: r2(m.lift), lfM: r2(m.liftMax),
     ai: m.controller ? 'human' : m.ai.state, hum: +!!m.controller,
   };
   if (a) {
@@ -91,7 +93,7 @@ export function serialize(world, ctx) {
   });
   const snap = {
     t: 'snap', seq, time: Math.round(world.time * 1000) / 1000,
-    over: world.over, winner: world.winner, endTime: world.endTime ?? null,
+    over: world.over, winner: world.winner, endTime: world.endTime ?? null, el: world.elim.map((e) => [e.side, r2(e.t)]),
     mons, field: world.monsters.map((m) => idxOf.get(m)),
     teams: world.teams.map((t) => ({ f: t.field ? idxOf.get(t.field) : -1, c: r2(t.cooldown), p: t.pending ? idxOf.get(t.pending) : -1, s: t.switches })),
     proj: world.projectiles.map((p) => (p.lob
@@ -100,6 +102,7 @@ export function serialize(world, ctx) {
     obs, dyn,
     haz: world.hazards.map((h) => [PH.indexOf(h.phase), r2(h.t)]),
     steam: world.steam.map((s) => [r1(s.x), r1(s.y), r1(s.r), r2(s.density), r2(s.life), +!!s.ink]),
+    zones: world.zones.map((z) => [z.id, r1(z.x), r1(z.y), r1(z.r), r2(z.life), r2(z.max), z.team, +!!z.big]),
     dec: world.decoys.map((d) => [d.id, idxOf.get(d.owner), r1(d.x), r1(d.y), r2(d.life), r2(d.max), r2(d.facing), r1(d.vx), r1(d.vy), r2(d.atk || 0)]),
     terr,
     feed: world.feed.filter((f) => f.seq > ctx.lastFeed).map((f) => [f.text, f.color]),
@@ -123,6 +126,7 @@ export function applySnapshot(world, s, ctx) {
   world.time = s.time;
   world.over = s.over;
   world.winner = s.winner;
+  if (s.el) world.elim = s.el.map(([side, t]) => ({ side, t }));
   world.endTime = s.endTime ?? world.endTime;
   const tr = world.terrain;
   for (let i = 0; i < s.mons.length; i++) {
@@ -142,8 +146,9 @@ export function applySnapshot(world, s, ctx) {
     m.px = entering ? r.x : m.x; m.py = entering ? r.y : m.y;
     m.x = r.x; m.y = r.y; m.vx = r.vx; m.vy = r.vy; m.facing = r.fc; m.lookAt = r.fc;
     m.switchState = r.sw || null; m.switchT = r.swT; m.evolveT = r.evT; m.hitFlash = r.hf; m.deathT = r.dT;
-    m.shieldHp = r.sh; m.level = r.lv; m.lift = r.lf; m.liftMax = r.lfM || 1;
+    m.breakCd = r.bc || 0; m.shieldHp = r.sh; m.level = r.lv; m.lift = r.lf; m.liftMax = r.lfM || 1;
     m.heat = r.ht || 0; m.momentum = r.mo || 0; m.charged = !!r.cg;
+    m.slowK = r.sk || 0; m.drK = r.dk || 0; m.volt = r.vt || 0;
     if (r.mk) { m.marks.n = r.mk[0]; m.marks.by = world.roster[r.mk[1]]?.id ?? 0; } else m.marks.n = 0;
     m.ai.state = r.ai; m.human = !!r.hum;
     m.action = r.ac ? { ab: ABILITIES[r.ac.id], phase: r.ac.ph, t: r.ac.t, aim: r.ac.aim, hit: new Set(), aimPoint: null, data: { beam: r.ac.bm ? { ox: r.ac.bm[0], oy: r.ac.bm[1], ex: r.ac.bm[2], ey: r.ac.bm[3] } : undefined, R: r.ac.R }, leapDist: r.ac.ld } : null;
@@ -204,6 +209,7 @@ export function applySnapshot(world, s, ctx) {
   world.decoys = [...decs.values()];
   s.haz.forEach((h, i) => { if (world.hazards[i]) { world.hazards[i].phase = PH[h[0]]; world.hazards[i].t = h[1]; } });
   world.steam = s.steam.map(([x, y, r, density, life, ink]) => ({ x, y, r, density, life, ink: !!ink }));
+  world.zones = (s.zones || []).map(([id, x, y, r, life, max, team, big]) => ({ id, kind: 'shock', x, y, r, life, max, team, big: !!big }));
 
   // Terreno.
   for (let k = 0; k < s.terr.length; k += 2) {

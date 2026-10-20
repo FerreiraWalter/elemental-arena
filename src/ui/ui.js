@@ -1,7 +1,7 @@
 import { SPECIES, ROSTER, formsOf } from '../sim/species.js';
 
 import { ARENAS, ARENA_ORDER } from '../arenas/index.js';
-import { ELEMENT_MULT, EVOLUTION, SWITCH, WORLD_W, WORLD_H } from '../config.js';
+import { ELEMENT_MULT, EVOLUTION, SWITCH, WORLD_W, WORLD_H, FFA_COLORS } from '../config.js';
 import { World } from '../sim/world.js';
 import { Renderer, ELEMENT_COLOR, SIG_COLOR } from '../render/renderer.js';
 import { makeCanvas } from '../render/pixel.js';
@@ -11,7 +11,7 @@ import { abilityIcon, statusIcon } from '../render/hud.js';
 // Tudo desenhado no canvas no mesmo estilo pixel art; mouse e teclado funcionam em todas as telas.
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico' };
 const KEY_LABEL = { primary: 'MOUSE E', melee: 'MOUSE D', q: 'Q', e: 'E', f: 'F', dodge: 'ESPAÇO' };
 const DIFF_NAME = ['', 'fácil de jogar', 'médio', 'exige prática'];
 // Dificuldade em losangos de pixel (a fonte não tem estrelas). Retorna a largura desenhada.
@@ -73,6 +73,7 @@ const matchText = (el) => {
   const weak = Object.keys(ELEMENT_MULT).find((k) => ELEMENT_MULT[k][el] > 1);
   return `Forte contra ${ELEMENT_NAME[strong]} · fraco contra ${ELEMENT_NAME[weak]}`;
 };
+
 
 export class UI {
   constructor(canvas, art, hooks) {
@@ -255,7 +256,7 @@ export class UI {
       text(this.c, ch, x, y, ts, cols[Math.floor((k / title.length) * cols.length)], 'left', u);
       x += c.measureText(ch).width;
     }
-    text(c, 'Duelo de monstros elementais em tempo real · 6 monstros · online até 2v2', cx, H * 0.15 + 22 * u, 6, '#e8dcc0', 'center', u);
+    text(c, 'Duelo de monstros elementais em tempo real · 6 monstros · online até 4 jogadores (1v1, 2v2, todos contra todos)', cx, H * 0.15 + 22 * u, 6, '#e8dcc0', 'center', u);
     // Os seis monstros (forma base) com as evoluções esmaecidas ao fundo.
     const gap = Math.min(104 * u, W / 6.6);
     ROSTER.forEach((key, k) => {
@@ -357,8 +358,10 @@ export class UI {
     let y = 82 * u;
     text(c, 'CRIAR UMA SALA (você recebe um código para os amigos)', cx, y, 6, '#e8dcc0', 'center', u);
     y += 10 * u;
-    this.button(cx - bw - 6 * u, y, bw, bh, 'CRIAR SALA 1v1', () => this.hooks.mpCreate('1v1'), { color: '#ff8a3a', disabled: mp.busy });
-    this.button(cx + 6 * u, y, bw, bh, 'CRIAR SALA 2v2', () => this.hooks.mpCreate('2v2'), { color: '#ff8a3a', disabled: mp.busy });
+    const bw3 = Math.min(bw * 0.66, (W - 40 * u) / 3 - 6 * u);
+    this.button(cx - bw3 * 1.5 - 6 * u, y, bw3, bh, 'SALA 1v1', () => this.hooks.mpCreate('1v1'), { color: '#ff8a3a', disabled: mp.busy });
+    this.button(cx - bw3 / 2, y, bw3, bh, 'SALA 2v2', () => this.hooks.mpCreate('2v2'), { color: '#ff8a3a', disabled: mp.busy });
+    this.button(cx + bw3 / 2 + 6 * u, y, bw3, bh, 'SALA 1v1v1v1', () => this.hooks.mpCreate('ffa'), { color: '#ff5a8a', disabled: mp.busy });
     y += bh + 30 * u;
     text(c, 'OU ENTRAR COM UM CÓDIGO (4 caracteres, digite no teclado)', cx, y, 6, '#e8dcc0', 'center', u);
     y += 12 * u;
@@ -394,7 +397,7 @@ export class UI {
     // Configuração (só o anfitrião muda).
     let y = 62 * u;
     const bw = 190 * u, bh = 24 * u;
-    this.button(cx - bw - 6 * u, y, bw, bh, `MODO: ${room.mode}`, () => this.hooks.mpSend({ t: 'config', mode: room.mode === '1v1' ? '2v2' : '1v1' }), { disabled: !isHost, color: '#ff8a3a', size: 8 });
+    this.button(cx - bw - 6 * u, y, bw, bh, `MODO: ${room.mode === 'ffa' ? '1v1v1v1' : room.mode}`, () => this.hooks.mpSend({ t: 'config', mode: { '1v1': '2v2', '2v2': 'ffa', ffa: '1v1' }[room.mode] || '1v1' }), { disabled: !isHost, color: '#ff8a3a', size: 8 });
     const ai = ARENA_ORDER.indexOf(room.arena);
     this.button(cx + 6 * u, y, bw, bh, `ARENA: ${arenaName}`, () => this.hooks.mpSend({ t: 'config', arena: ARENA_ORDER[(ai + 1) % ARENA_ORDER.length] }), { disabled: !isHost, color: '#46b4ff', size: 7 });
     y += bh + 6 * u;
@@ -407,17 +410,19 @@ export class UI {
     if (!isHost) text(c, 'Só o anfitrião muda o modo, a arena e os robôs.', cx, y + 6 * u, 5, '#887', 'center', u);
     y += 12 * u;
     // Vagas por equipe.
-    const half = room.seats / 2;
+    const half = room.seats / 2; // ffa: 4 vagas em 2×2 (cada vaga é um lado)
     const sw = Math.min(250 * u, (W - 40 * u) / 2 - 6 * u), sh = Math.min(54 * u, (H - y - 120 * u) / half - 6 * u);
     const small = (x0, y0, w0, label, onClick, color) => this.button(x0, y0, w0, 16 * u, label, onClick, { color, size: 5.5 });
     for (let side = 0; side < 2; side++) {
       const x = cx + (side === 0 ? -sw - 6 * u : 6 * u);
-      text(c, side === 0 ? 'EQUIPE A' : 'EQUIPE B', x + sw / 2, y + 8 * u, 8, side === 0 ? '#ffd23a' : '#ff4a5a', 'center', u);
+      if (room.mode === 'ffa') { if (side === 0) text(c, 'TODOS CONTRA TODOS · último de pé vence', cx, y + 8 * u, 8, '#ff9ab0', 'center', u); }
+      else text(c, side === 0 ? 'EQUIPE A' : 'EQUIPE B', x + sw / 2, y + 8 * u, 8, side === 0 ? '#ffd23a' : '#ff4a5a', 'center', u);
       for (let k = 0; k < half; k++) {
         const seat = side === 0 ? (room.mode === '1v1' ? 0 : k) : (room.mode === '1v1' ? 1 : half + k);
         const p = room.players.find((q) => q.seat === seat);
         const sy = y + 14 * u + k * (sh + 6 * u);
         panel(c, x, sy, sw, sh, u, p ? (p.bot ? '#8a70d0' : p.ready ? '#7ad84a' : '#8a7a5a') : '#3a302a');
+        if (room.mode === 'ffa') { c.fillStyle = FFA_COLORS[seat]; c.fillRect(x, sy, 4 * u, sh); text(c, 'J' + (seat + 1), x + sw - 6 * u, sy + sh - 5 * u, 6, FFA_COLORS[seat], 'right', u); }
         if (p && p.bot) {
           // Vaga de robô: IA do servidor. O anfitrião sorteia outro time ou remove; outros podem tomar a vaga.
           text(c, `${p.name} · IA`, x + 8 * u, sy + 14 * u, 7, '#d8c8ff', 'left', u);
@@ -498,7 +503,8 @@ export class UI {
     wrap(c, desc, 5.5, Math.min(W - 40 * u, 700 * u), u).slice(0, 2).forEach((ln, k) => text(c, ln, cx, bottom + 16 * u + k * 10 * u, 5.5, '#e8dcc0', 'center', u));
     this.button(cx - 170 * u, btnY, 150 * u, btnH, 'VOLTAR', () => this.go('team'), { back: true, color: '#aa9' });
     const tr = this.flow === 'training';
-    this.button(cx + 20 * u, btnY, 150 * u, btnH, tr ? 'TREINAR!' : 'LUTAR!', () => this.hooks.startBattle({ team: [...this.team], arena: this.arena, training: tr }), { disabled: !this.arena, color: tr ? '#d8c08a' : '#ff8a3a' });
+    if (!tr) this.button(W - 214 * u, 12 * u, 202 * u, 22 * u, this.ffaLocal ? 'MODO: 1v1v1v1 (você + 3 IAs)' : 'MODO: 1v1 (contra 1 IA)', () => { this.ffaLocal = !this.ffaLocal; }, { color: this.ffaLocal ? '#ff5a8a' : '#ff8a3a', size: 6 });
+    this.button(cx + 20 * u, btnY, 150 * u, btnH, tr ? 'TREINAR!' : 'LUTAR!', () => this.hooks.startBattle({ team: [...this.team], arena: this.arena, training: tr, ffa: !tr && !!this.ffaLocal }), { disabled: !this.arena, color: tr ? '#d8c08a' : '#ff8a3a' });
   }
 
   renderBestiary(u, W, H) {
@@ -593,7 +599,7 @@ export class UI {
     panel(c, x, y, pw, H - y - 50 * u, u);
     const ctl = [
       ['WASD / setas', 'mover'], ['Mouse', 'mirar'], ['Botão esquerdo', 'ataque à distância'], ['Botão direito', 'corpo a corpo'],
-      ['Q / E / F', 'poderes especiais'], ['Espaço / Shift', 'esquiva'], ['1 2 3 / Tab', `trocar monstro (recarga ${SWITCH.cooldown}s)`],
+      ['Q / E / F', 'poderes especiais'], ['Espaço / Shift', 'esquiva (preso? quebra o combo: 35 de energia, recarga 14s)'], ['1 2 3 / Tab', `trocar monstro (recarga ${SWITCH.cooldown}s)`],
       ['G', 'evoluir (com a energia cheia)'], ['H', 'ajuda do monstro em campo'], ['P / Esc', 'pausar'], ['I', 'visão da IA'],
     ];
     let ly = y + 18 * u;
@@ -648,7 +654,7 @@ export class UI {
     let y = 30 * u;
     text(c, actions.firstTime ? 'COMO JOGAR' : 'AJUDA', cx, y, 13, '#ffe9b0', 'center', u);
     y += 16 * u;
-    text(c, 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva · 1/2/3 troca · G evolui', cx, y, fitSize(c, 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva · 1/2/3 troca · G evolui', 5.5, pw, u), '#e8dcc0', 'center', u);
+    text(c, 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva/quebra combo · 1/2/3 troca · G evolui', cx, y, fitSize(c, 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva/quebra combo · 1/2/3 troca · G evolui', 5.5, pw, u), '#e8dcc0', 'center', u);
     y += 14 * u;
     if (m) {
       const def = m.def;

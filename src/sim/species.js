@@ -91,14 +91,14 @@ export const SPECIES = {
   // ───────────── PLANTA ─────────────
   brotossauro: {
     key: 'brotossauro', line: 'brotossauro', stage: 1, evolvesTo: 'brotossauroAncestral',
-    name: 'Brotossauro', title: 'Forma base', element: 'plant', sprite: 'plant_1',
+    name: 'Brotossauro', title: 'Broto da Montanha', element: 'plant', sprite: 'plant_1',
     hp: 158, speed: 68, radius: 10, mass: 1.15,
     abilities: [A.vineWhip, A.burstSeed, A.rootSnare, A.plantSentry, A.barkGuard, A.leafDash],
     dodge: A.leafDash,
     controls: { primary: 'burstSeed', melee: 'vineWhip', q: 'rootSnare', e: 'plantSentry', f: 'barkGuard', dodge: 'leafDash' },
-    sig: { kind: 'sentry', name: 'Brotos Sentinela', desc: 'Com E, planta torres vivas (máx. 2, 2 cargas) que atiram sementes sozinhas e curam o Brotossauro por perto. O fogo as derruba rápido. Com F, a Casca Viva bloqueia qualquer ataque.' },
-    traits: ['Brotos Sentinela (E): domine uma área com torres vivas', 'Casca Viva (F): bloqueia tudo, cura e prende quem bate', 'Esquiva enterrado (só a flor aparece)'],
-    tips: 'Ponto fraco: longe das sentinelas é lento e vulnerável; o fogo derruba as torres.',
+    sig: { kind: 'sentry', name: 'Jardim Vivo', desc: 'Suporte e controle: os ataques cobrem o alvo de SEIVA (fica LENTO). Com E planta FLORES CARNÍVORAS (máx. 2) que atiram de longe, mordem quem encosta e curam o time. Com F veste você e o parceiro com CASCA VIVA: redução de dano e cura contínua.' },
+    traits: ['Seiva: semente e chicote deixam o alvo LENTO', 'Flores carnívoras (E): alcance 150, mordem e curam', 'Casca Viva (F): -35% de dano e cura no parceiro'],
+    tips: 'Ponto fraco: lento e sem fuga boa; o fogo queima as flores e corta a seiva.',
     difficulty: 2,
     profile: {
       personality: 'Controlador',
@@ -114,8 +114,8 @@ export const SPECIES = {
     abilities: [A.ancientWhip, A.ancientSeed, A.ancientRoots, A.ancientSentry, A.ancientBark, A.barkStep],
     dodge: A.barkStep,
     controls: { primary: 'ancientSeed', melee: 'ancientWhip', q: 'ancientRoots', e: 'ancientSentry', f: 'ancientBark', dodge: 'barkStep' },
-    sig: { kind: 'sentry', name: 'Guardiões Ancestrais', desc: 'Sentinelas maiores e mais resistentes que disparam espinhos (fazem brotar espinheiro) e curam mais.' },
-    traits: ['Guardiões Ancestrais (E): fortaleza de espinhos', 'Casca Ancestral (F): bloqueia tudo, cura e prende', 'Casca grossa: queima pela metade do tempo'],
+    sig: { kind: 'sentry', name: 'Montanha Ancestral', desc: 'A montanha que virou floresta: seiva mais grossa (mais lentidão), guardiões carnívoros de alcance 175 que mordem forte e a CASCA DA MONTANHA (F): -40% de dano e cura contínua no parceiro.' },
+    traits: ['Guardiões carnívoros de longo alcance', 'Casca da Montanha (F): muralha viva no parceiro', 'Casca grossa: queima pela metade do tempo'],
     tips: 'Ponto fraco: muito lento; quem tem mobilidade escolhe onde lutar.',
     difficulty: 2,
     burnResist: 0.5,
@@ -275,6 +275,44 @@ export const SPECIES = {
       fireCost: 1.0, wetCost: 0, waterCost: 0.6,
     },
   },
+
+  // ───────────── ELÉTRICO ─────────────
+  raiolua: {
+    key: 'raiolua', line: 'raiolua', stage: 1, evolvesTo: 'trovogato',
+    name: 'Raiolua', title: 'Forma base', element: 'electric', sprite: 'cat_1',
+    hp: 124, speed: 80, radius: 8, mass: 0.9,
+    abilities: [A.scratch, A.sparkBall, A.strike220, A.shock110, A.boltDash, A.catLeap],
+    dodge: A.catLeap,
+    controls: { primary: 'sparkBall', melee: 'scratch', q: 'strike220', e: 'shock110', f: 'boltDash', dodge: 'catLeap' },
+    sig: { kind: 'volt', name: 'Eletricidade Estática', voltMax: 3, desc: 'Cada golpe elétrico que acerta soma 1 CARGA (máx. 3). Com 3 fica ELETRIZADO (+10% de velocidade). A Descarga 110V (E) gasta as cargas para bater mais forte. Alvo MOLHADO leva +15% de dano elétrico.' },
+    traits: ['Cargas: acerte, carregue e descarregue no E', 'Puxa e atordoa de perto; raio do céu de longe', 'Pulo do Gato com 2 cargas'],
+    tips: 'Ponto fraco: frágil; depois do E e da investida fica sem fuga. Terra resiste ao choque.',
+    difficulty: 2,
+    profile: {
+      personality: 'Ágil',
+      range: [40, 120], aggression: 0.75, retreatHp: 0.3, reaction: 0.18, dodgeSkill: 0.7,
+      accuracy: 0.06, lead: 0.9,
+      fireCost: 1.2, wetCost: 0.05, waterCost: 0.8,
+    },
+  },
+  trovogato: {
+    key: 'trovogato', line: 'raiolua', stage: 2,
+    name: 'Trovogato', title: 'Senhor do Trovão', element: 'electric', sprite: 'cat_3',
+    hp: 214, speed: 78, radius: 12, mass: 1.45,
+    abilities: [A.conductClaws, A.voltSphere, A.thunderJudgment, A.overloadCore, A.lightningRupture, A.thunderInstinct],
+    dodge: A.thunderInstinct,
+    controls: { primary: 'voltSphere', melee: 'conductClaws', q: 'thunderJudgment', e: 'overloadCore', f: 'lightningRupture', dodge: 'thunderInstinct' },
+    sig: { kind: 'volt', name: 'Tempestade Viva', voltMax: 5, desc: 'Cargas evoluídas (máx. 5): a Esfera Voltaica ricocheteia e carrega rápido; o Núcleo de Sobrecarga gasta TODAS para uma explosão maior. Cheio fica ELETRIZADO.' },
+    traits: ['Esfera que ricocheteia entre inimigos', 'Julgamento do Trovão deixa o solo eletrificado', 'Ruptura Relâmpago atravessa todo mundo'],
+    tips: 'Ponto fraco: o Núcleo precisa de cargas para assustar; sem acertar, as cargas somem.',
+    difficulty: 2,
+    profile: {
+      personality: 'Tempestade',
+      range: [40, 130], aggression: 0.8, retreatHp: 0.25, reaction: 0.18, dodgeSkill: 0.65,
+      accuracy: 0.06, lead: 0.9,
+      fireCost: 1.2, wetCost: 0.05, waterCost: 0.8,
+    },
+  },
 };
 
 // Espécies escolhíveis no time (formas base) e time padrão (partidas rápidas e testes).
@@ -289,6 +327,6 @@ export const SPECIES = {
   }
 }
 
-export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha', 'pugilar'];
+export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha', 'pugilar', 'raiolua'];
 export const DEFAULT_TEAM = ['brasalisco', 'hidrocasco', 'brotossauro'];
 export const formsOf = (line) => Object.values(SPECIES).filter((s) => s.line === line).sort((a, b) => a.stage - b.stage);

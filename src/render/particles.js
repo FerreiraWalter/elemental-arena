@@ -14,6 +14,9 @@ const RAMPS = {
   ink: ['#5a4a7a', '#3a2a52', '#2a1e42', '#1a1230'],
   leafFall: ['#d49a3e', '#b8702c', '#7aac50', '#5a8c3a'],
   pollen: ['#fff6a0', '#ffe066', '#f4f0d0'],
+  volt: ['#ffffff', '#d8fbff', '#8fe8ff', '#3fa9ff', '#2a4cff'],
+  petal: ['#ffd6ea', '#ff9ac8', '#ff6fae'],
+  sap: ['#c8ff7a', '#8ad84a', '#5aa83c'],
 };
 
 export class Particles {

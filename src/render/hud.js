@@ -1,11 +1,11 @@
 import { STATE_LABEL } from '../ai/brain.js';
 import { TEAM_COLOR, ELEMENT_COLOR, SIG_COLOR } from './renderer.js';
-import { EVOLUTION, WORLD_W, WORLD_H } from '../config.js';
+import { EVOLUTION, WORLD_W, WORLD_H, COMBO_BREAK } from '../config.js';
 import { SIG } from '../sim/signature.js';
 import { meter } from '../sim/training.js';
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', neutral: 'Treino' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', neutral: 'Treino' };
 const SLOTS = [['primary', 'MOUSE E'], ['melee', 'MOUSE D'], ['q', 'Q'], ['e', 'E'], ['f', 'F'], ['dodge', 'ESPAÇO']];
 
 function text(c, s, x, y, size, color, align = 'left', dpr = 1) {
@@ -78,14 +78,19 @@ export function statusIcon(c, kind, x, y, s) {
     case 'exhaust': P(1, 1, 4, 1, '#c8b8a0'); P(3, 2, 1, 1, '#c8b8a0'); P(2, 3, 1, 1, '#c8b8a0'); P(1, 4, 4, 1, '#c8b8a0'); break;
     case 'cloak': P(1, 2, 4, 3, '#6a5aa0'); P(2, 3, 1, 1, '#ffffff'); P(3.5, 3, 1, 1, '#ffffff'); break;
     case 'charged': P(3, 0.5, 1, 2, '#ffe066'); P(2, 2.5, 2, 1, '#ffe066'); P(2, 3.5, 1, 2, '#ffe066'); break;
+    case 'slow': P(1, 1, 4, 1, '#9be862'); P(1.5, 2, 1, 2, '#9be862'); P(3.5, 2, 1, 3, '#5aa83c'); P(2.5, 4, 1, 1, '#c8ff7a'); break;
+    case 'dr': P(1, 1, 4, 4, '#7a4a28'); P(2, 2, 2, 2, '#a8743e'); P(4, 1, 1, 1, '#9be862'); break;
+    case 'regen': P(2.5, 1, 1, 4, '#7ad84a'); P(1, 2.5, 4, 1, '#7ad84a'); break;
+    case 'volt': P(3, 0.5, 2, 1, '#8fe8ff'); P(2, 1.5, 2, 1, '#8fe8ff'); P(1.5, 2.5, 3, 1, '#ffffff'); P(2.5, 3.5, 2, 1, '#8fe8ff'); P(2, 4.5, 1, 1, '#3fa9ff'); break;
   }
 }
 
-export const STATUS_NAME = { burn: 'queimando', wet: 'molhado', root: 'preso', stun: 'atordoado', shield: 'bolha', overheat: 'superaquecido', exhaust: 'exausto', cloak: 'camuflado', charged: 'em disparada' };
+export const STATUS_NAME = { burn: 'queimando', wet: 'molhado', root: 'preso', stun: 'atordoado', shield: 'escudo', overheat: 'superaquecido', exhaust: 'exausto', cloak: 'camuflado', charged: 'em disparada', slow: 'lento (seiva/choque)', dr: 'casca (menos dano)', regen: 'regenerando', volt: 'eletrizado' };
 export function statusList(m) {
   const st = m.status, out = [];
-  for (const k of ['stun', 'root', 'burn', 'wet', 'shield', 'overheat', 'exhaust', 'cloak']) if (st[k] > 0 && (k !== 'shield' || m.shieldHp > 0)) out.push(k);
+  for (const k of ['stun', 'root', 'burn', 'wet', 'slow', 'dr', 'shield', 'overheat', 'exhaust', 'cloak']) if (st[k] > 0 && (k !== 'shield' || m.shieldHp > 0)) out.push(k);
   if (m.charged) out.push('charged');
+  if (m.def?.sig?.kind === 'volt' && m.volt >= (m.def.sig.voltMax ?? 3)) out.push('volt');
   return out;
 }
 
@@ -119,8 +124,16 @@ function card(c, r, world, m, idx, x, y, w, dpr) {
   const nsz = fit(c, m.name.toUpperCase(), 7, x + w - pad - tx, dpr);
   text(c, m.name.toUpperCase(), tx, y + 15 * dpr, nsz, ELEMENT_COLOR[m.element], 'left', dpr);
   text(c, `${ELEMENT_NAME[m.element]} · Est.${m.stage}${m.evolved ? ' ★' : m.canEvolve ? ' PRONTO' : ''}`, x + pad, y + 28 * dpr, 5, m.canEvolve ? '#e8b8ff' : '#aa9', 'left', dpr);
-  text(c, `${Math.ceil(Math.max(0, m.hp))}/${m.maxHp}`, x + w - pad, y + 28 * dpr, 5, '#fff', 'right', dpr);
+  const shielded = m.alive && m.status.shield > 0 && m.shieldHp > 0;
+  text(c, `${Math.ceil(Math.max(0, m.hp))}${shielded ? `+${Math.ceil(m.shieldHp)}` : `/${m.maxHp}`}`, x + w - pad, y + 28 * dpr, 5, shielded ? '#8fd8ff' : '#fff', 'right', dpr);
   bar(c, x + pad, y + 32 * dpr, w - pad * 2, 6 * dpr, m.hp / m.maxHp, st.lagHp / m.maxHp, TEAM_COLOR[m.team], dpr);
+  if (shielded) {
+    // Escudo: faixa azul sobre a barra de vida (proporcional à vida máxima) + contorno enquanto durar.
+    c.fillStyle = '#8fd8ff';
+    c.fillRect(x + pad, y + 32 * dpr, (w - pad * 2) * Math.min(1, m.shieldHp / m.maxHp), 2 * dpr);
+    c.strokeStyle = '#8fd8ff'; c.lineWidth = dpr;
+    c.strokeRect(x + pad - dpr, y + 32 * dpr - dpr, w - pad * 2 + 2 * dpr, 6 * dpr + 2 * dpr);
+  }
   // Energia de evolução (persiste no banco); estrela quando já evoluiu.
   if (m.alive && m.def.evolvesTo && !m.evolved) {
     c.fillStyle = '#1e1428';
@@ -178,6 +191,10 @@ function sigGauge(world, m) {
       if (st.cloak > 0) return { label: `CAMUFLADO ${st.cloak.toFixed(1)}s`, k: st.cloak / 2.2, color: SIG_COLOR.decoy, blink: true };
       return { label: n ? `CÓPIAS EM CAMPO: ${n}` : 'CÓPIAS: esquive ou use Q', k: Math.min(1, n / 3), color: SIG_COLOR.decoy };
     }
+    case 'volt': {
+      const max = sig.voltMax ?? 3, n = m.volt || 0;
+      return { label: n >= max ? `ELETRIZADO! ${n}/${max} (E descarrega)` : `CARGAS ${n}/${max}`, k: n / max, color: SIG_COLOR.volt, blink: n >= max };
+    }
     case 'marks': {
       const foe = world.monsters.find((o) => o.alive && o.marks?.by === m.id && o.marks.n > 0);
       const n = foe ? foe.marks.n : 0;
@@ -205,7 +222,8 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
   const px = x - 132 * dpr, lw = 120 * dpr;
   text(c, m.name.toUpperCase(), px, y + 9 * dpr, fit(c, m.name.toUpperCase(), 7, lw, dpr), ELEMENT_COLOR[m.element], 'left', dpr);
   bar(c, px, y + 13 * dpr, lw, 7 * dpr, m.hp / m.maxHp, m.hp / m.maxHp, TEAM_COLOR[m.team], dpr);
-  text(c, `${Math.ceil(m.hp)}/${m.maxHp}`, px + lw, y + 9 * dpr, 5, '#fff', 'right', dpr);
+  if (m.status.shield > 0 && m.shieldHp > 0) { c.fillStyle = '#8fd8ff'; c.fillRect(px, y + 13 * dpr, lw * Math.min(1, m.shieldHp / m.maxHp), 3 * dpr); }
+  text(c, `${Math.ceil(m.hp)}${m.status.shield > 0 && m.shieldHp > 0 ? `+${Math.ceil(m.shieldHp)}` : `/${m.maxHp}`}`, px + lw, y + 9 * dpr, 5, m.status.shield > 0 && m.shieldHp > 0 ? '#8fd8ff' : '#fff', 'right', dpr);
   // Medidor da mecânica própria (Fornalha, Ímpeto, Casco, Sentinelas, Cópias, Marcas).
   const gge = sigGauge(world, m);
   if (gge) {
@@ -214,6 +232,12 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     c.fillStyle = '#100a08'; c.fillRect(px - dpr, y + 33 * dpr, lw + 2 * dpr, 6 * dpr);
     c.fillStyle = '#2a201a'; c.fillRect(px, y + 34 * dpr, lw, 4 * dpr);
     c.fillStyle = blink ? '#ffffff' : gge.color; c.fillRect(px, y + 34 * dpr, lw * Math.max(0, Math.min(1, gge.k)), 4 * dpr);
+  }
+  // Quebra de combo: pronta (energia + recarga) ou quanto falta.
+  {
+    const ok = m.breakCd <= 0 && m.energy >= COMBO_BREAK.cost;
+    const s = m.breakCd > 0 ? `COMBO ${Math.ceil(m.breakCd)}s` : ok ? 'COMBO PRONTO' : 'COMBO: SEM ENERGIA';
+    text(c, s, px + lw, y + 30 * dpr, 4.5, ok ? '#ffb04a' : '#776a5a', 'right', dpr);
   }
   // Status atuais do seu monstro, com nome (fácil de ler).
   const sts = statusList(m);
@@ -290,6 +314,82 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
   }
 }
 
+// Aviso de Quebra de Combo: aparece quando o seu monstro está atordoado ou no ar.
+function comboPrompt(c, world, x, y, dpr) {
+  const m = world.active;
+  if (!m || world.over || !(m.status.stun > 0.1 || m.lift > 0)) return;
+  let s, col;
+  if (world.canBreakCombo?.(m)) { s = 'ESPAÇO: QUEBRAR COMBO!'; col = Math.floor(performance.now() / 150) % 2 ? '#ffffff' : '#ffb04a'; }
+  else if (m.breakCd > 0) { s = `Quebra de combo em ${m.breakCd.toFixed(0)}s`; col = '#aa9'; }
+  else { s = `Quebra de combo: precisa de ${COMBO_BREAK.cost} de energia`; col = '#aa9'; }
+  text(c, s, x, y, 7, col, 'center', dpr);
+}
+
+// Todos-contra-todos: um painel por adversário no alto (nome na cor da vaga, os 3 monstros, eliminação e campeão).
+function ffaPanels(c, world, slots, x0, x1, y, dpr, oy) {
+  const n = slots.length, gap = 5 * dpr;
+  const pw = Math.min(150 * dpr, (x1 - x0 - gap * (n - 1)) / n), ph = Math.min(66 * dpr, oy - 2 * y);
+  const startX = x1 - (pw * n + gap * (n - 1));
+  slots.forEach((slot, k) => {
+    const x = startX + k * (pw + gap);
+    const side = world.teams[slot].side, col = TEAM_COLOR[side];
+    const mons = world.teamOf(slot);
+    const out = world.elim.some((e) => e.side === side), champ = world.over && world.winner === side;
+    const alive = mons.filter((m) => m.alive).length;
+    c.globalAlpha = out ? 0.5 : 1;
+    c.fillStyle = 'rgba(20,14,12,0.88)'; c.fillRect(x, y, pw, ph);
+    c.fillStyle = col; c.fillRect(x, y, pw, 3 * dpr);
+    const nm = (world.slotNames?.[slot] || `Jogador ${slot + 1}`).toUpperCase();
+    text(c, nm.slice(0, 12), x + 4 * dpr, y + 13 * dpr, 5.5, col, 'left', dpr);
+    text(c, out ? 'ELIMINADO' : champ ? 'CAMPEÃO' : `${alive}/${mons.length}`, x + pw - 4 * dpr, y + 13 * dpr, 5, out ? '#ff6a6a' : champ ? '#ffe066' : '#bba', 'right', dpr);
+    const tw = (pw - 8 * dpr - 2 * 3 * dpr) / mons.length;
+    mons.forEach((m, i) => {
+      const tx = x + 4 * dpr + i * (tw + 3 * dpr), ty = y + 20 * dpr;
+      c.globalAlpha = (out ? 0.5 : 1) * (m.alive ? 1 : 0.35);
+      c.fillStyle = 'rgba(40,30,26,0.9)'; c.fillRect(tx, ty, tw, 24 * dpr);
+      c.fillStyle = ELEMENT_COLOR[m.element]; c.fillRect(tx, ty, tw, 2 * dpr);
+      c.fillStyle = col; c.fillRect(tx + dpr, ty + 18 * dpr, (tw - 2 * dpr) * Math.max(0, m.hp / m.maxHp), 4 * dpr);
+      if (m.alive && m.status.shield > 0 && m.shieldHp > 0) { c.fillStyle = '#8fd8ff'; c.fillRect(tx + dpr, ty + 16 * dpr, (tw - 2 * dpr) * Math.min(1, m.shieldHp / m.maxHp), 2 * dpr); }
+      text(c, m.name.slice(0, 6).toUpperCase(), tx + 2 * dpr, ty + 11 * dpr, 4, '#e8dcc0', 'left', dpr);
+      if (m.onField && m.alive) { c.strokeStyle = '#ffe066'; c.lineWidth = dpr; c.strokeRect(tx, ty, tw, 24 * dpr); }
+    });
+    c.globalAlpha = out ? 0.5 : 1;
+    const f = world.teams[slot].field;
+    const sts = f && f.alive ? statusList(f).slice(0, 4) : [];
+    let sx = x + 4 * dpr;
+    for (const k2 of sts) { statusIcon(c, k2, sx, y + 49 * dpr, 7 * dpr); sx += 8 * dpr; }
+    const kos = mons.reduce((a, m) => a + (m.stats.kos || 0), 0);
+    text(c, `KO ${kos}`, x + pw - 4 * dpr, y + 58 * dpr, 4.5, '#bba', 'right', dpr);
+    c.globalAlpha = 1;
+    if (out) { c.strokeStyle = 'rgba(255,90,90,0.8)'; c.lineWidth = 2 * dpr; c.beginPath(); c.moveTo(x + 2 * dpr, y + ph - 2 * dpr); c.lineTo(x + pw - 2 * dpr, y + 2 * dpr); c.stroke(); }
+  });
+}
+
+// Fim do todos-contra-todos: classificação completa com cor, nome, abates e dano.
+function ffaEnd(c, world, mid, oy, aw, ah, dpr) {
+  const rows = world.standings();
+  const mine = world.playerTeam, mySide = mine === null ? null : world.teams[mine].side;
+  const myRow = rows.find((q) => q.side === mySide);
+  const draw = world.winner === -1;
+  const winRow = rows.find((q) => q.side === world.winner);
+  const title = draw ? 'EMPATE' : mySide === null ? `VITÓRIA DE ${world.sideName(world.winner).toUpperCase()}` : myRow?.rank === 1 ? 'VITÓRIA!' : `${myRow?.rank}º LUGAR`;
+  const bw = Math.min(aw * 0.85, 440 * dpr), bh = 170 * dpr, cy = oy + ah * 0.42;
+  c.fillStyle = 'rgba(16,10,8,0.9)'; c.fillRect(mid - bw / 2, cy - bh / 2, bw, bh);
+  c.fillStyle = winRow ? TEAM_COLOR[winRow.side] : '#fff'; c.fillRect(mid - bw / 2, cy - bh / 2, bw, 3 * dpr);
+  text(c, title, mid, cy - bh / 2 + 26 * dpr, 14, myRow?.rank === 1 || mySide === null ? '#ffe066' : '#ff9a8a', 'center', dpr);
+  let ly = cy - bh / 2 + 50 * dpr;
+  for (const q of rows) {
+    const slot = q.slots[0], col = TEAM_COLOR[q.side];
+    c.fillStyle = col; c.fillRect(mid - bw / 2 + 14 * dpr, ly - 8 * dpr, 6 * dpr, 9 * dpr);
+    text(c, `${q.rank}º`, mid - bw / 2 + 28 * dpr, ly, 7, q.rank === 1 && !draw ? '#ffe066' : '#d8ccb0', 'left', dpr);
+    const nm = (world.slotNames?.[slot] || `Jogador ${slot + 1}`) + (q.side === mySide ? ' (você)' : '');
+    text(c, nm.slice(0, 18), mid - bw / 2 + 56 * dpr, ly, 6.5, col, 'left', dpr);
+    text(c, `${q.kos} KO · ${q.dmg} dano${q.alive ? ' · CAMPEÃO' : ''}`, mid + bw / 2 - 12 * dpr, ly, 5.5, '#d8ccb0', 'right', dpr);
+    ly += 17 * dpr;
+  }
+  text(c, `Duração ${world.endTime.toFixed(0)}s · ${world.arenaDef.name}`, mid, cy + bh / 2 - 8 * dpr, 5, '#ccb', 'center', dpr);
+}
+
 export function drawHud(c, r, world, ui) {
   const dpr = ui.dpr * (r.hudScale || 1); // unidade de interface = pixels do dispositivo × escala da janela
   const H = c.canvas.height;
@@ -300,33 +400,42 @@ export function drawHud(c, r, world, ui) {
   const slots = world.teams.map((_, i) => i);
   const foeSlots = slots.filter((i) => world.teams[i].side !== mySide);
   const mateSlots = slots.filter((i) => world.teams[i].side === mySide && i !== myTeam);
+  const ffa = !!world.ffa;
   const left = world.teamOf(myTeam), right = world.teamOf(foeSlots[0]);
-  const cw = Math.min(118 * dpr, (aw - 150 * dpr) / 6 - 4 * dpr);
+  const cw = Math.min(118 * dpr, (aw - 150 * dpr) / (ffa ? 8 : 6) - 4 * dpr);
   left.forEach((m, k) => card(c, r, world, m, k, ox + k * (cw + 4 * dpr), 6 * dpr, cw, dpr));
-  right.forEach((m, k) => card(c, r, world, m, k, ox + aw - (k + 1) * cw - k * 4 * dpr, 6 * dpr, cw, dpr));
+  if (ffa) ffaPanels(c, world, foeSlots, ox + aw / 2 + 62 * dpr, ox + aw, 6 * dpr, dpr, oy);
+  else right.forEach((m, k) => card(c, r, world, m, k, ox + aw - (k + 1) * cw - k * 4 * dpr, 6 * dpr, cw, dpr));
   // 2v2: parceiro e segundo adversário aparecem em miniatura no alto da arena.
   const mini = (slot, x0, align) => {
     const mons = world.teamOf(slot);
     const name = world.slotNames?.[slot];
-    const w = 30 * dpr, gap = 3 * dpr;
+    const w = 44 * dpr, gap = 3 * dpr;
     const total = mons.length * w + (mons.length - 1) * gap;
     let x = align === 'left' ? x0 : x0 - total;
     if (name) text(c, name, align === 'left' ? x : x0, oy + 8 * dpr, 5, TEAM_COLOR[world.teams[slot].side], align, dpr);
     for (const m of mons) {
       c.globalAlpha = m.alive ? 1 : 0.35;
       c.fillStyle = 'rgba(20,14,12,0.85)';
-      c.fillRect(x, oy + 11 * dpr, w, 9 * dpr);
+      c.fillRect(x, oy + 11 * dpr, w, 15 * dpr);
       c.fillStyle = ELEMENT_COLOR[m.element];
       c.fillRect(x, oy + 11 * dpr, w, 2 * dpr);
       c.fillStyle = TEAM_COLOR[world.teams[slot].side];
-      c.fillRect(x + dpr, oy + 15 * dpr, (w - 2 * dpr) * Math.max(0, m.hp / m.maxHp), 4 * dpr);
-      if (m.onField && m.alive) { c.strokeStyle = '#ffe066'; c.lineWidth = dpr; c.strokeRect(x, oy + 11 * dpr, w, 9 * dpr); }
+      c.fillRect(x + dpr, oy + 20 * dpr, (w - 2 * dpr) * Math.max(0, m.hp / m.maxHp), 4 * dpr);
+      if (m.alive && m.status.shield > 0 && m.shieldHp > 0) { c.fillStyle = '#8fd8ff'; c.fillRect(x + dpr, oy + 18 * dpr, (w - 2 * dpr) * Math.min(1, m.shieldHp / m.maxHp), 2 * dpr); }
+      if (m.alive) text(c, m.name.slice(0, 7).toUpperCase(), x + 2 * dpr, oy + 18 * dpr, 4, '#e8dcc0', 'left', dpr);
+      if (m.onField && m.alive) {
+        c.strokeStyle = '#ffe066'; c.lineWidth = dpr; c.strokeRect(x, oy + 11 * dpr, w, 15 * dpr);
+        // Status do parceiro/adversário em campo (atordoado, preso, queimando...): pontinhos coloridos.
+        let sx = x + w - 3 * dpr;
+        for (const k of statusList(m).slice(0, 4)) { statusIcon(c, k, sx - 6 * dpr, oy + 12 * dpr, 6 * dpr); sx -= 7 * dpr; }
+      }
       x += w + gap;
     }
     c.globalAlpha = 1;
   };
   mateSlots.forEach((sl) => mini(sl, ox + 4 * dpr, 'left'));
-  if (foeSlots[1] !== undefined) mini(foeSlots[1], ox + aw - 4 * dpr, 'right');
+  if (!ffa && foeSlots[1] !== undefined) mini(foeSlots[1], ox + aw - 4 * dpr, 'right');
 
   const mid = ox + aw / 2;
   const tm = world.over ? world.endTime : world.time;
@@ -337,6 +446,9 @@ export function drawHud(c, r, world, ui) {
     const mt = meter(world);
     text(c, `TREINO · dano 5s ${Math.round(mt.sum)} · ${mt.dps.toFixed(1)}/s`, mid, 36 * dpr, 6, '#d8c08a', 'center', dpr);
     if (mt.last) text(c, `último golpe ${mt.last.toFixed(1)}`, mid, 62 * dpr, 5, '#bba', 'center', dpr);
+  } else if (ffa) {
+    const left4 = world.sideIds().filter((sd) => aliveSide(sd) > 0).length;
+    text(c, `${left4} JOGADOR${left4 === 1 ? '' : 'ES'} EM PÉ`, mid, 36 * dpr, 6, '#ffe9b0', 'center', dpr);
   } else text(c, `${aliveSide(mySide)} × ${aliveSide(1 - mySide)}`, mid, 36 * dpr, 6, '#ffe9b0', 'center', dpr);
   if (world.suddenDeath && !world.over) text(c, 'MORTE SÚBITA · sem cura', mid, 62 * dpr, 5, Math.floor(performance.now() / 400) % 2 ? '#ff6a6a' : '#ffb0b0', 'center', dpr);
   else if (world.time >= 130 && !world.over && !world.training) text(c, `Morte súbita em ${Math.ceil(150 - world.time)}s`, mid, 62 * dpr, 5, '#ffb070', 'center', dpr);
@@ -364,14 +476,16 @@ export function drawHud(c, r, world, ui) {
   c.globalAlpha = 1;
 
   if (world.playerTeam !== null) abilityBar(c, world, ox, aw, oy + ah + 8 * dpr, dpr, r);
+  comboPrompt(c, world, mid, oy + ah * 0.78, dpr);
   const help = world.training
     ? 'TREINO · T painel (bonecos, tiros, recargas, forma base) · B nº de bonecos · G evoluir · H ajuda · 1/2/3 trocar · Esc menu'
     : world.playerTeam !== null
-    ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 trocar · G evoluir · H ajuda · P pausar'
+    ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 trocar · G evoluir · H ajuda · P pausar · preso? Espaço quebra o combo'
     : 'MODO ESPECTADOR · P pausar · I visão da IA';
   const hsz = fit(c, help, 5, aw, dpr);
   text(c, help, mid, H - 6 * dpr, hsz, '#887', 'center', dpr);
 
+  if (world.over && ffa) { ffaEnd(c, world, mid, oy, aw, ah, dpr); return; }
   if (world.over) {
     const mine = world.playerTeam;
     const draw = world.winner === -1;

@@ -269,6 +269,21 @@ export class Brain {
 
   reactToThreats() {
     const m = this.m, w = this.w;
+    // Quebra de combo: preso e com energia, a IA tenta se libertar (uma decisão por atordoamento).
+    if (m.status.stun <= 0) m._breakRolled = false;
+    else if (!m._breakRolled && !m.controller && w.canBreakCombo(m) && m.status.stun >= 0.3) {
+      m._breakRolled = true;
+      if (w.rng() < 0.35 + this.p.dodgeSkill * 0.5) { w.breakCombo(m); return; }
+    }
+    // Suporte: Casca Viva veste você e o parceiro com redução de dano + cura. Usa quando alguém do time
+    // está apanhando (ferido e com inimigo perto) ou quando o parceiro entra em luta de perto.
+    const bark = m.def.abilities.find((ab) => ab.bark);
+    if (bark && !m.action && m.ready(bark.id) && !m.controller && !w.suddenDeath) {
+      const crowd = [m, ...w.alliesOf(m)].filter((t) => t.alive && Math.hypot(t.x - m.x, t.y - m.y) <= bark.bark.range);
+      const pressed = (t) => w.enemiesOf(t).some((e) => Math.hypot(e.x - t.x, e.y - t.y) < (t === m ? 90 : 120));
+      const need = crowd.some((t) => (t.hp < t.maxHp * (t === m ? 0.6 : 0.8) && pressed(t)) || (t !== m && pressed(t) && t.hp < t.maxHp * 0.95));
+      if (need) { m.cast(w, bark, { aim: m.facing, purpose: 'support' }); return; }
+    }
     const th = this.threats[0];
     if (!th || m.action) return;
     const dir = this.evadeDirection(th);
@@ -494,6 +509,8 @@ export class Brain {
     if (p.slow && this.m.element !== 'plant') c += 0.12;
     if (p.water) c += this.p.waterCost;
     else if (tr.wet[i] > 0) c += this.p.wetCost;
+    // Solo eletrificado inimigo (rastros e Julgamento do Trovão).
+    for (const z of this.w.zones) if (z.team !== this.m.team && Math.hypot(x - z.x, y - z.y) < z.r + 4) { c += 0.9; break; }
     return c;
   }
 

@@ -14,11 +14,12 @@ const WHITE = rgba('#ffffff');
 const FACES = {
   fire_1: -1, fire_2: 0, fire_3: 0,
   water_1: 1, water_2: 0, water_3: 0,
-  plant_1: -1, plant_2: 0, plant_3: 0,
+  plant_1: 1, plant_2: 0, plant_3: 0, // plant_1: Brotossauro redesenhado (tools/pixelart) olha para a direita
   hedgehog_1: 1, hedgehog_3: 1,
   octo_1: 0, octo_3: 0,
   mantis_1: 1, mantis_3: -1, // Silvamante: cabeça e garras à esquerda, folhas para trás
   brawler_1: 1, brawler_3: 1, // Pugilar e Lutapacho olham para a direita
+  cat_1: 1, cat_3: 0, // Raiolua (de lado) e Trovogato (de frente)
 };
 
 function classify(r, g, b) {

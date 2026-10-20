@@ -1,26 +1,32 @@
-import { WORLD_W, WORLD_H, TILE, COLS, SWITCH, EVOLUTION } from '../config.js';
+import { WORLD_W, WORLD_H, TILE, COLS, SWITCH, EVOLUTION, FFA_COLORS } from '../config.js';
 import { hash2, valueNoise, clamp } from '../core/math.js';
 import { props } from '../sim/tiles.js';
 import { PixelBuf, rgba, makeCanvas } from './pixel.js';
 import { drawBrasalisco, drawHidrocasco, drawBrotossauro, drawDummy, rockSprite, crateSprite, bushSprite, stumpSprite } from './sprites.js';
 import { ArtSprites } from './artsprites.js';
+import * as EF from './electricfx.js';
 import { paintTile, paintWalls, paletteFor } from './terrainpaint.js';
 import { pillarSprite, rootSprite, lighthouseSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient, sentrySprite } from './scenery.js';
 import { Particles } from './particles.js';
 import { drawHud } from './hud.js';
 
 const SPRITE_FN = { brasalisco: drawBrasalisco, hidrocasco: drawHidrocasco, brotossauro: drawBrotossauro, dummy: drawDummy };
-export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3'];
-const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890' };
-export const TEAM_COLOR = ['#ffd23a', '#ff4a5a'];
+export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3'];
+const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890', electric: '#bff6ff' };
+export const TEAM_COLOR = ['#ffd23a', '#ff4a5a', '#46b4ff', '#7ad84a'];
 // Cor do seu lado é sempre dourada (no online, quem joga no lado B vê as cores trocadas).
-export function setPerspective(side) { TEAM_COLOR[0] = side === 0 ? '#ffd23a' : '#ff4a5a'; TEAM_COLOR[1] = side === 0 ? '#ff4a5a' : '#ffd23a'; }
-export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', neutral: '#d8c08a' };
+// 1v1/2v2: o seu lado é sempre dourado. Todos-contra-todos: cor fixa por vaga (a mesma para todos os jogadores).
+export function setPerspective(side, ffa = false) {
+  if (ffa) { for (let i = 0; i < 4; i++) TEAM_COLOR[i] = FFA_COLORS[i]; return; }
+  TEAM_COLOR[0] = side === 0 ? '#ffd23a' : '#ff4a5a'; TEAM_COLOR[1] = side === 0 ? '#ff4a5a' : '#ffd23a';
+  TEAM_COLOR[2] = TEAM_COLOR[0]; TEAM_COLOR[3] = TEAM_COLOR[1];
+}
+export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', neutral: '#d8c08a' };
 const ROOT = [rgba('#4a2e16'), rgba('#6e4624'), rgba('#94653a'), rgba('#5aa83c'), rgba('#84c858')];
 const FLAME = ['#fff7c2', '#ffd84a', '#ff9a1f', '#f2541b', '#b3200f'].map((h) => rgba(h));
 const EMBER = [rgba('#7a1e0a', 200), rgba('#b3300f', 220), rgba('#e0561a', 230), rgba('#ff8a2a', 240)];
 // Cores das mecânicas próprias (usadas no mundo e no HUD).
-export const SIG_COLOR = { heat: '#ff9a3a', overheat: '#ffd84a', exhaust: '#9a8a7a', momentum: '#ffe066', guard: '#8fd8ff', sentry: '#9ae070', decoy: '#b8a0ff', marks: '#b4f08a' };
+export const SIG_COLOR = { heat: '#ff9a3a', overheat: '#ffd84a', exhaust: '#9a8a7a', momentum: '#ffe066', guard: '#8fd8ff', sentry: '#9ae070', decoy: '#b8a0ff', marks: '#b4f08a', volt: '#8fe8ff' };
 
 
 function glowSprite(color, size = 32) {
@@ -72,6 +78,7 @@ export class Renderer {
     this.nums = [];
     this.texts = [];
     this.rings = [];
+    this.bolts = []; // raios desenhados por alguns quadros: { x0, y0, x1, y1, life, w, jag }
     this.shake = 0;
     this.hitstop = 0;
     this.excite = 0.2;
@@ -232,6 +239,82 @@ export class Renderer {
           break;
         case 'grow':
           P.burst(e.x, e.y, e.big ? 12 : 3, { ramp: 'leaf', speed: e.big ? 50 : 20, life: 0.5, vz: 25, g: 80 });
+          break;
+        case 'comboBreak':
+          P.burst(e.x, e.y - 6, 22, { ramp: 'dust', speed: 110, life: 0.45, vz: 40 });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r + 10, t: 0, color: '#ffe066', thick: true });
+          this.addText({ x: e.x, y: e.y - 34, text: 'QUEBRA DE COMBO!', t: 0, color: '#ffe066' });
+          this.shake = Math.max(this.shake, 2);
+          break;
+        case 'lifePulse':
+          P.burst(e.x, e.y, 22, { ramp: 'leaf', speed: 70, life: 0.7, vz: 40, g: 40 });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r, t: 0, color: '#9af27a', thick: true });
+          break;
+        // ───── Brotossauro: Casca Viva, flores carnívoras ─────
+        case 'barkUp':
+          P.burst(e.x, e.y - 6, 14, { ramp: 'wood', speed: 50, life: 0.6, vz: 50, g: 120 });
+          P.burst(e.x, e.y - 6, 12, { ramp: 'leaf', speed: 40, life: 0.8, vz: 40, g: 40 });
+          this.rings.push({ x: e.x, y: e.y - 4, r: 18, max: 3, t: 0, color: '#a8743e', thick: true });
+          if (e.x0 !== undefined) this.vines = [...(this.vines || []), { x0: e.x0, y0: e.y0, m: e.m, life: 0.6 }];
+          this.addText({ x: e.x, y: e.y - 32, text: e.self ? 'CASCA VIVA' : 'PROTEGIDO!', t: 0, color: '#c8f08a' });
+          break;
+        case 'sentryBite':
+          P.burst(e.tx, e.ty - 4, 8, { ramp: 'leaf', speed: 50, life: 0.35 });
+          this.rings.push({ x: e.tx, y: e.ty - 4, r: 7, max: 1, t: 0, color: '#ff6fae', thick: true });
+          this.addText({ x: e.tx, y: e.ty - 24, text: 'NHAC!', t: 0, color: '#ff8ab8' });
+          break;
+        // ───── Elétrico ─────
+        case 'zap':
+          this.bolts.push({ x0: e.x0, y0: e.y0, x1: e.x, y1: e.y, life: e.small ? 0.06 : 0.12, w: e.small ? 0 : 1, jag: e.small ? 2 : 4 });
+          break;
+        case 'sparkPop':
+          P.burst(e.x, e.y, e.big ? 12 : 6, { ramp: 'volt', speed: 70, life: 0.25, add: true });
+          break;
+        case 'thunder': {
+          // Raio do céu: 2-3 traços grossos, clarão, anel e faíscas; o grande treme a tela.
+          const H = e.big ? 140 : 110;
+          for (let k = 0; k < (e.big ? 3 : 2); k++) this.bolts.push({ x0: e.x + (Math.random() - 0.5) * 30, y0: e.y - H, x1: e.x + (Math.random() - 0.5) * e.r * 0.4, y1: e.y, life: 0.16 + k * 0.05, w: 1, jag: 7 });
+          P.burst(e.x, e.y, e.big ? 40 : 26, { ramp: 'volt', speed: 120, life: 0.45, add: true, vz: 70 });
+          P.burst(e.x, e.y, 10, { ramp: 'dust', speed: 60, life: 0.5, vz: 40 });
+          this.rings.push({ x: e.x, y: e.y, r: 3, max: e.r + 6, t: 0, color: '#d8fbff', thick: true });
+          this.shake = Math.max(this.shake, e.big ? 7 : 4.5);
+          this.flash = Math.max(this.flash, e.big ? 0.14 : 0.09);
+          this.hitstop = Math.max(this.hitstop, 0.05);
+          this.excite = 1;
+          break;
+        }
+        case 'shockPull': {
+          // Descarga em volta: anel que se fecha (puxa) + raios até cada alvo.
+          this.rings.push({ x: e.x, y: e.y - 4, r: e.r, max: 4, t: 0, color: '#8fe8ff', thick: true });
+          this.rings.push({ x: e.x, y: e.y - 4, r: e.r * 0.7, max: 4, t: 0, color: '#ffffff' });
+          for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + Math.random(); this.bolts.push({ x0: e.x, y0: e.y - 6, x1: e.x + Math.cos(a) * e.r * 0.8, y1: e.y + Math.sin(a) * e.r * 0.6, life: 0.12, w: 0, jag: 4 }); }
+          P.burst(e.x, e.y - 4, 18 + e.n * 6, { ramp: 'volt', speed: 90, life: 0.35, add: true });
+          this.addText({ x: e.x, y: e.y - 34, text: e.n ? `${e.big ? 'SOBRECARGA' : '110V'} ×${e.n}` : e.big ? 'SOBRECARGA' : '110V', t: 0, color: '#8fe8ff', big: e.n >= 3 });
+          this.shake = Math.max(this.shake, 2.5 + e.n);
+          break;
+        }
+        case 'overload':
+          for (let k = 0; k < 8 + e.n * 2; k++) { const a = k / (8 + e.n * 2) * Math.PI * 2; this.bolts.push({ x0: e.x, y0: e.y - 6, x1: e.x + Math.cos(a) * e.r, y1: e.y - 6 + Math.sin(a) * e.r * 0.8, life: 0.18, w: 1, jag: 5 }); }
+          this.rings.push({ x: e.x, y: e.y - 4, r: 4, max: e.r + 4, t: 0, color: '#ffffff', thick: true });
+          P.burst(e.x, e.y - 6, 30 + e.n * 8, { ramp: 'volt', speed: 140, life: 0.5, add: true, size: 2 });
+          this.flash = Math.max(this.flash, 0.08 + e.n * 0.02);
+          this.shake = Math.max(this.shake, 4 + e.n);
+          break;
+        case 'shockBurst':
+          this.bolts.push({ x0: e.x - 10, y0: e.y - 10, x1: e.x + 10, y1: e.y + 6, life: 0.12, w: 1, jag: 3 });
+          this.bolts.push({ x0: e.x + 10, y0: e.y - 10, x1: e.x - 10, y1: e.y + 6, life: 0.12, w: 1, jag: 3 });
+          P.burst(e.x, e.y, 14, { ramp: 'volt', speed: 90, life: 0.3, add: true });
+          this.addText({ x: e.x, y: e.y - 26, text: 'CONDUZIU!', t: 0, color: '#d8fbff' });
+          break;
+        case 'thunderLand':
+          for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2; this.bolts.push({ x0: e.x, y0: e.y - 2, x1: e.x + Math.cos(a) * e.r, y1: e.y + Math.sin(a) * e.r * 0.6, life: 0.12, w: 0, jag: 3 }); }
+          this.rings.push({ x: e.x, y: e.y, r: 3, max: e.r, t: 0, color: '#8fe8ff', thick: true });
+          P.burst(e.x, e.y, 16, { ramp: 'volt', speed: 80, life: 0.35, add: true });
+          this.shake = Math.max(this.shake, 2.5);
+          break;
+        case 'voltFull':
+          this.addText({ x: e.x, y: e.y - 34, text: 'ELETRIZADO!', t: 0, color: '#ffe24a' });
+          P.burst(e.x, e.y - 8, 16, { ramp: 'volt', speed: 70, life: 0.4, add: true });
           break;
         case 'wither':
           P.burst(e.x, e.y, 10, { ramp: 'leafFall', speed: 30, life: 0.8, vz: 20, g: 60 });
@@ -482,6 +565,25 @@ export class Renderer {
   }
 
   // Texto flutuante sem poluir: o mesmo aviso no mesmo lugar não se repete em sequência e há no máximo 7 na tela.
+  // Eliminação no todos-contra-todos: detectada pela lista `elim` do mundo (vale também no espelho online).
+  elimFx(world) {
+    const n = world.elim?.length || 0;
+    if (this._elimWorld !== world) { this._elimWorld = world; this._elimN = n; return; }
+    for (; this._elimN < n; this._elimN++) {
+      const e = world.elim[this._elimN];
+      const ms = world.roster.filter((m) => m.team === e.side);
+      const m = ms.find((q) => q.onField) || ms[0];
+      if (!m) continue;
+      const col = TEAM_COLOR[e.side];
+      this.rings.push({ x: m.x, y: m.y, r: 4, max: 46, t: 0, color: col, thick: true });
+      this.rings.push({ x: m.x, y: m.y, r: 2, max: 28, t: 0, color: '#ffffff', thick: true });
+      this.particles.burst(m.x, m.y, 30, { ramp: 'dust', speed: 110, life: 0.8, vz: 80, g: 200 });
+      this.addText({ x: m.x, y: m.y - 38, text: `${world.sideName?.(e.side) || 'JOGADOR'} ELIMINADO!`.toUpperCase(), t: 0, color: col, big: true });
+      this.shake = Math.max(this.shake, 4);
+      this.flash = Math.max(this.flash, 0.1);
+    }
+  }
+
   addText(o) {
     for (const t of this.texts) if (t.text === o.text && t.t < 0.45 && Math.abs(t.x - o.x) < 24 && Math.abs(t.y - o.y) < 24) return;
     // Avisos próximos sobem um pouco para não sobrepor.
@@ -495,6 +597,7 @@ export class Renderer {
     this.time += dt;
     const t = this.time;
     this.consume(world.drainEvents());
+    this.elimFx(world);
     if (world.terrain.dirty.size) this.paintBase(false);
     this.particles.update(dt);
     this.shake *= Math.exp(-10 * dt);
@@ -513,6 +616,7 @@ export class Renderer {
     this.fxT.clear();
     this.drawTerrainFx(world, t);
     for (const h of world.hazards) drawHazard(h, this.fxG, this.fxT, t, this.dotCircle.bind(this));
+    for (const z of world.zones || []) EF.drawZone(this.fxG, z, t);
     this.toDrawn(world, alpha, true);
     this.drawTelegraphs(world, t);
     this.drawGroundAbilityFx(world, t, dt);
@@ -545,6 +649,21 @@ export class Renderer {
     this.drawGlow(world, t);
     this.particles.draw(l, true);
     this.drawRings(dt);
+    // Raios (eventos) e cipós da Casca Viva ligando o Brotossauro ao parceiro.
+    for (const b of this.bolts) { b.life -= dt; EF.bolt(this.fxT, b.x0, b.y0, b.x1, b.y1, Math.floor(t * 40) + (b.x0 | 0), { width: b.w, jag: b.jag }); }
+    this.bolts = this.bolts.filter((b) => b.life > 0);
+    if (this.vines) {
+      for (const v of this.vines) {
+        v.life -= dt;
+        const n = 20;
+        for (let q = 0; q <= n; q++) {
+          if (q / n > 1 - v.life / 0.6 + 0.6) continue;
+          const k = q / n, x = v.x0 + (v.m.x - v.x0) * k, y = v.y0 + (v.m.y - v.y0) * k - Math.sin(Math.PI * k) * 14 + Math.sin(k * 20 + t * 10) * 1.5;
+          this.fxT.set(x, y - 6, rgba(q % 3 ? '#5aa83c' : '#9be862'));
+        }
+      }
+      this.vines = this.vines.filter((v) => v.life > 0);
+    }
     for (const m of world.monsters) this.drawOverhead(m, alpha, dt);
     for (const d of world.decoys) this.drawDecoyOverhead(d, alpha);
     this.drawSlashes(dt);
@@ -724,6 +843,7 @@ export class Renderer {
       const k = p.t / p.flight;
       if (p.kind === 'sentrySeed') continue;
       if (p.kind === 'roots') { this.drawRootRune(g, p.tx, p.ty, p.radius, k, t); continue; }
+      if (p.kind === 'thunder') { EF.drawThunderMark(g, p, t, this.dotCircle.bind(this)); continue; }
       if (p.kind === 'bubble') {
         const c = rgba(Math.floor(t * 12) % 2 ? '#e8f8ff' : '#5ab4ff', 230);
         this.dotCircle(g, p.tx, p.ty, p.radius, c, t * 3, 3);
@@ -903,7 +1023,7 @@ export class Renderer {
       this.evolveParticles(m, evoK, t);
     }
     if (m.hitFlash > 0 && Math.floor(t * 30) % 2 === 0) pose.flash = true;
-    if (!m.alive) pose.tint = [m.element === 'fire' ? '#5a5250' : m.element === 'plant' ? '#6a7a4a' : '#9ac8e8', Math.min(0.8, m.deathT)];
+    if (!m.alive) pose.tint = [m.element === 'fire' ? '#5a5250' : m.element === 'plant' ? '#6a7a4a' : m.element === 'electric' ? '#5a6a8a' : '#9ac8e8', Math.min(0.8, m.deathT)];
     // Troca: saída vira um feixe de luz e some; entrada surge do feixe e cresce.
     let wScale = 1, hScale = 1, beam = 0;
     if (m.switchState === 'exiting') {
@@ -956,7 +1076,10 @@ export class Renderer {
     l.globalAlpha = fade * (m.status.invuln > 0 && Math.floor(t * 24) % 2 ? 0.55 : 1);
     // Camuflado (tinta): o inimigo quase não o vê; o próprio time vê translúcido.
     if (m.status.cloak > 0) l.globalAlpha *= this.isFoe(m) ? 0.12 + (Math.floor(t * 10) % 7 === 0 ? 0.12 : 0) : 0.45;
-    const lift = m.lift > 0 ? Math.sin(Math.PI * (1 - m.lift / m.liftMax)) * 18 : 0; // erguido no ar
+    let lift = m.lift > 0 ? Math.sin(Math.PI * (1 - m.lift / m.liftMax)) * 18 : 0; // erguido no ar
+    // Pulo do Gato / Instinto do Trovão: salto em arco (e uma cambalhota curta no gato pequeno).
+    const hopA = m.action && m.action.ab.hop && m.action.phase === 'active' ? m.action : null;
+    if (hopA) lift = Math.max(lift, Math.sin(Math.PI * Math.min(1, hopA.t / hopA.ab.active)) * (m.evolved ? 12 : 14));
     this.blitFrame(frame, x, y - lift, face, hScale, wScale, pose.spin ? pose.spin * 6 : 0);
     l.globalAlpha = 1;
     if (beam > 0.05) {
@@ -1011,10 +1134,23 @@ export class Renderer {
         g.set(Math.round(x + Math.cos(a) * R), Math.round(y - frame.top * 0.45 + Math.sin(a) * R * 0.95), c);
       }
     }
+    // Elétrico: cargas girando, faíscas no pelo; Trovogato com arcos saindo das mãos.
+    if (m.alive && m.element === 'electric') {
+      EF.drawVolt(this.fxT, m, x, y - lift, frame.top, t, m.def.sig?.voltMax ?? 3);
+      if (Math.random() < (m.evolved ? 0.5 : 0.22)) this.particles.add({ ramp: 'volt', x: x + (Math.random() - 0.5) * m.r * 2, y: y - lift, z: Math.random() * frame.top, vz: 10, life: 0.25, add: true });
+      if (m.evolved && Math.random() < 0.08) { const sd = Math.random() < 0.5 ? -1 : 1; this.bolts.push({ x0: x + sd * m.r * 0.7, y0: y - lift - frame.top * 0.45, x1: x + sd * (m.r + 6 + Math.random() * 6), y1: y - lift - frame.top * (0.3 + Math.random() * 0.5), life: 0.06, w: 0, jag: 2 }); }
+      if (dashing && Math.random() < 0.8) this.particles.add({ ramp: 'volt', x, y, z: 4, vx: -m.vx * 0.2, vy: -m.vy * 0.2, life: 0.3, add: true, size: 2 });
+    }
+    // Brotossauro: pétalas da cerejeira das costas caindo de vez em quando.
+    if (m.alive && m.def.key === 'brotossauro' && Math.random() < 0.06) this.particles.add({ ramp: 'petal', x: x + (Math.random() - 0.4) * m.r, y, z: frame.top * 0.9, vz: -6, vx: 8, life: 1.2 });
+    // Casca Viva (redução de dano) e seiva (lento).
+    if (m.alive && m.status.dr > 0) EF.drawBark(this.fxT, m, x, y, frame.top, t);
+    if (m.alive && m.status.slow > 0) EF.sapDrip(this.particles, x, y, m.r);
     // Auras permanentes das formas evoluídas.
     if (m.alive && m.evolved && Math.random() < 0.35) {
       if (m.element === 'fire') this.particles.add({ ramp: 'spark', x: x + (Math.random() - 0.5) * m.r * 2, y: y - Math.random() * frame.top, vz: 25, vy: -6, life: 0.7, add: true });
       else if (m.element === 'water') this.particles.add({ ramp: 'water', x: x + (Math.random() - 0.5) * m.r * 2.4, y, z: Math.random() * frame.top, vz: -4, life: 0.6 });
+      else if (m.element === 'electric') { /* aura própria acima */ }
       else this.particles.add({ ramp: 'leafFall', x: x + (Math.random() - 0.5) * m.r * 2.4, y, z: frame.top * 0.8, vz: -10, vx: 6, life: 1.2 });
     }
     if (m.alive && m.status.root > 0) {
@@ -1205,8 +1341,10 @@ export class Renderer {
         }
         g.set(x - ca * 3, y - sa * 3, S[3]);
         if (Math.random() < 0.5) this.particles.add({ ramp: 'leaf', x, y, vx: -p.vx * 0.08, vy: -p.vy * 0.08 + (Math.random() - 0.5) * 10, life: 0.35 });
-      } else if (p.kind === 'roots') {
+      } else if (p.kind === 'roots' || p.kind === 'thunder') {
         continue;
+      } else if (p.kind === 'spark' || p.kind === 'voltOrb') {
+        EF.drawSpark(g, p, x, y, t, this.particles);
       } else if (p.kind === 'waterBolt') {
         const W = [rgba('#ffffff'), rgba('#c8f0ff'), rgba('#5ab4ff'), rgba('#1f62c0')];
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {

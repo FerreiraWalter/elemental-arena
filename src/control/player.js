@@ -18,6 +18,8 @@ export class PlayerController {
     if (w.over) { m.move.throttle = 0; this.buffer.length = 0; return; }
     if (inp.presses.includes('evolve')) w.requestEvolve(m);
     if (m.locked) { m.move.throttle = 0; this.buffer.length = 0; return; } // trocando/evoluindo: sem ações
+    // Quebra de combo: a tecla de esquiva, enquanto preso, liberta o monstro (gasta energia de evolução).
+    if (inp.presses.includes('dodge') && w.canBreakCombo(m)) { w.breakCombo(m); inp.presses = inp.presses.filter((p) => p !== 'dodge'); this.buffer.length = 0; }
     const l = Math.hypot(inp.move.x, inp.move.y);
     m.move.x = l ? inp.move.x / l : 0;
     m.move.y = l ? inp.move.y / l : 0;

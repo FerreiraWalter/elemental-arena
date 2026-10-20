@@ -126,6 +126,9 @@ export const TACTICS = {
     return { score: s, lob: true, point: sentrySpot(c), purpose: 'terrain', target: c.t };
   },
   ancientSentry(c) { return TACTICS.plantSentry(c); },
+  // Casca Viva: usada por reação de suporte (Brain.reactToThreats).
+  barkGuard() { return null; },
+  ancientBark() { return null; },
   rootSnare(c) {
     if (c.d < 45 || c.d > 170 || c.sinceSeen > 0.8 || c.t.status.root > 0) return null;
     let s = 0.42;
@@ -351,6 +354,55 @@ export const TACTICS = {
     if (!c.vis || c.d < 40 || c.d > 135 || c.tGuarding) return null;
     return { score: 0.72 + (c.tBusy ? 0.2 : 0) + (c.tChanneling ? 0.2 : 0), target: c.t };
   },
+  // ───── Elétrico: Raiolua e Trovogato ─────
+  sparkBall(c) {
+    if (c.tGuarding || !c.vis || c.d < 20 || c.d > 170) return null;
+    return { score: 0.55 + (c.d > 70 ? 0.1 : 0) + (c.t.status.wet > 0 ? 0.08 : 0), target: c.t };
+  },
+  voltSphere(c) {
+    if (c.tGuarding || !c.vis || c.d < 20 || c.d > 175) return null;
+    const many = c.w.enemiesOf(c.m).filter((e) => Math.hypot(e.x - c.m.x, e.y - c.m.y) < 240).length;
+    return { score: 0.6 + (many > 1 ? 0.15 : 0) + (c.d > 70 ? 0.08 : 0), target: c.t };
+  },
+  scratch(c) {
+    if (!c.vis || c.d > reach(c, 24) || c.tGuarding) return null;
+    return { score: 0.9 + (c.tBusy ? 0.2 : 0), target: c.t };
+  },
+  conductClaws(c) {
+    if (!c.vis || c.d > reach(c, 30) || c.tGuarding) return null;
+    return { score: 0.95 + (c.tBusy ? 0.25 : 0), target: c.t };
+  },
+  strike220(c) {
+    if (c.d < 40 || c.d > 215 || c.sinceSeen > 1) return null;
+    let s = 0.45;
+    if (c.tChanneling || c.t.status.stun > 0 || c.t.status.root > 0) s += 0.45;
+    if (c.tSpeed < 25 || c.t.status.slow > 0) s += 0.2;
+    return { score: s, target: c.t, lob: true };
+  },
+  thunderJudgment(c) {
+    const r = TACTICS.strike220(c);
+    if (!r) return null;
+    const near = c.w.enemiesOf(c.m).filter((e) => Math.hypot(e.x - c.t.x, e.y - c.t.y) < 50).length;
+    return { ...r, score: r.score + (near > 1 ? 0.25 : 0) };
+  },
+  // Descarga em volta: puxa e atordoa. Melhor com cargas e com o alvo a meia distância (o puxão aproxima).
+  shock110(c) {
+    const R = c.m.def.abilities.find((a) => a.id === 'shock110' || a.id === 'overloadCore')?.radius ?? 62;
+    if (!c.vis || c.d > R + c.t.r - 4 || c.tGuarding) return null;
+    const n = c.m.volt || 0;
+    const near = c.w.enemiesOf(c.m).filter((e) => Math.hypot(e.x - c.m.x, e.y - c.m.y) < R).length;
+    return { score: 0.55 + n * 0.12 + (near > 1 ? 0.25 : 0) + (c.tChanneling ? 0.2 : 0), target: c.t };
+  },
+  overloadCore(c) { return TACTICS.shock110(c); },
+  boltDash(c) {
+    if (c.inEnemyArea || c.hazardHere > 0.3) return { score: 0.62, aimPoint: c.safePoint || c.awayPoint, purpose: 'escape' };
+    if (c.vis && c.d < 40 && c.hpF < 0.35) return { score: 0.6, aimPoint: c.awayPoint, purpose: 'escape' };
+    if (c.vis && c.d > 55 && c.d < 140 && !c.tGuarding) return { score: 0.58 + (c.tBusy ? 0.25 : 0) + (c.tRetreating ? 0.2 : 0), target: c.t };
+    return null;
+  },
+  lightningRupture(c) { return TACTICS.boltDash(c); },
+  catLeap() { return null; },
+  thunderInstinct() { return null; },
   rockThrow(c) {
     if (!c.vis || c.d < 45 || c.d > 225 || c.tGuarding) return null;
     return { score: 0.7 + (c.tChanneling ? 0.3 : 0) + (c.tSpeed < 25 ? 0.1 : 0), target: c.t };

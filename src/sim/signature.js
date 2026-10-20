@@ -8,10 +8,12 @@
 //   momentum Ouriflama   — Ímpeto: correndo sem parar ganha DISPARADA; o próximo golpe sai muito mais forte.
 //                         Couraça de espinhos fere quem o ataca corpo a corpo.
 //   decoy    Gotapus     — Ilusões de Tinta: cópias falsas enganam a mira e a IA; pode ficar camuflado.
+//   volt     Raiolua     — Cargas: golpes elétricos acumulam cargas; cheio fica ELETRIZADO; o E consome tudo.
 //   marks    Mantifolha  — Marca do Louva-a-deus: acertos marcam a presa; com 3 marcas, um golpe de perto
 //                         ou o pouso do salto EXECUTA (dano extra, prende e recarrega o salto).
 
 import { T } from './tiles.js';
+import { addVolt, applySlow } from './electric.js';
 
 export const SIG = {
   heat: { max: 100, decayDelay: 1.3, decay: 11, overheat: 3, exhaust: 2.2, exhaustEvolved: 1.5, dmg: 1.2, speed: 1.1, exhaustSpeed: 0.72, exhaustTaken: 1.15, waterCool: 12 },
@@ -90,6 +92,7 @@ export function update(w, m, dt) {
   // Marcas recebidas (de uma Mantifolha) somem com o tempo.
   if (m.marks.n > 0) { m.marks.t -= dt; if (m.marks.t <= 0) m.marks.n = 0; }
   if (m.ccGuard > 0) m.ccGuard = Math.max(0, m.ccGuard - dt);
+  if (m.breakCd > 0) m.breakCd = Math.max(0, m.breakCd - dt);
   if (m.rootGuard > 0) m.rootGuard = Math.max(0, m.rootGuard - dt);
 }
 
@@ -98,6 +101,7 @@ export function bench(m, dt) {
   if (m.heat > 0) m.heat = Math.max(0, m.heat - SIG.heat.decay * 2 * dt);
   m.momentum = 0; m.charged = false;
   m.marks.n = 0;
+  m.volt = 0;
 }
 
 // ───────────── Multiplicadores de dano ─────────────
@@ -123,6 +127,7 @@ export function afterDamage(w, t, src, dmg, o) {
   if (kindOf(t) === 'heat' && (o.element || src?.element) === 'water') t.heat = Math.max(0, t.heat - SIG.heat.waterCool * (o.dot ? 0.1 : 1));
   if (kindOf(t) === 'momentum' && (o.stun || o.root) && t.momentum > 0) { t.momentum = 0; if (t.charged) { t.charged = false; w.emit({ type: 'momentumLost', m: t }); } }
   if (src && src !== t && kindOf(src) === 'marks' && !o.dot && !o.noMark && t.alive) mark(w, t, src, o);
+  if (src && src !== t && kindOf(src) === 'volt' && !o.dot && !o.noVolt && (o.element || src.element) === 'electric') addVolt(w, src, 1);
 }
 
 // ───────────── Marca do Louva-a-deus ─────────────
@@ -304,7 +309,19 @@ export function updateSentry(w, o, dt) {
   if (!owner || !owner.alive || !owner.onField) { o.life = Math.min(o.life, 0.4); return; }
   const S = o.def.shot;
   // Raízes conectadas: o dono perto da sentinela se regenera.
-  if (Math.hypot(owner.x - o.x, owner.y - o.y) < o.def.healR) w.heal(owner, o.def.heal * dt);
+  // Raízes conectadas: o dono e os aliados perto da sentinela se regeneram.
+  for (const t of [owner, ...w.alliesOf(owner)]) if (Math.hypot(t.x - o.x, t.y - o.y) < o.def.healR) w.heal(t, o.def.heal * (t === owner ? 0.4 : 1) * dt);
+  // Flor carnívora: quem encosta na sentinela leva uma mordida que prende o passo (lento).
+  o.biteT = (o.biteT ?? 0) - dt;
+  if (o.def.bite && o.biteT <= 0) {
+    const B = o.def.bite;
+    const prey = w.enemiesOf(owner).find((t) => t.status.cloak <= 0 && Math.hypot(t.x - o.x, t.y - o.y) < o.r + t.r + B.reach);
+    if (prey) {
+      o.biteT = B.every;
+      w.emit({ type: 'sentryBite', x: o.x, y: o.y - 4, tx: prey.x, ty: prey.y, o });
+      w.damage(prey, B.dmg, owner, { tag: 'mordida', element: 'plant', minor: true, slow: [B.slowTime, B.slow], kb: 40, ang: Math.atan2(prey.y - o.y, prey.x - o.x) });
+    }
+  }
   o.fireT -= dt;
   if (o.fireT > 0) return;
   // Mira automática: a sentinela também cai nas cópias de tinta (alvo mais próximo, real ou falso).
@@ -319,7 +336,7 @@ export function updateSentry(w, o, dt) {
   // Mira com leve antecipação do movimento.
   const lead = bestD / S.speed * 0.7;
   const ang = Math.atan2(best.y + best.vy * lead - (o.y - 4), best.x + best.vx * lead - o.x);
-  w.spawnProjectile({ kind: S.kind, owner, ang, speed: S.speed, r: 3, range: S.range + 12, dmg: S.dmg, x: o.x + Math.cos(ang) * (o.r + 2), y: o.y - 4 + Math.sin(ang) * (o.r + 2), fromSentry: true });
+  w.spawnProjectile({ kind: S.kind, owner, ang, speed: S.speed, r: 3, range: S.range + 12, dmg: S.dmg, slow: S.slow, x: o.x + Math.cos(ang) * (o.r + 2), y: o.y - 4 + Math.sin(ang) * (o.r + 2), fromSentry: true });
   w.emit({ type: 'sentryShot', x: o.x, y: o.y - 4, ang, o });
 }
 

@@ -1,4 +1,4 @@
-import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION, FIRE, CONTROL, MATCH, COMBAT } from '../config.js';
+import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION, FIRE, CONTROL, MATCH, COMBAT, COMBO_BREAK } from '../config.js';
 import { mulberry32, segCircle, segAabb, clamp } from '../core/math.js';
 import { Terrain, IGNITE, T, props } from './terrain.js';
 import { ARENAS } from '../arenas/index.js';
@@ -10,6 +10,7 @@ import { PlayerController } from '../control/player.js';
 import { TeamCoach } from '../ai/coach.js';
 import { DEFAULT_TEAM } from './species.js';
 import * as Sig from './signature.js';
+import * as Elec from './electric.js';
 import * as Training from './training.js';
 
 const OBSTACLE_DEFS = {
@@ -26,8 +27,9 @@ const OBSTACLE_DEFS = {
   log: { flammable: true, hp: 60, blocksLOS: true, burnTime: 10, burnDps: 7 },
   thicket: { flammable: true, hp: 40, blocksLOS: true, burnTime: 4, burnDps: 12 }, // barreira temporária da planta
   // Brotos Sentinela (Brotossauro): torres vivas; o fogo as derruba rápido.
-  sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 0.6, healR: 46, shot: { kind: 'seed', dmg: 3, every: 1.3, range: 100, speed: 240 } },
-  ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 0.9, healR: 50, shot: { kind: 'thorn', dmg: 4.5, every: 1.5, range: 115, speed: 235 } },
+  // Sentinelas do Brotossauro: flores carnívoras que atiram de longe (deixam lento) e mordem quem encosta.
+  sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 1.6, healR: 54, shot: { kind: 'seed', dmg: 2.5, every: 1.5, range: 150, speed: 250, slow: [0.8, 0.2] }, bite: { reach: 10, dmg: 4, every: 1.4, slow: 0.3, slowTime: 1 } },
+  ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 2.4, healR: 60, shot: { kind: 'thorn', dmg: 4.5, every: 1.5, range: 175, speed: 250, slow: [1.2, 0.25] }, bite: { reach: 12, dmg: 7, every: 1.1, slow: 0.4, slowTime: 1.4 } },
 };
 
 // Dificuldade da IA (multiplica o perfil do monstro). think: intervalo entre decisões (mais lento = ataca e reage
@@ -40,6 +42,9 @@ export const DIFFICULTY_MODS = {
 };
 
 const makeSlot = (side) => ({ side, field: null, pending: null, cooldown: 0, deadT: 0, lastOut: null, lastOutT: -99, switches: 0 });
+// Posições relativas de nascimento no todos-contra-todos quando a arena não define `spawnsFFA` (cantos simétricos).
+const FFA_FRAC = [[0.14, 0.24], [0.86, 0.76], [0.86, 0.24], [0.14, 0.76]];
+const CLOSE_KINDS = new Set(['melee', 'dash', 'cone']); // habilidades de perto afetadas por COMBAT.closeMult
 const newInput = () => ({ move: { x: 0, y: 0 }, aim: { x: WORLD_W / 2, y: WORLD_H / 2 }, held: {}, presses: [] });
 
 let nextObsId = 1;
@@ -58,12 +63,15 @@ export class World {
     this.monsters = []; // somente os que estão em campo (1 por time, mais corpos de derrotados sumindo)
     this.projectiles = [];
     this.decoys = []; // ilusões de tinta (Gotapus)
+    this.zones = []; // solo eletrificado (Raiolua/Trovogato): { x, y, r, life, dps, slow, team, owner }
     this.steam = [];
     this.events = [];
     this.feed = [];
     this.feedSeq = 0;
     this.over = false;
     this.winner = null;
+    this.elim = []; // lados eliminados, em ordem: { side, t } (base da colocação no todos-contra-todos)
+    this.ffa = false; // 1v1v1v1: 3+ lados, uma vaga por lado, sem aliados
     this.terrainAcc = 0;
     // Cada VAGA (jogador ou IA) tem seu próprio time de 3, um monstro em campo, troca pendente e recarga de troca.
     // No 1×1 há 2 vagas (uma por lado); no 2v2 há 4 (duas por lado). `team` do monstro é o LADO (0/1); `slot` é a vaga.
@@ -101,6 +109,7 @@ export class World {
     w.playerTeam = playerSlot;
     w.input = w.inputs[playerSlot ?? 0];
     w.mirror = !!opts.mirror;
+    w.ffa = sides.length >= 3 && new Set(sides).size === sides.length;
     rosters.forEach((list, slot) => list.forEach((key) => w.addMonster(SPECIES[key], slot)));
     if (playerSlot !== null && !opts.humans) {
       // Dificuldade: a IA adversária reage mais devagar e erra mais nos níveis fáceis.
@@ -121,6 +130,10 @@ export class World {
 
   // Ponto de nascimento da vaga: o do lado, afastado quando há dois jogadores no mesmo lado (2v2).
   spawnFor(slot) {
+    if (this.ffa) {
+      const fr = FFA_FRAC[slot % 4], p = this.arenaDef.spawnsFFA?.[slot] ?? { x: fr[0] * WORLD_W, y: fr[1] * WORLD_H };
+      return this.safeSpot(p.x, p.y, 13, slot, true);
+    }
     const side = this.teams[slot].side;
     const base = this.spawns[side];
     const mates = this.teams.map((t, i) => (t.side === side ? i : -1)).filter((i) => i >= 0);
@@ -142,7 +155,7 @@ export class World {
 
   addMonster(def, slot) {
     const side = this.teams[slot].side;
-    const sp = this.spawns[side];
+    const sp = this.spawns[side] || this.spawns[side % this.spawns.length]; // posição inicial provisória; deploy() define a real
     const m = new Monster(def, side, sp.x, sp.y);
     m.slot = slot;
     m.ai = new Brain(m, this);
@@ -213,7 +226,7 @@ export class World {
   // Lado do jogador local (para cores de mensagens); sem jogador local, lado 0.
   sideOfLocal() { return this.playerTeam === null ? 0 : this.teams[this.playerTeam].side; }
 
-  safeSpot(x, y, r, slot) {
+  safeSpot(x, y, r, slot, noFallback = false) {
     const h = this.terrain.heightAt(x, y);
     const probe = { r, element: 'fire', level: h };
     const ok = (px, py) => {
@@ -229,7 +242,7 @@ export class World {
       const px = x + Math.cos(a) * d, py = y + Math.sin(a) * d;
       if (ok(px, py)) return { x: px, y: py };
     }
-    return this.spawnFor(slot);
+    return noFallback ? { x, y } : this.spawnFor(slot);
   }
 
   // O monstro pode ficar em (x, y)? Considera tiles sólidos, água funda (só nadadores) e degraus de altura.
@@ -551,7 +564,13 @@ export class World {
       mult *= o.dot ? Sig.SIG.guard.blockDot : Sig.SIG.guard.block;
       o = { ...o, kb: 0, push: 0, stun: 0, burn: 0, root: 0, lift: 0 };
     }
+    // Golpes de perto (corpo a corpo e tiros à queima-roupa) causam menos dano: equilíbrio do combate.
+    if (src && src !== t && !o.dot && !o.counter && !o.noClose && src.action && CLOSE_KINDS.has(src.action.ab.kind) && Math.hypot(src.x - t.x, src.y - t.y) < COMBAT.closeRange) mult *= COMBAT.closeMult;
     if (t.evolveT > 0) { mult *= EVOLUTION.damageTaken; o = { ...o, kb: 0, push: 0, stun: 0 }; }
+    // Condutor: alvo molhado leva mais dano elétrico.
+    if ((o.element || src?.element) === 'electric' && t.status.wet > 0) mult *= Elec.VOLT.wetBonus;
+    // Casca do Brotossauro: redução de dano por alguns segundos.
+    if (t.status.dr > 0) mult *= 1 - (t.drK || 0);
     let dmg = amount * mult;
     // Bolha protetora absorve dano (e impede queimadura enquanto existir).
     if (t.status.shield > 0 && t.shieldHp > 0) {
@@ -585,6 +604,7 @@ export class World {
     }
     if (o.wet) { t.status.wet = Math.max(t.status.wet, o.wet); t.status.burn = 0; }
     if (o.root) this.applyRoot(t, o.root);
+    if (o.slow && !guarding) Elec.applySlow(t, o.slow[0], o.slow[1]);
     if (o.lift) { t.lift = t.liftMax = o.lift; }
     if (o.kb) {
       const k = o.kb / t.def.mass;
@@ -612,6 +632,27 @@ export class World {
     if (this.training) Training.onDamage(this, t, src, dmg);
     if (t.hp <= 0) this.kill(t, src);
     return dmg;
+  }
+
+  // Quebra de combo: preso (atordoado/erguido), gasta energia de evolução para se libertar.
+  canBreakCombo(m) {
+    return !!m && m.alive && m.onField && !m.locked && !this.over && m.breakCd <= 0 && m.energy >= COMBO_BREAK.cost
+      && (m.status.stun >= COMBO_BREAK.minStun || m.lift > 0);
+  }
+  breakCombo(m) {
+    if (!this.canBreakCombo(m)) return false;
+    m.energy -= COMBO_BREAK.cost;
+    m.breakCd = COMBO_BREAK.cooldown;
+    m.status.stun = 0; m.status.root = 0; m.lift = 0; m.ccGuard = 0.6;
+    m.status.invuln = Math.max(m.status.invuln, COMBO_BREAK.invuln);
+    for (const e of this.enemiesOf(m)) {
+      const d = Math.hypot(e.x - m.x, e.y - m.y);
+      if (d > COMBO_BREAK.radius + e.r) continue;
+      const ang = Math.atan2(e.y - m.y, e.x - m.x), k = COMBO_BREAK.push / e.def.mass;
+      e.kx += Math.cos(ang) * k; e.ky += Math.sin(ang) * k;
+    }
+    this.emit({ type: 'comboBreak', m, x: m.x, y: m.y, r: COMBO_BREAK.radius });
+    return true;
   }
 
   // Cura (terreno, sentinelas, habilidades). Na morte súbita não cura mais.
@@ -650,6 +691,7 @@ export class World {
     t.deathT = 0;
     t.switchState = null;
     const ts = this.teams[t.slot];
+    if (src && src.team !== t.team) src.stats.kos = (src.stats.kos || 0) + 1;
     this.emit({ type: 'death', m: t, src, x: t.x, y: t.y, bench: !t.onField });
     const who = this.playerTeam === null ? '' : t.team === this.sideOfLocal() ? ' (seu time)' : ' (inimigo)';
     this.say(`${t.name}${who} foi derrotado${t.onField ? '' : ' no banco'}!`, '#ffffff');
@@ -662,15 +704,49 @@ export class World {
     this._checkEnd = true; // decidido no fim do passo, para tratar derrotas simultâneas como empate
   }
 
+  // Fim de partida: acaba quando resta no máximo um LADO com monstros vivos (1v1, 2v2 e todos-contra-todos).
+  // Cada lado que perde o último monstro é registrado em `elim` (com o instante) — a colocação sai daí.
+  // Derrotas no mesmo passo de simulação empatam (se forem as últimas, a partida termina em empate: winner = -1).
+  sideIds() { return [...new Set(this.roster.map((m) => m.team))].sort((a, b) => a - b); }
   checkEnd() {
     this._checkEnd = false;
     if (this.over) return;
-    const alive = [0, 1].map((team) => this.roster.some((m) => m.team === team && m.alive));
-    if (alive[0] && alive[1]) return;
+    const sides = this.sideIds();
+    const aliveSides = sides.filter((s) => this.roster.some((m) => m.team === s && m.alive));
+    for (const s of sides) {
+      if (aliveSides.includes(s) || this.elim.some((e) => e.side === s)) continue;
+      this.elim.push({ side: s, t: this.time });
+      this.emit({ type: 'eliminated', side: s, slot: this.roster.find((m) => m.team === s)?.slot ?? -1, t: this.time });
+      if (this.ffa) this.say(`${this.sideName(s)} foi ELIMINADO!`, '#ff9a6a');
+    }
+    if (aliveSides.length > 1) return;
     this.over = true;
-    this.winner = alive[0] ? 0 : alive[1] ? 1 : -1;
+    this.winner = aliveSides.length === 1 ? aliveSides[0] : -1;
     this.endTime = this.time;
     this.emit({ type: 'matchEnd', winner: this.winner });
+  }
+
+  // Nome de exibição do lado (jogador da vaga no todos-contra-todos; definido pelo cliente/servidor em `slotNames`).
+  sideName(side) {
+    const slot = this.teams.findIndex((t) => t.side === side);
+    return this.slotNames?.[slot] || `Jogador ${slot + 1}`;
+  }
+
+  // Classificação final: 1º = vencedor; os demais por quem durou mais. Lados eliminados no mesmo instante empatam
+  // (posição de competição: 1, 2, 2, 4). Cada lado aparece UMA vez, mesmo com várias vagas.
+  standings() {
+    const rows = this.sideIds().map((side) => {
+      const mons = this.roster.filter((m) => m.team === side);
+      const e = this.elim.find((x) => x.side === side);
+      return {
+        side, slots: [...new Set(mons.map((m) => m.slot))], alive: mons.some((m) => m.alive), elimT: e ? e.t : Infinity,
+        dmg: Math.round(mons.reduce((a, m) => a + m.stats.dmgDealt, 0)), kos: mons.reduce((a, m) => a + (m.stats.kos || 0), 0),
+        left: mons.filter((m) => m.alive).length,
+      };
+    });
+    rows.sort((a, b) => b.elimT - a.elimT || b.left - a.left || b.dmg - a.dmg || a.side - b.side);
+    for (const r of rows) r.rank = 1 + rows.filter((o) => o.elimT - r.elimT > 1e-6 || (o.alive && !r.alive)).length;
+    return rows;
   }
 
   // ───────────── Evolução ─────────────
@@ -790,6 +866,7 @@ export class World {
     this.resolveCollisions();
     for (const m of this.monsters) if (m.alive) this.constrainToTerrain(m);
     for (const h of this.hazards) h.update(this, dt);
+    Elec.updateZones(this, dt);
     this.updateProjectiles(dt);
     Sig.updateDecoys(this, dt);
     this.updateObstacles(dt);
@@ -840,6 +917,8 @@ export class World {
       }
     }
     if (st.burn > 0 && m.element !== 'fire') this.damage(m, FIRE.burnDps * dt, null, { dot: true, element: 'fire', tag: 'queimadura' });
+    if (st.regen > 0) this.heal(m, (m.regenK || 0) * dt);
+    Elec.updateVolt(this, m, dt);
     if (!m.alive) return;
     Sig.update(this, m, dt);
 
@@ -877,7 +956,8 @@ export class World {
 
   resolveCollisions() {
     const ms = this.monsters.filter((m) => m.alive);
-    const air = (m) => m.action && m.action.phase === 'active' && m.action.ab.leap;
+    // Saltos passam por cima; investidas "fantasma" (Ruptura Relâmpago) atravessam os corpos.
+    const air = (m) => m.action && m.action.phase === 'active' && (m.action.ab.leap || m.action.ab.ghost);
     for (let k = 0; k < 2; k++) {
       for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) {
         const a = ms[i], b = ms[j];
@@ -895,10 +975,11 @@ export class World {
 
   collideStatic(m) {
     const leaping = m.action && m.action.phase === 'active' && m.action.ab.leap; // saltos passam por cima de obstáculos
-    for (const o of this.obstacles) {
+    // Duas passadas: empurrado para fora de um tronco/pilar, o corpo pode cair em um vizinho (correntes de troncos, pares de pedras).
+    for (let pass = 0; pass < 2; pass++) for (const o of this.obstacles) {
       if (o.destroyed || !o.solid || leaping) continue;
       const dx = m.x - o.x, dy = m.y - o.y, d = Math.hypot(dx, dy) || 0.01, min = m.r + o.r;
-      if (d < min) {
+      if (d < min - 0.01) {
         m.x = o.x + dx / d * min; m.y = o.y + dy / d * min;
         const vn = (m.kx * dx + m.ky * dy) / d;
         if (vn < 0) { m.kx -= vn * dx / d * 1.5; m.ky -= vn * dy / d * 1.5; }
@@ -937,6 +1018,7 @@ export class World {
           else if (p.kind === 'bubble') this.bubbleBurst(p);
           else if (p.kind === 'tentacle') this.tentacleSlam(p);
           else if (p.kind === 'splashBubble' || p.kind === 'splashSeed') this.splashBurst(p);
+          else if (p.kind === 'thunder') Elec.thunderStrike(this, p);
           else this.explodeMeteor(p);
         }
         continue;
@@ -945,6 +1027,7 @@ export class World {
       let best = 2, hitM = null, hitO = null, hitWall = false, hitGuard = null, hitDecoy = null;
       for (const m of this.monsters) {
         if (!m.alive || m.team === p.team) continue;
+        if (!p.pierce && p.hitSet?.has(m.id)) continue; // ricochete: não volta em quem já levou
         const dd = Math.hypot(m.x - p.x, m.y - p.y);
         if (dd < p.closest) { p.closest = dd; p.closestM = m; }
         // Área atingível: o corpo do monstro, não só os pés (pés + parte de cima do sprite).
@@ -1049,7 +1132,9 @@ export class World {
     this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y, target: m });
     const ang = Math.atan2(p.vy, p.vx);
     const base = { ang, x: p.x, y: p.y, proj: true, minor: !!(p.fromSentry || p.fromDecoy) };
-    if (p.kind === 'ember') {
+    if (p.kind === 'spark' || p.kind === 'voltOrb') {
+      Elec.projectileHit(this, p, m);
+    } else if (p.kind === 'ember') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'ember', burn: 1.5, kb: 70, stun: 0.1, element: 'fire' });
       this.igniteTile(this.terrain.at(p.x, p.y), 1, p.owner);
     } else if (p.kind === 'magma') {
@@ -1065,10 +1150,10 @@ export class World {
     } else if (p.kind === 'wave') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'tidalWave', wet: p.small ? 3 : 4, kb: p.kb ?? 330, stun: p.stun ?? 0.35, element: 'water' });
     } else if (p.kind === 'thorn') {
-      this.damage(m, p.dmg, p.owner, { ...base, tag: p.fromSentry ? 'sentinela' : 'thornShot', kb: 70, stun: p.fromSentry ? 0 : 0.12, element: 'plant' });
+      this.damage(m, p.dmg, p.owner, { ...base, tag: p.fromSentry ? 'sentinela' : 'thornShot', kb: 70, stun: p.fromSentry ? 0 : 0.12, element: 'plant', slow: p.slow });
       this.sprout(p.x, p.y, T.THORNS, p.owner);
     } else if (p.kind === 'seed') {
-      this.damage(m, p.dmg, p.owner, { ...base, tag: p.fromSentry ? 'sentinela' : p.tag || 'seedShot', kb: 60, stun: p.fromSentry ? 0 : 0.1, element: 'plant' });
+      this.damage(m, p.dmg, p.owner, { ...base, tag: p.fromSentry ? 'sentinela' : p.tag || 'seedShot', kb: 60, stun: p.fromSentry ? 0 : 0.1, element: 'plant', slow: p.slow });
     } else if (p.kind === 'waterBolt') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.reflected ? 'reflexo' : p.tag || 'waterBolt', wet: p.fromDecoy ? 1 : 3, kb: p.fromDecoy ? 30 : 80, stun: p.fromDecoy ? 0 : 0.12, element: 'water' });
       this.douseArea(p.x, p.y, 12, 6, p.owner);
@@ -1093,6 +1178,9 @@ export class World {
     } else if (p.kind === 'rock') {
       if (o) this.hurtObstacle(o, 12);
       this.emit({ type: 'rockHit', x: p.x, y: p.y });
+    } else if (p.kind === 'spark' || p.kind === 'voltOrb') {
+      if (o) this.hurtObstacle(o, p.dmg * 0.5);
+      Elec.projectileEnd(this, p);
     } else {
       if (o) { this.hurtObstacle(o, p.dmg * 0.5); if (o.burning > 0) this.douseObstacle(o, p.owner); }
       this.douseArea(p.x, p.y, 12, 6, p.owner);
@@ -1108,6 +1196,7 @@ export class World {
     else if (p.kind === 'wave') this.waveCrash(p);
     else if (p.kind === 'inferno') this.infernoBlast(p);
     else if (p.kind === 'rock') this.emit({ type: 'rockHit', x: p.x, y: p.y });
+    else if (p.kind === 'spark' || p.kind === 'voltOrb') Elec.projectileEnd(this, p);
     else this.douseArea(p.x, p.y, 12, 6, p.owner);
   }
 
@@ -1167,7 +1256,7 @@ export class World {
     for (const m of this.monsters) {
       if (!m.alive || m.team === p.team) continue;
       if (Math.hypot(m.x - p.tx, m.y - p.ty) > p.radius + m.r) continue;
-      this.damage(m, p.dmg, p.owner, { tag: p.tag, element: water ? 'water' : 'plant', kb: water ? 140 : 80, ang: Math.atan2(m.y - p.ty, m.x - p.tx), stun: 0.1, proj: true, ...(water ? { wet: 3 } : {}) });
+      this.damage(m, p.dmg, p.owner, { tag: p.tag, element: water ? 'water' : 'plant', kb: water ? 140 : 80, ang: Math.atan2(m.y - p.ty, m.x - p.tx), stun: 0.1, proj: true, ...(water ? { wet: 3 } : {}), ...(p.slow ? { slow: p.slow } : {}) });
     }
     this.popDecoysIn(p.tx, p.ty, p.radius, p.team);
     if (water) { this.douseArea(p.tx, p.ty, p.radius * 0.8, 4, p.owner); return; }

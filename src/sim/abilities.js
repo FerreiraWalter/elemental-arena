@@ -2,6 +2,7 @@ import { angleDiff, angleTo, pointSeg, clamp, turnToward } from '../core/math.js
 import { TILE, WORLD_W, WORLD_H } from '../config.js';
 import { T } from './tiles.js';
 import { thorns, spawnDecoy, SIG, isGuarding } from './signature.js';
+import * as Elec from './electric.js';
 
 // Cada habilidade tem fases reais: preparação (windup, telegrafada), ativa (hitbox/efeito) e recuperação.
 // move = multiplicador de deslocamento em cada fase; turn = rad/s de rastreio da mira em windup/ativa.
@@ -231,7 +232,7 @@ export const ABILITIES = {
     cooldown: 1.3, windup: 0.18, active: 0.12, recovery: 0.26,
     move: [0.3, 0.5, 0.4], turn: [10, 2], range: 26,
     // Knockback negativo: puxa o alvo para perto.
-    ...melee({ reach: 26, arc: 1.3, dmg: 10, kb: -170, stun: 0.3, extra: {} }),
+    ...melee({ reach: 26, arc: 1.3, dmg: 10, kb: -170, stun: 0.3, extra: { slow: [1.5, 0.3] } }),
   },
   rootSnare: {
     id: 'rootSnare', name: 'Raízes', element: 'plant', kind: 'lob',
@@ -266,8 +267,8 @@ export const ABILITIES = {
     id: 'plantSentry', name: 'Broto Sentinela', element: 'plant', kind: 'lob', sentry: true,
     charges: 2, chargeGap: 0.6, // 2 cargas: dá para plantar as duas sentinelas seguidas
     cooldown: 10, windup: 0.3, active: 0.05, recovery: 0.3,
-    move: [0.4, 0.4, 0.7], turn: [8, 0], range: 150, radius: 10, flight: 0.55,
-    onActiveStart(w, m, a) { sentryLob(w, m, a, this, 'sentry', 10); },
+    move: [0.4, 0.4, 0.7], turn: [8, 0], range: 170, radius: 10, flight: 0.55,
+    onActiveStart(w, m, a) { sentryLob(w, m, a, this, 'sentry', 11); },
   },
   // Esquiva enterrada: o Brotossauro mergulha na terra (invulnerável) e só uma flor vermelha anda pela superfície.
   leafDash: {
@@ -384,7 +385,7 @@ export const ABILITIES = {
     id: 'ancientWhip', name: 'Açoite de Raiz', element: 'plant', kind: 'melee', vine: true,
     cooldown: 1.5, windup: 0.22, active: 0.14, recovery: 0.3,
     move: [0.3, 0.4, 0.4], turn: [10, 2], range: 34,
-    ...melee({ reach: 34, arc: 1.2, dmg: 13, kb: -220, stun: 0.35, extra: {} }),
+    ...melee({ reach: 34, arc: 1.2, dmg: 13, kb: -220, stun: 0.35, extra: { slow: [1.8, 0.35] } }),
   },
   ancientRoots: {
     id: 'ancientRoots', name: 'Raízes Ancestrais', element: 'plant', kind: 'lob',
@@ -430,8 +431,8 @@ export const ABILITIES = {
     id: 'ancientSentry', name: 'Guardião Ancestral', element: 'plant', kind: 'lob', sentry: true,
     charges: 2, chargeGap: 0.6,
     cooldown: 10, windup: 0.35, active: 0.05, recovery: 0.35,
-    move: [0.3, 0.3, 0.6], turn: [8, 0], range: 160, radius: 12, flight: 0.6,
-    onActiveStart(w, m, a) { sentryLob(w, m, a, this, 'ancientSentry', 13); },
+    move: [0.3, 0.3, 0.6], turn: [8, 0], range: 185, radius: 12, flight: 0.6,
+    onActiveStart(w, m, a) { sentryLob(w, m, a, this, 'ancientSentry', 14); },
   },
   // Ancestral: afunda e vira uma arvorezinha andando; ao brotar de volta, raízes empurram quem estiver colado.
   barkStep: {
@@ -605,7 +606,7 @@ export const ABILITIES = {
     onActiveStart(w, m, a) {
       const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
       const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 30, this.range);
-      const tx = clamp(m.x + Math.cos(ang) * d, 12, 628), ty = clamp(m.y + Math.sin(ang) * d, 12, 348);
+      const tx = clamp(m.x + Math.cos(ang) * d, 12, WORLD_W - 12), ty = clamp(m.y + Math.sin(ang) * d, 12, WORLD_H - 12);
       w.spawnProjectile({ kind: 'tentacle', big: true, owner: m, lob: true, flat: true, x: tx, y: ty, tx, ty, flight: this.flight, radius: this.radius, dmg: 18 });
       for (const dc of w.decoys.filter((x) => x.owner === m).slice(0, 3)) {
         w.spawnProjectile({ kind: 'tentacle', owner: m, lob: true, flat: true, x: dc.x, y: dc.y, tx: dc.x, ty: dc.y, flight: this.flight, radius: 16, dmg: 8 });
@@ -753,7 +754,7 @@ function eruption(w, m, a, R, dmg) {
 function sentryLob(w, m, a, ab, kind, life) {
   const ang = Math.atan2(a.point.y - m.y, a.point.x - m.x);
   const d = clamp(Math.hypot(a.point.x - m.x, a.point.y - m.y), 24, ab.range);
-  const tx = clamp(m.x + Math.cos(ang) * d, 12, 628), ty = clamp(m.y + Math.sin(ang) * d, 12, 348);
+  const tx = clamp(m.x + Math.cos(ang) * d, 12, WORLD_W - 12), ty = clamp(m.y + Math.sin(ang) * d, 12, WORLD_H - 12);
   w.spawnProjectile({ kind: 'sentrySeed', sentryKind: kind, life, owner: m, lob: true, x: m.x, y: m.y - 6, tx, ty, flight: ab.flight, radius: ab.radius, dmg: 0 });
 }
 
@@ -809,8 +810,8 @@ const DESC = {
   barkStep: 'Afunda e anda como uma arvorezinha (invulnerável); ao brotar, empurra quem estiver colado e espalha grama.',
   shellGuard: 'BLOQUEIO de 0,55 s: reduz o dano em 85%, devolve projéteis e contra-ataca quem bate de perto.',
   abyssGuard: 'Bloqueio mais longo; bloquear um golpe dá uma bolha que absorve 25 de dano.',
-  plantSentry: 'Planta um BROTO SENTINELA (10 s) que atira sementes sozinho e cura você por perto. 2 cargas, até 2 em campo.',
-  ancientSentry: 'Guardião maior e mais resistente: dispara espinhos e cura mais. Máx. 2.',
+  plantSentry: 'Planta uma FLOR SENTINELA (11 s): atira sementes de longe (alcance 150, deixam LENTO), MORDE quem encosta e cura o time por perto. 2 cargas, até 2 em campo.',
+  ancientSentry: 'GUARDIÃO ANCESTRAL: flor carnívora maior (alcance 175), espinhos que deixam lento, mordida forte e cura maior. Máx. 2.',
   krakenJet: 'Esquiva a jato que deixa uma cópia de tinta para enganar o inimigo.',
   bubbleTrap: 'Bolha em arco, rápida: estoura no círculo marcado e PRENDE quem estiver dentro por ~1 s.',
   abyssTentacles: 'Um tentáculo gigante irrompe no ponto marcado (ergue e molha); onde houver cópias suas, irrompem tentáculos menores.',
@@ -860,7 +861,7 @@ function lobBasic(kind) {
     const ang = Math.atan2(p.y - m.y, p.x - m.x);
     const d = clamp(Math.hypot(p.x - m.x, p.y - m.y), 30, this.range);
     const tx = clamp(m.x + Math.cos(ang) * d, 10, WORLD_W - 10), ty = clamp(m.y + Math.sin(ang) * d, 10, WORLD_H - 10);
-    w.spawnProjectile({ kind, tag: this.id, owner: m, lob: true, x: m.x, y: m.y - 6, tx, ty, flight: this.flight, radius: this.radius, dmg: this.dmg, rootTiles: this.rootTiles });
+    w.spawnProjectile({ kind, tag: this.id, owner: m, lob: true, x: m.x, y: m.y - 6, tx, ty, flight: this.flight, radius: this.radius, dmg: this.dmg, rootTiles: this.rootTiles, slow: this.slow });
   };
 }
 // Leque de espinhos de curto alcance (espingarda).
@@ -915,16 +916,16 @@ Object.assign(ABILITIES, {
   burstSeed: {
     id: 'burstSeed', name: 'Semente Explosiva', element: 'plant', kind: 'lob', basic: true,
     cooldown: 1.5, windup: 0.22, active: 0.05, recovery: 0.25,
-    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 150, radius: 18, flight: 0.5, dmg: 9, rootTiles: 3,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 160, radius: 18, flight: 0.5, dmg: 9, rootTiles: 3, slow: [1.4, 0.25],
     onActiveStart: lobBasic('splashSeed'),
-    desc: 'SEMENTE EXPLOSIVA: arco até a mira; estoura em área e deixa raízes que atrasam.',
+    desc: 'SEMENTE DE SEIVA: arco até a mira; estoura em área, deixa raízes e cobre o alvo de seiva (LENTO 25% por 1,4 s).',
   },
   ancientSeed: {
     id: 'ancientSeed', name: 'Semente Ancestral', element: 'plant', kind: 'lob', basic: true,
     cooldown: 1.4, windup: 0.24, active: 0.05, recovery: 0.26,
-    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 160, radius: 24, flight: 0.52, dmg: 16.5, rootTiles: 4,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 170, radius: 24, flight: 0.52, dmg: 16.5, rootTiles: 4, slow: [1.8, 0.35],
     onActiveStart: lobBasic('splashSeed'),
-    desc: 'SEMENTE ANCESTRAL: estouro maior que cobre o chão de raízes.',
+    desc: 'SEMENTE ANCESTRAL: estouro maior, raízes e seiva grossa (LENTO 35% por 1,8 s).',
   },
   // Ouriflama: leque de espinhos em brasa de perto (espingarda).
   quillFan: {
@@ -1091,23 +1092,209 @@ Object.assign(ABILITIES, {
   },
 });
 
-// ───────────── Brotossauro: defesa (F) ─────────────
-// Casca viva: bloqueia QUALQUER ataque (como todas as guardas F), cura um pouco ao bloquear e PRENDE quem bateu de perto.
+
+// Casca Viva do Brotossauro: veste você e os aliados no alcance com uma casca de raízes por alguns segundos:
+// REDUÇÃO DE DANO + CURA CONTÍNUA (mais forte no parceiro do que em você — no 1v1 a planta não fica imortal).
+function barkUp(w, m, B) {
+  const allies = w.alliesOf(m).filter((t) => t.alive && t.onField && Math.hypot(t.x - m.x, t.y - m.y) <= B.range + t.r);
+  Elec.applyBark(w, m, B.time, B.self.dr, B.self.regen);
+  w.emit({ type: 'barkUp', m, x: m.x, y: m.y, self: true });
+  for (const t of allies) {
+    Elec.applyBark(w, t, B.time, B.ally.dr, B.ally.regen);
+    w.heal(t, B.ally.heal);
+    w.emit({ type: 'barkUp', m: t, src: m, x: t.x, y: t.y, x0: m.x, y0: m.y });
+  }
+  w.emit({ type: 'lifePulse', m, x: m.x, y: m.y, r: 26 });
+}
+
+// ───────────── Brotossauro: suporte (F) ─────────────
 Object.assign(ABILITIES, {
   barkGuard: {
-    id: 'barkGuard', name: 'Casca Viva', element: 'plant', kind: 'guard',
-    cooldown: 9, windup: 0, active: 0.7, recovery: 0.32,
-    move: [0.2, 0.2, 0.6], turn: [0, 0], healOnBlock: 12,
-    counter: { dmg: 9, element: 'plant', tag: 'cascaViva', kb: 150, stun: 0.2, root: 1.4 },
-    desc: 'CASCA VIVA: bloqueia QUALQUER ataque, cura 12 ao bloquear e PRENDE em raízes quem bater de perto.',
+    id: 'barkGuard', name: 'Casca Viva', element: 'plant', kind: 'buff', support: true,
+    cooldown: 11, windup: 0.18, active: 0.12, recovery: 0.25, superArmor: true,
+    move: [0.4, 0.4, 0.8], turn: [0, 0], range: 150,
+    bark: { range: 150, time: 4, self: { dr: 0.2, regen: 1.5 }, ally: { dr: 0.35, regen: 4, heal: 8 } },
+    onActiveStart(w, m) { barkUp(w, m, this.bark); },
+    desc: 'CASCA VIVA: veste você e o parceiro (até 150 px) com casca de raízes por 4 s: REDUZ o dano (35% no parceiro, 20% em você) e CURA sem parar.',
   },
   ancientBark: {
-    id: 'ancientBark', name: 'Casca Ancestral', element: 'plant', kind: 'guard',
-    cooldown: 9, windup: 0, active: 0.85, recovery: 0.32,
-    move: [0.2, 0.2, 0.6], turn: [0, 0], healOnBlock: 22,
-    counter: { dmg: 14, element: 'plant', tag: 'cascaViva', kb: 200, stun: 0.3, root: 2 },
-    desc: 'CASCA ANCESTRAL: guarda mais longa que bloqueia QUALQUER ataque, cura 22 e prende por mais tempo quem bater de perto.',
+    id: 'ancientBark', name: 'Casca da Montanha', element: 'plant', kind: 'buff', support: true,
+    cooldown: 11, windup: 0.2, active: 0.12, recovery: 0.28, superArmor: true,
+    move: [0.3, 0.3, 0.7], turn: [0, 0], range: 190,
+    bark: { range: 190, time: 5, self: { dr: 0.3, regen: 3 }, ally: { dr: 0.4, regen: 5, heal: 12 } },
+    onActiveStart(w, m) { barkUp(w, m, this.bark); },
+    desc: 'CASCA DA MONTANHA: casca de pedra e raiz por 5 s em você e no parceiro (até 190 px): REDUZ o dano (40% / 30%) e CURA sem parar.',
   },
 });
 ABILITIES.shellGuard.desc = 'CASCO REFLEXO: bloqueia QUALQUER ataque; devolve projéteis e, se baterem de perto, contra-ataca e molha.';
 ABILITIES.abyssGuard.desc = 'CASCO ABISSAL: bloqueia QUALQUER ataque, devolve projéteis, contra-ataca e cria uma bolha protetora.';
+
+// ═════════════ ELÉTRICO: Raiolua → Trovogato ═════════════
+// Gato ágil: tiros rápidos, arranhões, raios que caem do céu, puxão que atordoa e investidas que deixam rastro elétrico.
+// Cada golpe elétrico que acerta soma uma CARGA (ver electric.js); o E consome as cargas para bater mais forte.
+function elecDashHit(w, m, a, { dmg, kb, stun, tag }) {
+  for (const t of w.enemiesOf(m)) {
+    if (a.hit.has(t.id) || Math.hypot(t.x - m.x, t.y - m.y) > m.r + t.r + 4) continue;
+    a.hit.add(t.id);
+    w.damage(t, dmg, m, { tag, kb, ang: a.aim, stun, element: 'electric' });
+    w.emit({ type: 'zap', x: t.x, y: t.y - 4, x0: m.x, y0: m.y - 4 });
+  }
+  w.popDecoysIn(m.x, m.y, m.r + 4, m.team);
+}
+function thunderLob(w, m, a, ab, extra) {
+  const p = a.point || a.aimPoint || { x: m.x + Math.cos(a.aim) * ab.range, y: m.y + Math.sin(a.aim) * ab.range };
+  const ang = Math.atan2(p.y - m.y, p.x - m.x);
+  const d = clamp(Math.hypot(p.x - m.x, p.y - m.y), 20, ab.range);
+  const tx = clamp(m.x + Math.cos(ang) * d, 10, WORLD_W - 10), ty = clamp(m.y + Math.sin(ang) * d, 10, WORLD_H - 10);
+  w.spawnProjectile({ kind: 'thunder', tag: ab.id, owner: m, lob: true, flat: true, x: tx, y: ty, tx, ty, flight: ab.flight, radius: ab.radius, ...extra });
+}
+// Descarga em área ao redor: PUXA os inimigos para perto, atordoa e consome as cargas (mais dano e mais atordoamento).
+function shockPull(w, m, ab) {
+  const n = Elec.spendVolt(w, m);
+  const R = ab.radius;
+  w.emit({ type: 'shockPull', m, x: m.x, y: m.y, r: R, n, big: !!ab.overload });
+  for (const t of w.enemiesOf(m)) {
+    const d = Math.hypot(t.x - m.x, t.y - m.y);
+    if (d > R + t.r) continue;
+    const blocked = isGuarding(t);
+    if (!blocked) Elec.pullTo(t, m.x, m.y, m.r + t.r + 4);
+    w.damage(t, ab.dmg + ab.perCharge * n, m, { tag: ab.id, element: 'electric', stun: ab.stun + 0.08 * n, noVolt: true, big: n >= 2 });
+    w.emit({ type: 'zap', x: t.x, y: t.y - 4, x0: m.x, y0: m.y - 6 });
+  }
+  w.popDecoysIn(m.x, m.y, R, m.team);
+  return n;
+}
+
+Object.assign(ABILITIES, {
+  // ───── Raiolua (base) ─────
+  sparkBall: {
+    id: 'sparkBall', name: 'Bola de Raio', element: 'electric', kind: 'projectile', basic: true,
+    cooldown: 0.85, windup: 0.13, active: 0.02, recovery: 0.18,
+    move: [0.7, 0.7, 0.9], turn: [10, 0], range: 165, speed: 280,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'spark', tag: this.id, owner: m, ang: a.aim, speed: 280, r: 3, range: 165, dmg: 5, stun: 0.05, x: m.x + Math.cos(a.aim) * (m.r + 2), y: m.y + Math.sin(a.aim) * (m.r + 2) - 4, aimPoint: a.aimPoint });
+    },
+    desc: 'BOLA DE RAIO: tiro rápido e fraco. Cada acerto soma 1 CARGA.',
+  },
+  scratch: {
+    id: 'scratch', name: 'Arranhada', element: 'electric', kind: 'melee',
+    cooldown: 0.7, windup: 0.08, active: 0.1, recovery: 0.14,
+    move: [0.6, 1, 0.9], turn: [12, 2], range: 18,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 170; m.ky += Math.sin(a.aim) * 170; },
+    ...melee({ reach: 18, arc: 2.3, dmg: 9, kb: 70, stun: 0.14, extra: {} }),
+    desc: 'ARRANHADA: bote curto e muito rápido com as garras eletrizadas.',
+  },
+  strike220: {
+    id: 'strike220', name: 'Descarga 220V', element: 'electric', kind: 'lob',
+    cooldown: 7.5, windup: 0.22, active: 0.05, recovery: 0.22,
+    move: [0.6, 0.6, 0.9], turn: [8, 0], range: 210, radius: 26, flight: 0.8,
+    onActiveStart(w, m, a) { thunderLob(w, m, a, this, { dmg: 13, stun: 0.3 }); },
+    desc: 'DESCARGA 220V: marca o chão e, num instante, um RAIO cai do céu na área: dano alto e atordoa.',
+  },
+  shock110: {
+    id: 'shock110', name: 'Descarga 110V', element: 'electric', kind: 'aoe',
+    cooldown: 10, windup: 0.3, active: 0.1, recovery: 0.32, superArmor: true,
+    move: [0.3, 0.2, 0.6], turn: [0, 0], range: 62, radius: 62, dmg: 6, perCharge: 2, stun: 0.35,
+    onActiveStart(w, m) { shockPull(w, m, this); },
+    desc: 'DESCARGA 110V: choque em volta que PUXA os inimigos para perto de você e ATORDOA. Gasta as cargas: +3 de dano e mais atordoamento por carga.',
+  },
+  boltDash: {
+    id: 'boltDash', name: 'Corrente Relâmpago', element: 'electric', kind: 'dash',
+    cooldown: 7.5, windup: 0.12, active: 0.28, recovery: 0.22, superArmor: true,
+    move: [0.2, 1, 0.4], turn: [10, 0], range: 125, dash: { speed: 440 },
+    onActiveTick(w, m, a) {
+      Elec.trail(w, m, a, { r: 10, life: 1.8, dps: 4, slow: 0.25, tag: 'rastroRaio' });
+      elecDashHit(w, m, a, { dmg: 8, kb: 120, stun: 0.25, tag: this.id });
+    },
+    desc: 'CORRENTE RELÂMPAGO: dispara como um raio e deixa um CAMINHO ELÉTRICO que dá choque e deixa lento.',
+  },
+  catLeap: {
+    id: 'catLeap', name: 'Pulo do Gato', element: 'electric', kind: 'dodge', hop: true,
+    charges: 2, chargeGap: 0.32, cooldown: 3.2, windup: 0, active: 0.2, recovery: 0.06,
+    move: [1, 1, 0.85], turn: [0, 0], dash: { speed: 330, invuln: true },
+    desc: 'PULO DO GATO: salto ágil e invulnerável. 2 cargas: dá para pular duas vezes seguidas.',
+  },
+
+  // ───── Trovogato (evoluído) ─────
+  voltSphere: {
+    id: 'voltSphere', name: 'Esfera Voltaica', element: 'electric', kind: 'projectile', basic: true,
+    cooldown: 0.9, windup: 0.14, active: 0.02, recovery: 0.18,
+    move: [0.7, 0.7, 0.9], turn: [10, 0], range: 170, speed: 290,
+    onActiveStart(w, m, a) {
+      w.spawnProjectile({ kind: 'voltOrb', tag: this.id, owner: m, ang: a.aim, speed: 290, r: 4, range: 170, dmg: 10, stun: 0.08, bounces: 2, bounceR: 130, x: m.x + Math.cos(a.aim) * (m.r + 3), y: m.y + Math.sin(a.aim) * (m.r + 3) - 6, aimPoint: a.aimPoint });
+    },
+    desc: 'ESFERA VOLTAICA: esfera que RICOCHETEIA entre inimigos (até 2 saltos). Cada acerto soma 1 CARGA.',
+  },
+  conductClaws: {
+    id: 'conductClaws', name: 'Garras Condutoras', element: 'electric', kind: 'melee',
+    cooldown: 0.95, windup: 0.1, active: 0.3, recovery: 0.18,
+    move: [0.6, 1, 0.9], turn: [12, 4], range: 24, reach: 24, arc: 2.3,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 160; m.ky += Math.sin(a.aim) * 160; },
+    onActiveTick(w, m, a) {
+      const hit = { reach: 24, arc: 2.3, dmg: 7.5, kb: 50, stun: 0.12, extra: {} };
+      if (!a.data.s1) { a.data.s1 = true; meleeTick(w, m, a, hit); a.data.first = new Set(a.hit); return; }
+      if (a.t >= 0.14 && !a.data.s2) {
+        a.data.s2 = true;
+        m.kx += Math.cos(a.aim) * 90; m.ky += Math.sin(a.aim) * 90;
+        a.hit = new Set();
+        meleeTick(w, m, a, { ...hit, dmg: 8.5 });
+        // Acertou os dois golpes no mesmo alvo: choque extra.
+        for (const id of a.hit) {
+          if (!a.data.first.has(id)) continue;
+          const t = w.monsters.find((q) => q.id === id);
+          if (!t || !t.alive) continue;
+          w.emit({ type: 'shockBurst', m: t, x: t.x, y: t.y - 4, src: m });
+          w.damage(t, 7, m, { tag: 'garrasCondutoras', element: 'electric', stun: 0.3, kb: 90, ang: a.aim, big: true });
+        }
+      }
+    },
+    desc: 'GARRAS CONDUTORAS: dois golpes seguidos; acertar OS DOIS no mesmo alvo libera um choque extra que atordoa.',
+  },
+  thunderJudgment: {
+    id: 'thunderJudgment', name: 'Julgamento do Trovão', element: 'electric', kind: 'lob',
+    cooldown: 8, windup: 0.25, active: 0.05, recovery: 0.25,
+    move: [0.5, 0.5, 0.9], turn: [8, 0], range: 230, radius: 36, flight: 0.75,
+    onActiveStart(w, m, a) { thunderLob(w, m, a, this, { dmg: 22, stun: 0.45, zone: { r: 34, life: 3, dps: 7, slow: 0.35 } }); },
+    desc: 'JULGAMENTO DO TROVÃO: raio gigante na área marcada; atordoa e deixa o SOLO ELETRIFICADO por 3 s (choque e lentidão).',
+  },
+  overloadCore: {
+    id: 'overloadCore', name: 'Núcleo de Sobrecarga', element: 'electric', kind: 'aoe', overload: true,
+    cooldown: 9.5, windup: 0.3, active: 0.32, recovery: 0.3, superArmor: true,
+    move: [0.2, 0.1, 0.6], turn: [0, 0], range: 74, radius: 74, dmg: 9, perCharge: 3, stun: 0.6,
+    onActiveStart(w, m, a) { a.data.n = shockPull(w, m, this); },
+    onEnd(w, m, a) {
+      const n = a.data.n || 0, R = 30 + 8 * n;
+      w.emit({ type: 'overload', m, x: m.x, y: m.y, r: R, n });
+      for (const t of w.enemiesOf(m)) {
+        if (Math.hypot(t.x - m.x, t.y - m.y) > R + t.r) continue;
+        w.damage(t, 6 + 3 * n, m, { tag: 'sobrecarga', element: 'electric', kb: 170 + 15 * n, ang: Math.atan2(t.y - m.y, t.x - m.x), noVolt: true, big: true });
+      }
+      w.popDecoysIn(m.x, m.y, R, m.team);
+    },
+    desc: 'NÚCLEO DE SOBRECARGA: puxa todos para perto, atordoa e EXPLODE. Cada carga gasta aumenta o dano, o atordoamento e o tamanho da explosão.',
+  },
+  lightningRupture: {
+    id: 'lightningRupture', name: 'Ruptura Relâmpago', element: 'electric', kind: 'dash', ghost: true,
+    cooldown: 6.5, windup: 0.1, active: 0.3, recovery: 0.2, superArmor: true,
+    move: [0.2, 1, 0.4], turn: [10, 0], range: 140, dash: { speed: 470 },
+    onActiveTick(w, m, a) {
+      Elec.trail(w, m, a, { r: 12, life: 2.6, dps: 8, slow: 0.32, tag: 'rastroRaio' });
+      elecDashHit(w, m, a, { dmg: 12, kb: 0, stun: 0.3, tag: this.id });
+    },
+    desc: 'RUPTURA RELÂMPAGO: investida que ATRAVESSA os inimigos (fere todos no caminho) e deixa um rastro elétrico.',
+  },
+  thunderInstinct: {
+    id: 'thunderInstinct', name: 'Instinto do Trovão', element: 'electric', kind: 'dodge', hop: true,
+    cooldown: 3.8, windup: 0, active: 0.24, recovery: 0.1,
+    move: [1, 1, 0.8], turn: [0, 0], dash: { speed: 320, invuln: true },
+    onEnd(w, m) {
+      w.emit({ type: 'thunderLand', m, x: m.x, y: m.y, r: 36 });
+      for (const t of w.enemiesOf(m)) {
+        if (Math.hypot(t.x - m.x, t.y - m.y) > 36 + t.r) continue;
+        w.damage(t, 8, m, { tag: 'instintoTrovao', element: 'electric', stun: 0.25, kb: 140, ang: Math.atan2(t.y - m.y, t.x - m.x) });
+      }
+      w.popDecoysIn(m.x, m.y, 36, m.team);
+    },
+    desc: 'INSTINTO DO TROVÃO: salto evasivo invulnerável; ao aterrissar solta uma descarga que atordoa quem estiver perto.',
+  },
+});

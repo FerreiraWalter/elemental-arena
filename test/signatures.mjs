@@ -547,7 +547,7 @@ test('Redemoinho: o Hidrocasco anda MAIS rápido girando do que caminhando', () 
 });
 
 // Guardas F: imunes a QUALQUER ataque enquanto ativas (dano, controle, empurrão, puxão, combo).
-for (const [line, guardId, evolved] of [['hidrocasco', 'shellGuard', false], ['hidrocasco', 'abyssGuard', true], ['pugilar', 'counterGuard', false], ['pugilar', 'armorGuard', true], ['brotossauro', 'barkGuard', false], ['brotossauro', 'ancientBark', true]]) {
+for (const [line, guardId, evolved] of [['hidrocasco', 'shellGuard', false], ['hidrocasco', 'abyssGuard', true], ['pugilar', 'counterGuard', false], ['pugilar', 'armorGuard', true]]) {
   test(`Guarda ${guardId}: bloqueia qualquer tipo de ataque (golpes, cone, onda, meteoro, raízes, atordoamento, combo)`, () => {
     const { w, A, B } = setup(line, 'brasalisco', { gap: 26, evolved });
     assert(A.def.abilities.some((x) => x.id === guardId), `${guardId} não está no kit`);
@@ -574,22 +574,12 @@ for (const [line, guardId, evolved] of [['hidrocasco', 'shellGuard', false], ['h
   });
 }
 
-test('Casca Viva: bloqueia, cura ao bloquear e prende em raízes quem bateu de perto', () => {
-  const { w, A, B } = setup('brotossauro', 'brasalisco', { gap: 24 });
-  A.hp = A.maxHp - 40; const hp = A.hp;
-  assert(cast(w, A, 'barkGuard'), 'guarda não subiu');
-  w.damage(A, 15, B, { tag: 'soco', element: 'fire', kb: 200, ang: Math.PI, stun: 0.3 });
-  step(w, 0.05);
-  assert(A.hp >= hp + ABILITIES.barkGuard.healOnBlock - 1, 'não curou ao bloquear');
-  assert(B.status.root > 0.5, 'não prendeu quem bateu de perto');
-});
-
-test('Brotossauro: E = Broto Sentinela e F = defesa (Casca), nas duas formas', () => {
+test('Brotossauro: E = flor sentinela e F = Casca Viva (suporte: redução de dano + cura), nas duas formas', () => {
   for (const key of ['brotossauro', 'brotossauroAncestral']) {
     const c = SPECIES[key].controls;
     assert(/Sentry$|^plantSentry$/.test(c.e), `${key}: E deveria ser a sentinela (é ${c.e})`);
     const g = SPECIES[key].abilities.find((x) => x.id === c.f);
-    assert(g && g.kind === 'guard', `${key}: F deveria ser uma guarda (é ${c.f})`);
+    assert(g && g.kind === 'buff' && g.bark, `${key}: F deveria ser a Casca (é ${c.f})`);
   }
 });
 

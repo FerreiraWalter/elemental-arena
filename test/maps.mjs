@@ -17,7 +17,7 @@ const BODIES = ['gotapus', 'brasalisco', 'brotossauroAncestral', 'hidrocascoAbis
 
 for (const arena of ARENA_ORDER) {
   test(`${arena}: dimensões e pontos de nascimento (1v1 e 2v2) válidos para todos os tamanhos de monstro`, () => {
-    assert(WORLD_W === 704 && WORLD_H === 400, 'dimensões inesperadas');
+    assert(WORLD_W === 1024 && WORLD_H === 576, 'dimensões inesperadas');
     for (const mode of ['1v1', '2v2']) for (const key of BODIES) {
       const sides = mode === '1v1' ? [0, 1] : [0, 0, 1, 1];
       const w = World.match(3, sides.map(() => [key, 'brasalisco', 'hidrocasco']), null, arena, 'normal', { sides });
@@ -178,8 +178,8 @@ test('Faixa de borda: a grade de navegação nunca traça rotas onde o corpo é 
   for (const i of [0, 1, COLS * 2 + 5, COLS * ROWS - 1]) assert(!grid.passable(i, false), 'tile de borda marcado como passável');
 });
 
-test('Mapas ampliados com moderação: arena útil maior, sem alterar a escala dos monstros', () => {
-  assert(WORLD_W * WORLD_H >= 640 * 360 * 1.19 && WORLD_W * WORLD_H <= 640 * 360 * 1.3, 'área fora do aumento moderado');
+test('Mapas ampliados para 4 jogadores: arena útil bem maior, sem alterar a escala dos monstros', () => {
+  assert(WORLD_W * WORLD_H >= 704 * 400 * 2 && WORLD_W * WORLD_H <= 704 * 400 * 2.3, 'área fora do aumento previsto');
 });
 
 let failed = 0;

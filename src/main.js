@@ -9,6 +9,7 @@ import { createMirror } from './net/mirror.js';
 import { NetSmoother } from './net/smooth.js';
 import { sfx } from './audio/sfx.js';
 import * as Training from './sim/training.js';
+import { createTouchControls } from './control/touch.js';
 
 // Fluxo: carregando → menu (time → arena | multiplayer → sala) → batalha → pausa/fim.
 // Batalha LOCAL: passo fixo de 1/60 s (a simulação roda no navegador, contra a IA).
@@ -158,7 +159,7 @@ function startOnline(start) {
   mirror = createMirror(start);
   world = mirror.world;
   world.slotNames = start.players.reduce((a, p) => { a[p.seat] = p.name; return a; }, []);
-  setPerspective(world.teams[start.you].side);
+  setPerspective(world.teams[start.you].side, world.ffa);
   renderer.reset(world);
   online = true;
   mode = 'battle';
@@ -204,8 +205,13 @@ function startBattle(cfg) {
   const seed = (Math.random() * 1e6) | 0;
   // Treinamento: seus monstros contra bonecos de pano (mantém as opções da sessão anterior de treino).
   if (cfg.training) world = World.training(seed, cfg.team, cfg.arena, trainingOpts || {});
-  else world = World.match(seed, [cfg.team, enemy], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty);
-  setPerspective(0);
+  else if (cfg.ffa) {
+    // Todos contra todos local: você + 3 IAs, cada um por si.
+    const pick = () => [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3);
+    world = World.match(seed, [cfg.team, enemy, pick(), pick()], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty, { sides: [0, 1, 2, 3] });
+    world.slotNames = ['Você', 'IA 1', 'IA 2', 'IA 3'];
+  } else world = World.match(seed, [cfg.team, enemy], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty);
+  setPerspective(0, !!cfg.ffa);
   renderer.reset(world);
   mode = 'battle';
   overlay = null;
@@ -368,6 +374,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (mode !== 'battle') return;
   const slot = e.button === 2 ? 'melee' : e.button === 0 ? 'primary' : null;
   if (!slot) return;
+  if (e.pointerType === 'touch' && touch.active) return; // no celular, só os botões na tela atacam
   world.input.held[slot] = true;
   press(slot);
 });
@@ -377,12 +384,24 @@ window.addEventListener('pointerup', (e) => {
   if (slot) world.input.held[slot] = false;
 });
 
+// Celular/tablet: controles de toque (analógico + botões); mira automática no inimigo mais próximo.
+const touch = createTouchControls({
+  press: (slot) => press(slot),
+  hold: (slot, v) => { if (world) world.input.held[slot] = v; },
+  key: (code) => window.dispatchEvent(new KeyboardEvent('keydown', { code })),
+  getWorld: () => world,
+});
+
 function readInput() {
   const inp = world.input;
   const k = (...codes) => codes.some((c) => keys.has(c));
   inp.move.x = (k('KeyD', 'ArrowRight') ? 1 : 0) - (k('KeyA', 'ArrowLeft') ? 1 : 0);
   inp.move.y = (k('KeyS', 'ArrowDown') ? 1 : 0) - (k('KeyW', 'ArrowUp') ? 1 : 0);
-  if (mouse.inside) {
+  if (touch.active && touch.visible) {
+    if (Math.hypot(touch.move.x, touch.move.y) > 0.01) { inp.move.x = touch.move.x; inp.move.y = touch.move.y; }
+    const a = touch.aim(world);
+    if (a) { inp.aim.x = a.x; inp.aim.y = a.y; }
+  } else if (mouse.inside) {
     const p = toWorld(mouse.x, mouse.y);
     inp.aim.x = Math.max(0, Math.min(WORLD_W, p.x));
     inp.aim.y = Math.max(0, Math.min(WORLD_H, p.y));
@@ -423,6 +442,7 @@ function drawNotice(c, dt) {
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
+  touch.update(mode === 'battle' && !overlay && !!world && world.playerTeam !== null);
   const c = canvas.getContext('2d');
   if (mode === 'loading') {
     c.fillStyle = '#14100e';
@@ -485,7 +505,7 @@ async function init() {
   // Atalhos para testes: ?arena=jardim&autostart&team=a,b,c  ·  ?watch (IA × IA)
   const arena = ARENAS[params.get('arena')] ? params.get('arena') : 'jardim';
   const qTeam = (params.get('team') || '').split(',').filter((k) => ROSTER.includes(k));
-  if (params.has('autostart') || params.has('watch')) startBattle({ team: qTeam.length === 3 ? qTeam : [...DEFAULT_TEAM], arena, spectator: params.has('watch') });
+  if (params.has('autostart') || params.has('watch')) startBattle({ team: qTeam.length === 3 ? qTeam : [...DEFAULT_TEAM], arena, spectator: params.has('watch'), ffa: params.has('ffa') });
   else mode = 'menu';
   // Link de convite (?sala=ABCD): vai direto escolher o time e entrar na sala.
   const invite = inviteCode();

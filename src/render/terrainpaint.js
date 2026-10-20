@@ -1,7 +1,7 @@
 import { TILE, COLS } from '../config.js';
 import { hash2, valueNoise } from '../core/math.js';
 import { T, props } from '../sim/tiles.js';
-import { COURT } from '../arenas/quadra.js';
+import { COURT, PADS } from '../arenas/quadra.js';
 import { rgba } from './pixel.js';
 
 // Pintura pixel a pixel do chão de cada arena: tipo de tile + paleta da arena + alturas
@@ -42,6 +42,8 @@ function courtLine(x, y) {
   const C = COURT;
   const inY = y >= C.y && y <= C.y + C.h, inX = x >= C.x && x <= C.x + C.w;
   if (inY && (Math.abs(x - C.x) < 1.2 || Math.abs(x - C.x - C.w) < 1.2 || Math.abs(x - C.cx) < 1)) return true;
+  if (inX && Math.abs(y - C.cy) < 0.8 && Math.abs(x - C.cx) > C.circleR) return true; // linha central horizontal: marca os 4 quadrantes
+  for (const p of PADS) if (Math.abs(Math.hypot(x - p.x, y - p.y) - 20) < 0.9) return true; // círculos de nascimento
   if (inX && (Math.abs(y - C.y) < 1.2 || Math.abs(y - C.y - C.h) < 1.2)) return true;
   const d = Math.hypot(x - C.cx, y - C.cy);
   if (Math.abs(d - C.circleR) < 1 || Math.abs(d - C.dotR) < 0.9) return true;
@@ -227,7 +229,13 @@ export function paintTile(world, P, i, x, y) {
 export function paintWalls(base, world) {
   const wood = [rgba('#4a2a12'), rgba('#7a4a22'), rgba('#a5672e')];
   for (const w of world.walls) {
-    if (w.kind === 'bleacher') {
+    if (w.kind === 'fence') {
+      // Cerca da quadra: trilho escuro com postes claros (limite sempre visível, sem confundir com decoração).
+      base.rect(w.x, w.y, w.w, w.h, rgba('#2a2a30'));
+      base.rect(w.x + 2, w.y, w.w - 4, w.h, rgba('#4a4a54'));
+      for (let y = w.y + 2; y < w.y + w.h - 2; y += 8) { base.rect(w.x, y, w.w, 3, rgba('#8a8a96')); base.rect(w.x, y, w.w, 1, rgba('#c8c8d4')); }
+      base.rect(w.x, w.y, w.w, 2, rgba('#c8c8d4'));
+    } else if (w.kind === 'bleacher') {
       base.rect(w.x, w.y, w.w, w.h, wood[1]);
       for (let k = 0; k < 4; k++) {
         const y = w.y + 6 + k * 7;

@@ -12,7 +12,8 @@ import { serialize, makeSyncCtx, SNAP_HZ } from '../src/net/snapshot.js';
 // ROBÔS: o anfitrião pode ocupar vagas com robôs (IA que roda aqui no servidor, igual aos monstros da IA no jogo
 // local). Robôs estão sempre prontos; se um amigo entrar com a sala cheia, ele toma a vaga de um robô.
 
-export const MODES = { '1v1': { seats: 2, sides: [0, 1] }, '2v2': { seats: 4, sides: [0, 0, 1, 1] } };
+// ffa = 1v1v1v1: quatro jogadores, cada um num lado próprio (sem aliados); vence o último com monstros vivos.
+export const MODES = { '1v1': { seats: 2, sides: [0, 1] }, '2v2': { seats: 4, sides: [0, 0, 1, 1] }, ffa: { seats: 4, sides: [0, 1, 2, 3] } };
 export const BOT_LEVELS = ['easy', 'normal', 'hard'];
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem 0/O/1/I para evitar confusão ao ditar o código
 const PRESSES = new Set(['primary', 'melee', 'q', 'e', 'f', 'dodge', 'evolve']);
@@ -161,9 +162,10 @@ export class Room {
           while (this.players.size > cap) { const b = this.bots().pop(); this.players.delete(b.id); }
           const prev = this.mode;
           this.mode = msg.mode;
-          // 1v1 → 2v2: o oponente vai para o outro lado (vaga 2); 2v2 → 1v1: compacta as vagas em 0 e 1.
+          // 1v1 → 2v2: o oponente vai para o outro lado (vaga 2); nos demais casos (2v2 → 1v1, qualquer → ffa,
+          // ffa → qualquer) as vagas são compactadas a partir da 0 (sem buracos nem vagas repetidas).
           const sorted = this.list().sort((x, y) => x.seat - y.seat);
-          if (prev === '1v1') { for (const p of sorted) if (p.seat === 1) p.seat = 2; }
+          if (prev === '1v1' && this.mode === '2v2') { for (const p of sorted) if (p.seat === 1) p.seat = 2; }
           else sorted.forEach((p, i) => { p.seat = i; });
           for (const p of this.humans()) p.ready = false;
         }
@@ -240,6 +242,7 @@ export class Room {
     this.state = 'playing';
     this.stats = { start: Date.now() };
     this.startInfo = { seed, sides, rosters };
+    this.world.slotNames = ps.map((p) => p.name);
     const base = { t: 'start', seed, arena: this.arena, mode: this.mode, sides, rosters, players: this.playerList(ps) };
     for (const p of ps) if (!p.bot) p.send(JSON.stringify({ ...base, you: p.seat }));
     this.broadcastRoom();
@@ -305,9 +308,13 @@ export class Room {
     this.state = 'over';
     clearInterval(this.timer); this.timer = null;
     const w = this.world;
+    const names = {};
+    for (const p of this.list()) names[p.seat] = p.name;
     this.broadcast({
       t: 'end', winnerSide: w.winner, duration: w.endTime ?? w.time,
       summary: w.roster.map((m) => ({ name: m.name, slot: m.slot, alive: m.alive, dmg: Math.round(m.stats.dmgDealt) })),
+      // Classificação oficial (autoridade do servidor): uma linha por lado, com nomes dos jogadores das vagas.
+      standings: w.standings().map((r) => ({ ...r, elimT: Number.isFinite(r.elimT) ? Math.round(r.elimT * 100) / 100 : null, players: r.slots.map((s) => names[s] || `Vaga ${s + 1}`) })),
     });
     this.broadcastRoom();
   }
