@@ -40,7 +40,7 @@ Como funciona (servidor autoritativo):
 | WASD / setas | mover |
 | Mouse | mirar |
 | Botão esquerdo / direito | golpe básico próprio do monstro (segure para repetir) / golpe pesado |
-| Q / E / F | poderes especiais (Hidrocasco: F = **Casco Reflexo**; Brotossauro: F = **Broto Sentinela**) |
+| Q / E / F | poderes especiais. O **F dos defensivos é uma guarda** (Casco Reflexo, Casco Abissal, Contra-Golpe, Couraça, Casca Viva): enquanto ativa, **bloqueia QUALQUER ataque** (dano, atordoamento, raízes, empurrão, puxão e combo); alguns ainda contra-atacam ou curam |
 | Espaço / Shift | esquiva com invulnerabilidade |
 | 1 2 3 / Tab | trocar o monstro em campo (recarga de 3 s) |
 | **G** | **evoluir** (energia cheia) |

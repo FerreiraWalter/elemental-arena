@@ -1228,12 +1228,12 @@ export class Renderer {
         // Pedra arremessada: bloco cinza com contorno escuro, girando, com sombra no chão.
         const l = this.l;
         l.globalAlpha = 0.3; l.fillStyle = '#000';
-        l.beginPath(); l.ellipse(Math.round(x), Math.round(y + 8), 4, 2, 0, 0, Math.PI * 2); l.fill(); l.globalAlpha = 1;
-        const hy = y - 2, rot = Math.floor(t * 14) % 4;
-        for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+        l.beginPath(); l.ellipse(Math.round(x), Math.round(y + 8), p.r, p.r * 0.45, 0, 0, Math.PI * 2); l.fill(); l.globalAlpha = 1;
+        const hy = y - 2, rot = Math.floor(t * 14) % 4, R = p.r + 1;
+        for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
           const d = Math.max(Math.abs(dx), Math.abs(dy)) * 0.6 + Math.hypot(dx, dy) * 0.5;
-          if (d > 5) continue;
-          const shade = d > 4.2 ? '#2a2620' : ((dx + dy + rot) & 3) === 0 ? '#a8a090' : dy < 0 ? '#8a8270' : '#625a4c';
+          if (d > R) continue;
+          const shade = d > R - 0.9 ? '#2a2620' : ((dx + dy + rot) & 3) === 0 ? '#a8a090' : dy < 0 ? '#8a8270' : '#625a4c';
           g.set(x + dx, hy + dy, rgba(shade));
         }
       } else if (p.kind === 'splashSeed') {
@@ -1309,11 +1309,11 @@ export class Renderer {
       } else if (ab.id === 'rockThrow' && a.phase === 'windup') {
         // Arranca a pedra do chão: ela sobe do pé até acima da cabeça durante a preparação.
         const k = Math.min(1, a.t / ab.windup);
-        const rx = Math.round(m.x + Math.cos(a.aim) * 4), ry = Math.round(m.y + 4 - k * (m.r + 18));
-        for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+        const rx = Math.round(m.x + Math.cos(a.aim) * 4), ry = Math.round(m.y + 4 - k * (m.r + 22));
+        for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) {
           const d = Math.hypot(dx, dy);
-          if (d > 5.2) continue;
-          g.set(rx + dx, ry + dy, rgba(d > 4.3 ? '#2a2620' : dy < -1 ? '#a8a090' : '#6e6656'));
+          if (d > 9.2) continue;
+          g.set(rx + dx, ry + dy, rgba(d > 8.2 ? '#2a2620' : dy < -2 ? '#a8a090' : ((dx * 3 + dy) & 7) === 0 ? '#4a4438' : '#6e6656'));
         }
         if (k < 0.25 && Math.random() < 0.6) this.particles.add({ ramp: 'dust', x: m.x + (Math.random() - 0.5) * 10, y: m.y + 4, vz: 30, life: 0.4 });
       } else if (ab.id === 'whirlpool' && a.phase === 'active') {

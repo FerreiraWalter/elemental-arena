@@ -17,7 +17,7 @@ export const SIG = {
   heat: { max: 100, decayDelay: 1.3, decay: 11, overheat: 3, exhaust: 2.2, exhaustEvolved: 1.5, dmg: 1.2, speed: 1.1, exhaustSpeed: 0.72, exhaustTaken: 1.15, waterCool: 12 },
   nova: { r: 42, dmg: 9, kb: 230, burn: 1 },
   momentum: { gain: 60, loss: 75, keep: 0.3, chargedSpeed: 1.15, strike: 1.6, kb: 1.4 },
-  guard: { block: 0.15, blockDot: 0.3, counterReach: 46 },
+  guard: { block: 0, blockDot: 0, counterReach: 46 }, // guarda ativa = imune a QUALQUER ataque (dano, controle, empurrão, combo)
   decoy: { life: 2.2, speed: 0.95 },
   marks: { max: 3, life: 4.5, gap: 0.14, root: 0.7 },
   sentry: { max: 2 },
@@ -167,8 +167,8 @@ export function counter(w, t, src) {
   const C = ab.counter, water = !C.element || C.element === 'water';
   w.damage(src, C.dmg, t, { tag: C.tag || 'contraMare', element: C.element || 'water', kb: C.kb ?? 260, ang, stun: C.stun ?? 0.35, ...(water ? { wet: 2.5 } : {}), counter: true, proj: true });
   if (water) w.douseArea(t.x + Math.cos(ang) * 14, t.y + Math.sin(ang) * 14, 14, 6, t);
-  // Contra-ataque bem-sucedido encerra o bloqueio com recuperação curta.
-  a.phase = 'recovery'; a.t = Math.max(0, ab.recovery - 0.12);
+  if (C.root) w.applyRoot(src, C.root); // casca viva: prende quem bateu
+  // A guarda continua até o fim do tempo ativo: o contra-ataque não a encerra, senão o 2º golpe de um combo passaria.
 }
 
 // Bloqueio recebido (qualquer dano direto): efeito visual e, na forma evoluída, uma bolha protetora.
@@ -179,6 +179,7 @@ export function blocked(w, t, src, o) {
     if (a.ab.shieldOnBlock) { t.status.shield = 4; t.shieldHp = Math.max(t.shieldHp, a.ab.shieldOnBlock); w.emit({ type: 'shield', m: t, x: t.x, y: t.y }); }
   }
   if (!o.dot) w.emit({ type: 'block', m: t, src, x: t.x, y: t.y });
+  if (!o.dot && a.ab.healOnBlock && !a.data.healed) { a.data.healed = true; w.heal(t, a.ab.healOnBlock); w.emit({ type: 'grow', x: t.x, y: t.y }); }
   if (!o.dot && !o.proj && !o.counter && src && src.alive && src !== t && Math.hypot(src.x - t.x, src.y - t.y) < src.r + t.r + SIG.guard.counterReach) counter(w, t, src);
 }
 

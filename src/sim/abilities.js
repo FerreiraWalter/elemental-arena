@@ -1,7 +1,7 @@
 import { angleDiff, angleTo, pointSeg, clamp, turnToward } from '../core/math.js';
 import { TILE, WORLD_W, WORLD_H } from '../config.js';
 import { T } from './tiles.js';
-import { thorns, spawnDecoy, SIG } from './signature.js';
+import { thorns, spawnDecoy, SIG, isGuarding } from './signature.js';
 
 // Cada habilidade tem fases reais: preparação (windup, telegrafada), ativa (hitbox/efeito) e recuperação.
 // move = multiplicador de deslocamento em cada fase; turn = rad/s de rastreio da mira em windup/ativa.
@@ -154,7 +154,7 @@ export const ABILITIES = {
       for (const t of w.enemiesOf(m)) {
         if (pointSeg(t.x, t.y, b.ox, b.oy, b.ex, b.ey).d > this.width + t.r) continue;
         w.damage(t, 14 * dt, m, { dot: true, wet: 2.5, element: 'water' });
-        t.kx += ca * 520 * dt; t.ky += sa * 520 * dt;
+        if (!isGuarding(t)) { t.kx += ca * 520 * dt; t.ky += sa * 520 * dt; }
       }
       const L = Math.hypot(b.ex - b.ox, b.ey - b.oy);
       if (every(a, dt, 0.05)) for (let s = 0; s <= L; s += 5) w.douseArea(b.ox + ca * s, b.oy + sa * s, 5, 7, m);
@@ -178,6 +178,7 @@ export const ABILITIES = {
         w.damage(t, 11 * dt, m, { dot: true, wet: 2, element: 'water', tag: 'whirlpool' });
         // Órbita: empurra de lado (giro) e puxa de leve para o centro.
         const tang = 210, pull = d > m.r + t.r + 6 ? 70 : -40;
+        if (isGuarding(t)) continue; // guarda ativa não é arrastada
         t.kx += (-dy / d * tang - dx / d * pull) * dt * 3;
         t.ky += (dx / d * tang - dy / d * pull) * dt * 3;
       }
@@ -441,7 +442,7 @@ export const ABILITIES = {
       w.emit({ type: 'burrowOut', m, x: m.x, y: m.y, big: true });
       for (const t of w.enemiesOf(m)) {
         const d = Math.hypot(t.x - m.x, t.y - m.y);
-        if (d < m.r + t.r + 14) { t.kx += (t.x - m.x) / (d || 1) * 180 / t.def.mass; t.ky += (t.y - m.y) / (d || 1) * 180 / t.def.mass; }
+        if (d < m.r + t.r + 14 && !isGuarding(t)) { t.kx += (t.x - m.x) / (d || 1) * 180 / t.def.mass; t.ky += (t.y - m.y) / (d || 1) * 180 / t.def.mass; }
       }
       for (let k = 0; k < 10; k++) { const an = w.rng() * 6.28, r = 6 + w.rng() * 16; const i = w.terrain.at(m.x + Math.cos(an) * r, m.y + Math.sin(an) * r); if (i >= 0 && w.terrain.growGrass(i)) w.emit({ type: 'grow', x: w.terrain.cx(i), y: w.terrain.cy(i) }); }
     },
@@ -1060,7 +1061,7 @@ Object.assign(ABILITIES, {
     cooldown: 9, windup: 0.55, active: 0.05, recovery: 0.35,
     move: [0.3, 0.3, 0.7], turn: [6, 0], range: 230, speed: 250,
     onActiveStart(w, m, a) {
-      w.spawnProjectile({ kind: 'rock', owner: m, ang: a.aim, speed: 250, r: 5, range: 230, dmg: 14, x: m.x + Math.cos(a.aim) * (m.r + 4), y: m.y + Math.sin(a.aim) * (m.r + 4) - 10, aimPoint: a.aimPoint });
+      w.spawnProjectile({ kind: 'rock', owner: m, ang: a.aim, speed: 240, r: 9, range: 230, dmg: 16, x: m.x + Math.cos(a.aim) * (m.r + 4), y: m.y + Math.sin(a.aim) * (m.r + 4) - 10, aimPoint: a.aimPoint });
     },
     desc: 'ARREMESSO DE PEDRA: arranca uma pedra do chão e arremessa. Quem for atingido fica ATORDOADO.',
   },
@@ -1089,3 +1090,24 @@ Object.assign(ABILITIES, {
     desc: 'Enrola-se como um tatu e rola para longe.',
   },
 });
+
+// ───────────── Brotossauro: defesa (F) ─────────────
+// Casca viva: bloqueia QUALQUER ataque (como todas as guardas F), cura um pouco ao bloquear e PRENDE quem bateu de perto.
+Object.assign(ABILITIES, {
+  barkGuard: {
+    id: 'barkGuard', name: 'Casca Viva', element: 'plant', kind: 'guard',
+    cooldown: 9, windup: 0, active: 0.7, recovery: 0.32,
+    move: [0.2, 0.2, 0.6], turn: [0, 0], healOnBlock: 12,
+    counter: { dmg: 9, element: 'plant', tag: 'cascaViva', kb: 150, stun: 0.2, root: 1.4 },
+    desc: 'CASCA VIVA: bloqueia QUALQUER ataque, cura 12 ao bloquear e PRENDE em raízes quem bater de perto.',
+  },
+  ancientBark: {
+    id: 'ancientBark', name: 'Casca Ancestral', element: 'plant', kind: 'guard',
+    cooldown: 9, windup: 0, active: 0.85, recovery: 0.32,
+    move: [0.2, 0.2, 0.6], turn: [0, 0], healOnBlock: 22,
+    counter: { dmg: 14, element: 'plant', tag: 'cascaViva', kb: 200, stun: 0.3, root: 2 },
+    desc: 'CASCA ANCESTRAL: guarda mais longa que bloqueia QUALQUER ataque, cura 22 e prende por mais tempo quem bater de perto.',
+  },
+});
+ABILITIES.shellGuard.desc = 'CASCO REFLEXO: bloqueia QUALQUER ataque; devolve projéteis e, se baterem de perto, contra-ataca e molha.';
+ABILITIES.abyssGuard.desc = 'CASCO ABISSAL: bloqueia QUALQUER ataque, devolve projéteis, contra-ataca e cria uma bolha protetora.';

@@ -1177,6 +1177,11 @@ export class World {
         const i = tr.idx(c, r);
         if (i >= 0 && Math.hypot(c * TILE + 4 - p.tx, r * TILE + 4 - p.ty) <= p.radius * 0.8) tr.growRoots(i, p.rootTiles || 3);
       }
+    // A semente também brota vegetação onde estoura (a planta faz o chão crescer).
+    for (let k = 0; k < 4; k++) {
+      const an = this.rng() * 6.28, d = this.rng() * p.radius * 0.8;
+      this.sprout(p.tx + Math.cos(an) * d, p.ty + Math.sin(an) * d, T.GRASS, p.owner);
+    }
   }
 
   // Ritmo: cada golpe básico (botão esquerdo ou direito) que acerta adianta as habilidades Q/E/F.

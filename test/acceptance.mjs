@@ -66,7 +66,7 @@ for (let seed = 1; seed <= N; seed++) {
   r.losersDead = w.over && w.roster.filter((m) => m.team !== w.winner).every((m) => !m.alive && m.hp <= 0);
   r.fireIgnites = w.roster.filter((m) => m.element === 'fire').reduce((a, m) => a + m.stats.ignites, 0);
   r.waterDouses = w.roster.filter((m) => m.element === 'water').reduce((a, m) => a + m.stats.douses, 0);
-  r.grown = w.roster.reduce((a, m) => a + (m.stats.grown || 0), 0);
+  r.grown = Math.max(w.terrain.stats.grown, w.roster.reduce((a, m) => a + (m.stats.grown || 0), 0)); // todo crescimento do terreno (Crescimento, Semente Explosiva...)
   r.terrain = { ...w.terrain.stats };
   r.evaded = w.roster.reduce((a, m) => a + m.stats.evaded, 0);
   r.switches = [w.teams[0].switches, w.teams[1].switches];
