@@ -61,7 +61,7 @@ Modificados (missão FFA/arenas): `src/config.js` (COLS 128/ROWS 72 → mundo 10
 - **Acceptance critério 9:** contra a IA `normal` (deixada fácil de propósito) o bot vence 20×0. O teste agora usa a IA `hard` por padrão (`DIFF=normal` para comparar): 11×9 e, na suíte final, 13×7; todos os critérios OK. A dificuldade do jogo não mudou.
 - **Bug de render (antigo):** raios (`this.bolts`), cipós da Casca Viva e cortes (`drawSlashes`) eram desenhados no `fxT` DEPOIS do commit e o buffer era limpo no quadro seguinte → nunca apareciam. Movidos para antes do commit.
 - **Animações elétricas:** raio do céu com tronco grosso + clarão no chão; 110V com cabos de raio presos em quem é puxado + anel fechando; rastro do dash contínuo (`EF.drawTrails`); pulo do gato com faíscas/poeira; núcleo de sobrecarga com esfera crescendo no peito; **cauda de raio em espiral** animada (`EF.drawTail`) no jogo e nos retratos do menu.
-- **Sprites:** Raiolua/Trovogato recortados da arte de referência (`tools/extract_cats_ref.py <imagem>`: GrabCut + pintura por regiões + rampas fixas). Brotossauro = **filhote do Ancestral**, feito a partir da própria arte da evolução (`python tools/pixelart/mini_brotossauro.py`: proporção de filhote, repintado por material — folha, casca, pedra — com rampas próprias, luz do alto à esquerda e olhos ocos de nó de madeira; folhinhas verdes caem dele). Não rode `tools/pixelart/build.py` sem nome: ele sobrescreve os gatos com os .txt antigos.
+- **Sprites:** Raiolua/Trovogato recortados da arte de referência (`tools/extract_cats_ref.py <imagem>`: GrabCut + pintura por regiões + rampas fixas). Brotossauro: voltou ao sprite ORIGINAL (golem de pedra e musgo, de b136553) a pedido do usuário. Não rode `tools/pixelart/build.py` sem nome: ele sobrescreve os gatos com os .txt antigos.
 - **HUD nova** (inspirada no esboço do usuário, sem ícones nas habilidades): painéis azul-noite chanfrados, retratos animados nos cartões, painel do cronômetro, retrato grande + barra de habilidades só com texto e etiqueta da tecla real, cantos com sala/ping (online, `hud.net`) e modo/arena.
 - **Bestiário/seleção:** OK com 8 monstros (grade 4×2, 8 abas). Corrigido "Forte contra undefined" (elétrico ficou sem vantagem >1) e retrato cortado dos gatos.
 - **Balanceamento (só números):** ver diff de `config.js`, `species.js`, `abilities.js`, `world.js`, `electric.js`. Medido com `tools/balance.mjs 3 1/2` (3 seeds × 4 arenas × 2 lados):
@@ -76,6 +76,12 @@ Modificados (missão FFA/arenas): `src/config.js` (COLS 128/ROWS 72 → mundo 10
 - **Lutadores:** clique esquerdo = mão esquerda, direito = mão direita (Pugilar jab/direto, Lutapacho soco blindado/garra). `ARMS` em `artsprites.js` define o retângulo de cada braço na arte; `pose.punch` estica o braço para a frente.
 - **Gatos:** cauda refeita como cauda fina de siamês em "?" com arcos elétricos e ponta azul (`EF.drawTail`). Pernas do Trovogato retas (`tools/fix_trovogato_legs.py`, roda depois de `extract_cats_ref.py`).
 - **Cache dos sprites:** `ART_VERSION` em `artsprites.js` vai na URL dos PNGs; suba o número ao trocar qualquer PNG.
+
+## 6e. Desempenho e ajustes (2026-10-20, 3ª rodada)
+- **Ping 40→80:** a simulação ficou ~2,5× mais cara com os mapas 1024×576 (mais obstáculos): `blocked`/`blockedFor` varriam todos os obstáculos a cada sonda da IA (~60% do tempo). Agora há grade espacial (`World.obstacleGrid`, células de 32 px, refeita por `obstacleVersion`), usada em `blocked` e `collideStatic`. Medido (90 s IA×IA, `netbench`): 1v1 0,75→0,21 ms/passo, FFA 1,2→0,33 ms/passo (a `main` antiga fazia 0,3 ms no 1v1). Snapshots idênticos byte a byte (mesma simulação). Snapshot comprimido ~1–1,9 KB a 20 Hz (não mudou).
+- **Medida do ping no cliente:** usa `ev.timeStamp` (chegada da mensagem) em vez da hora em que o JS processou o pong; quadro pesado na aba não vira mais "ping".
+- **Gatos menores:** `SIZE` em `artsprites.js` (Raiolua 0,82, Trovogato 0,8); cauda acompanha.
+- **Sentinelas do Brotossauro:** alcance do tiro 150→175 (Ancestral 175→200).
 
 ## 7. Próximos passos (ordem)
 1. Confirmar no navegador real (com GPU) a HUD nova em 1280×720 e em janelas menores; o painel de testes desta sessão não renderizava em segundo plano.

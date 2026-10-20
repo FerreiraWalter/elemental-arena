@@ -207,7 +207,7 @@ export class UI {
       const g = tb.getContext('2d');
       g.clearRect(0, 0, tw, th);
       const big = def.stage > 1;
-      drawTail(g, tw / 2, f.ay + 10 - f.top * (big ? 0.22 : 0.3), flip ? -1 : 1, big ? 1.35 : 1, this.time, seed + 3, 0, f.w * 0.3);
+      drawTail(g, tw / 2, f.ay + 10 - f.top * (big ? 0.22 : 0.3), flip ? -1 : 1, big ? 1.1 : 0.85, this.time, seed + 3, 0, f.w * 0.25);
       c.drawImage(tb, -(tw / 2) * scale, -(f.ay + 10) * scale, tw * scale, th * scale);
     }
     if (flip) c.scale(-1, 1);

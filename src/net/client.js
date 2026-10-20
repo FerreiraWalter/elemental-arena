@@ -37,7 +37,16 @@ export class NetClient {
         this.lastRx = Date.now();
         let msg;
         try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : ev.data.toString()); } catch { return; }
-        if (msg.t === 'pong') { if (msg.ts) { const r = Date.now() - msg.ts; this.rtt = this.rtt ? this.rtt * 0.7 + r * 0.3 : r; } return; }
+        if (msg.t === 'pong') {
+          // Ping de rede de verdade: usa a hora em que a mensagem CHEGOU (ev.timeStamp), não a hora em que o JS conseguiu
+          // processá-la — com a aba ocupada desenhando um quadro, a espera na fila virava "ping".
+          if (msg.ts) {
+            const now = performance.now(), at = ev.timeStamp > msg.ts && ev.timeStamp <= now ? ev.timeStamp : now;
+            const r = at - msg.ts;
+            if (r >= 0 && r < 10000) this.rtt = this.rtt ? this.rtt * 0.7 + r * 0.3 : r;
+          }
+          return;
+        }
         this.emit(msg);
       };
     });
@@ -49,7 +58,7 @@ export class NetClient {
     this.ping = setInterval(() => {
       if (!this.open) return;
       if (Date.now() - this.lastRx > 45000) { try { this.ws.close(); } catch { /* ok */ } return; }
-      this.send({ t: 'ping', ts: Date.now() });
+      this.send({ t: 'ping', ts: performance.now() });
     }, 3000);
     this.ping.unref?.();
   }

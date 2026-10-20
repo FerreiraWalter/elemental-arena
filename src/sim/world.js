@@ -28,8 +28,8 @@ const OBSTACLE_DEFS = {
   thicket: { flammable: true, hp: 40, blocksLOS: true, burnTime: 4, burnDps: 12 }, // barreira temporária da planta
   // Brotos Sentinela (Brotossauro): torres vivas; o fogo as derruba rápido.
   // Sentinelas do Brotossauro: flores carnívoras que atiram de longe (deixam lento) e mordem quem encosta.
-  sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 1.4, healR: 54, shot: { kind: 'seed', dmg: 2, every: 1.5, range: 150, speed: 250, slow: [0.6, 0.15] }, bite: { reach: 10, dmg: 4, every: 1.4, slow: 0.3, slowTime: 1 } },
-  ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 2.1, healR: 60, shot: { kind: 'thorn', dmg: 3.5, every: 1.5, range: 175, speed: 250, slow: [1.2, 0.25] }, bite: { reach: 12, dmg: 7, every: 1.1, slow: 0.4, slowTime: 1.4 } },
+  sentry: { flammable: true, hp: 28, blocksLOS: false, burnTime: 3, burnDps: 12, heal: 1.4, healR: 54, shot: { kind: 'seed', dmg: 2, every: 1.5, range: 175, speed: 250, slow: [0.6, 0.15] }, bite: { reach: 10, dmg: 4, every: 1.4, slow: 0.3, slowTime: 1 } },
+  ancientSentry: { flammable: true, hp: 46, blocksLOS: false, burnTime: 3, burnDps: 14, heal: 2.1, healR: 60, shot: { kind: 'thorn', dmg: 3.5, every: 1.5, range: 200, speed: 250, slow: [1.2, 0.25] }, bite: { reach: 12, dmg: 7, every: 1.1, slow: 0.4, slowTime: 1.4 } },
 };
 
 // Dificuldade da IA (multiplica o perfil do monstro). think: intervalo entre decisões (mais lento = ataca e reage
@@ -41,6 +41,7 @@ export const DIFFICULTY_MODS = {
   hard: { reaction: 1.35, dodgeSkill: 0.75, accuracy: 1.5, lead: 0.85, think: 1.5, aggression: 0.92 },
 };
 
+const OBS_PAD = 24; // raio máximo de consulta coberto pela grade de obstáculos
 const makeSlot = (side) => ({ side, field: null, pending: null, cooldown: 0, deadT: 0, lastOut: null, lastOutT: -99, switches: 0 });
 // Posições relativas de nascimento no todos-contra-todos quando a arena não define `spawnsFFA` (cantos simétricos).
 const FFA_FRAC = [[0.14, 0.24], [0.86, 0.76], [0.86, 0.24], [0.14, 0.76]];
@@ -444,9 +445,31 @@ export class World {
   }
 
   // Ponto bloqueado para um corpo de raio r? (obstáculos, arquibancadas, bordas)
+  // Grade espacial dos obstáculos (células de 32 px; cada obstáculo entra nas células que seu círculo + OBS_PAD toca).
+  // A IA consulta blocked() dezenas de vezes por monstro por quadro: varrer todos os ~100 obstáculos era ~60% da simulação.
+  // Refeita sozinha quando um obstáculo entra/sai (obstacleVersion, tamanho ou troca da lista); obstáculos não se movem.
+  obstacleGrid() {
+    const obs = this.obstacles, v = this.obstacleVersion || 0;
+    const g = this._obsGrid;
+    if (g && g.ref === obs && g.n === obs.length && g.v === v) return g;
+    const C = 32, cols = Math.ceil(WORLD_W / C), rows = Math.ceil(WORLD_H / C);
+    const cells = Array.from({ length: cols * rows }, () => []);
+    for (const o of obs) {
+      const e = o.r + OBS_PAD;
+      const c0 = Math.max(0, Math.floor((o.x - e) / C)), c1 = Math.min(cols - 1, Math.floor((o.x + e) / C));
+      const r0 = Math.max(0, Math.floor((o.y - e) / C)), r1 = Math.min(rows - 1, Math.floor((o.y + e) / C));
+      for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) cells[r * cols + c].push(o);
+    }
+    return (this._obsGrid = { ref: obs, n: obs.length, v, C, cols, rows, cells });
+  }
+
   blocked(x, y, r = 0) {
     if (x < r + 4 || y < r + 4 || x > WORLD_W - r - 4 || y > WORLD_H - r - 4) return true;
-    for (const o of this.obstacles) if (!o.destroyed && o.solid && Math.hypot(o.x - x, o.y - y) < o.r + r) return true;
+    if (r <= OBS_PAD) {
+      const g = this.obstacleGrid();
+      const list = g.cells[Math.min(g.rows - 1, (y / g.C) | 0) * g.cols + Math.min(g.cols - 1, (x / g.C) | 0)];
+      for (const o of list) if (!o.destroyed && o.solid && (o.x - x) ** 2 + (o.y - y) ** 2 < (o.r + r) ** 2) return true;
+    } else for (const o of this.obstacles) if (!o.destroyed && o.solid && Math.hypot(o.x - x, o.y - y) < o.r + r) return true;
     for (const w of this.walls) if (x + r > w.x && x - r < w.x + w.w && y + r > w.y && y - r < w.y + w.h) return true;
     return false;
   }
@@ -1011,8 +1034,10 @@ export class World {
   collideStatic(m) {
     const leaping = this.isAirborne(m); // saltos, pulos e voos passam por cima de obstáculos e muretas
     // Duas passadas: empurrado para fora de um tronco/pilar, o corpo pode cair em um vizinho (correntes de troncos, pares de pedras).
-    for (let pass = 0; pass < 2; pass++) for (const o of this.obstacles) {
-      if (o.destroyed || !o.solid || leaping) continue;
+    // Só os obstáculos da célula da grade (o corpo, raio <= OBS_PAD, não alcança outros).
+    const g = m.r <= OBS_PAD && !leaping ? this.obstacleGrid() : null;
+    for (let pass = 0; pass < 2; pass++) for (const o of leaping ? [] : g ? g.cells[Math.min(g.rows - 1, Math.max(0, (m.y / g.C) | 0)) * g.cols + Math.min(g.cols - 1, Math.max(0, (m.x / g.C) | 0))] : this.obstacles) {
+      if (o.destroyed || !o.solid) continue;
       const dx = m.x - o.x, dy = m.y - o.y, d = Math.hypot(dx, dy) || 0.01, min = m.r + o.r;
       if (d < min - 0.01) {
         m.x = o.x + dx / d * min; m.y = o.y + dy / d * min;

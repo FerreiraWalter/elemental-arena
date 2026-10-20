@@ -97,7 +97,7 @@ export const SPECIES = {
     dodge: A.leafDash,
     controls: { primary: 'burstSeed', melee: 'vineWhip', q: 'rootSnare', e: 'plantSentry', f: 'barkGuard', dodge: 'leafDash' },
     sig: { kind: 'sentry', name: 'Jardim Vivo', desc: 'Suporte e controle: os ataques cobrem o alvo de SEIVA (fica LENTO). Com E planta FLORES CARNÍVORAS (máx. 2) que atiram de longe, mordem quem encosta e curam o time. Com F veste você e o parceiro com CASCA VIVA: redução de dano e cura contínua.' },
-    traits: ['Seiva: semente e chicote deixam o alvo LENTO', 'Flores carnívoras (E): alcance 150, mordem e curam', 'Casca Viva (F): -35% de dano e cura no parceiro'],
+    traits: ['Seiva: semente e chicote deixam o alvo LENTO', 'Flores carnívoras (E): alcance 175, mordem e curam', 'Casca Viva (F): -35% de dano e cura no parceiro'],
     tips: 'Ponto fraco: lento e sem fuga boa; o fogo queima as flores e corta a seiva.',
     difficulty: 2,
     profile: {
@@ -114,7 +114,7 @@ export const SPECIES = {
     abilities: [A.ancientWhip, A.ancientSeed, A.ancientRoots, A.ancientSentry, A.ancientBark, A.barkStep],
     dodge: A.barkStep,
     controls: { primary: 'ancientSeed', melee: 'ancientWhip', q: 'ancientRoots', e: 'ancientSentry', f: 'ancientBark', dodge: 'barkStep' },
-    sig: { kind: 'sentry', name: 'Montanha Ancestral', desc: 'A montanha que virou floresta: seiva mais grossa (mais lentidão), guardiões carnívoros de alcance 175 que mordem forte e a CASCA DA MONTANHA (F): -40% de dano e cura contínua no parceiro.' },
+    sig: { kind: 'sentry', name: 'Montanha Ancestral', desc: 'A montanha que virou floresta: seiva mais grossa (mais lentidão), guardiões carnívoros de alcance 200 que mordem forte e a CASCA DA MONTANHA (F): -40% de dano e cura contínua no parceiro.' },
     traits: ['Guardiões carnívoros de longo alcance', 'Casca da Montanha (F): muralha viva no parceiro', 'Casca grossa: queima pela metade do tempo'],
     tips: 'Ponto fraco: muito lento; quem tem mobilidade escolhe onde lutar.',
     difficulty: 2,

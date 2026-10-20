@@ -9,14 +9,14 @@ import { hash2 } from '../core/math.js';
 const FLAME = [rgba('#fff7c2'), rgba('#ffd84a'), rgba('#ff9a1f'), rgba('#f2541b'), rgba('#b3200f')];
 const WHITE = rgba('#ffffff');
 // Suba quando trocar algum PNG de assets/monsters (força o navegador a baixar de novo).
-const ART_VERSION = 7;
+const ART_VERSION = 8;
 
 // Direção para onde a arte original olha (-1 esquerda, 0 frente, 1 direita). O renderer espelha a arte
 // para que o monstro sempre olhe para a mira; sprite que olha para a esquerda precisa de -1 aqui.
 const FACES = {
   fire_1: -1, fire_2: 0, fire_3: 0,
   water_1: 1, water_2: 0, water_3: 0,
-  plant_1: 0, plant_2: 0, plant_3: 0, // plant_1: Brotossauro = filhote do Ancestral (tools/pixelart/mini_brotossauro.py)
+  plant_1: 0, plant_2: 0, plant_3: 0, // plant_1: Brotossauro original (golem de pedra e musgo)
   hedgehog_1: 1, hedgehog_3: 1,
   octo_1: 0, octo_3: 0,
   mantis_1: 1, mantis_3: -1, // Silvamante: cabeça e garras à esquerda, folhas para trás
@@ -31,6 +31,9 @@ const ARMS = {
   brawler_1: { L: { x0: 25, y0: 11, x1: 35, y1: 24, reach: 7, lift: 0 }, R: { x0: 8, y0: 12, x1: 16, y1: 25, reach: 15, lift: 0, keep: true } }, // braço sobre o peito: fica, escurecido
   brawler_3: { L: { x0: 50, y0: 19, x1: 62, y1: 45, reach: 8, lift: 0 }, R: { x0: 0, y0: 13, x1: 15, y1: 51, reach: 18, lift: -0.15 } },
 };
+
+// Escala de desenho por arte (1 = tamanho do PNG). Os gatos de chapéu ficavam grandes demais perto dos outros.
+const SIZE = { cat_1: 0.82, cat_3: 0.8 };
 
 function classify(r, g, b) {
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
@@ -90,8 +93,9 @@ export class ArtSprites {
     const dax = W / 2, day = M.h + pad;
     // Corpo: respiração, passos, preparação (agacha), avanço, investida (estica) e morte.
     const breathe = 1 + Math.sin(t * 3.2 + pose.seed) * 0.025 * (1 - pose.moving);
-    const sx = (1 + pose.dash * 0.18 + pose.crouch * 0.06 - pose.dead * 0.1) * (pose.scale || 1);
-    const sy = (breathe - pose.crouch * 0.08 - pose.dash * 0.1 - pose.dead * 0.35) * (pose.scale || 1);
+    const size = SIZE[name] || 1;
+    const sx = (1 + pose.dash * 0.18 + pose.crouch * 0.06 - pose.dead * 0.1) * (pose.scale || 1) * size;
+    const sy = (breathe - pose.crouch * 0.08 - pose.dash * 0.1 - pose.dead * 0.35) * (pose.scale || 1) * size;
     const bob = Math.abs(Math.sin(pose.walk)) * 1.4 * pose.moving;
     const lean = pose.lunge * 0.22 - pose.crouch * 0.08 + pose.dead * 0.25;
     const legZone = M.h * 0.72;
@@ -170,6 +174,6 @@ export class ArtSprites {
     }
     if (pose.flash) pb.fill(WHITE);
     if (pose.tint) pb.tint(pose.tint[0], pose.tint[1]);
-    return { canvas: pb.commit(), w: W, h: H, ax: dax, ay: day, faces: M.faces, top: M.h };
+    return { canvas: pb.commit(), w: W, h: H, ax: dax, ay: day, faces: M.faces, top: Math.round(M.h * size) };
   }
 }

@@ -1157,7 +1157,7 @@ export class Renderer {
     if (flyA) lift = Math.max(lift, Math.sin(Math.PI * Math.min(1, flyA.t / flyA.ab.active)) * (flyA.ab.air ? 9 : Math.min(30, 10 + (flyA.leapDist || 100) * 0.12)));
     if (hopA) lift = Math.max(lift, Math.sin(Math.PI * Math.min(1, hopA.t / hopA.ab.active)) * (m.evolved ? 12 : 14));
     // Cauda de raio em espiral (Raiolua e Trovogato), atrás do corpo.
-    if (m.alive && m.element === 'electric') EF.drawTail(l, x, y - lift - frame.top * (m.evolved ? 0.22 : 0.3), st.faceDir, m.evolved ? 1.35 : 1, t, m.id, Math.hypot(m.vx, m.vy), frame.w * 0.3);
+    if (m.alive && m.element === 'electric') EF.drawTail(l, x, y - lift - frame.top * (m.evolved ? 0.22 : 0.3), st.faceDir, m.evolved ? 1.1 : 0.85, t, m.id, Math.hypot(m.vx, m.vy), frame.w * 0.25);
     this.blitFrame(frame, x + juice.dx, y - lift, face, hScale, wScale, pose.spin ? pose.spin * 6 : 0);
     if (m.alive && m.action?.ab.overload && m.action.phase !== 'recovery') {
       const A = m.action, k = A.phase === 'windup' ? 0.3 * A.t / A.ab.windup : 0.3 + 0.7 * Math.min(1, A.t / A.ab.active);
@@ -1224,7 +1224,6 @@ export class Renderer {
       if (dashing && Math.random() < 0.8) this.particles.add({ ramp: 'volt', x, y, z: 4, vx: -m.vx * 0.2, vy: -m.vy * 0.2, life: 0.3, add: true, size: 2 });
     }
     // Brotossauro: pétalas da cerejeira das costas caindo de vez em quando.
-    if (m.alive && m.def.key === 'brotossauro' && Math.random() < 0.05) this.particles.add({ ramp: 'leaf', x: x + (Math.random() - 0.4) * m.r, y, z: frame.top * 0.9, vz: -6, vx: 8, life: 1.2 });
     // Casca Viva (redução de dano) e seiva (lento).
     if (m.alive && m.status.dr > 0) EF.drawBark(this.fxT, m, x, y, frame.top, t);
     if (m.alive && m.status.slow > 0) EF.sapDrip(this.particles, x, y, m.r);
