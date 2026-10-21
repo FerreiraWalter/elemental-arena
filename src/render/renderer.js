@@ -893,47 +893,66 @@ export class Renderer {
     }
   }
 
-  // Decoração de chão: sombras das copas e cogumelos.
-  // Relíquias de cura: base de pedra com runas sempre visível; orbe verde com cruz flutuando quando disponível;
-  // pontinhos acendendo em volta nos últimos segundos da recarga (avisa que vai voltar).
+  // Relíquias de cura: plataforma de pedra grande com runas (sempre visível, marca o lugar mesmo vazia);
+  // disponível: coluna de luz verde subindo, poça de brilho no chão e orbe grande com cruz flutuando;
+  // recarregando: runas acendem uma a uma nos últimos 8 s (avisa que vai voltar).
   drawRelics(world, t) {
     const l = this.l;
+    const px1 = (x, y, c) => { l.fillStyle = c; l.fillRect(x, y, 1, 1); };
     for (const r of world.relics || []) {
       const x = Math.round(r.x), y = Math.round(r.y), on = r.t === 0;
-      l.globalAlpha = 0.35; l.fillStyle = '#000';
-      l.beginPath(); l.ellipse(x, y + 1, 10, 4.5, 0, 0, Math.PI * 2); l.fill();
+      // Sombra e plataforma: disco de pedra com contorno escuro e borda clara.
+      l.globalAlpha = 0.4; l.fillStyle = '#000';
+      l.beginPath(); l.ellipse(x + 1, y + 2, 17, 7.5, 0, 0, Math.PI * 2); l.fill();
       l.globalAlpha = 1;
-      // Base: anel de pedra com 8 runas (verdes acesas quando disponível).
-      for (let k = 0; k < 16; k++) {
-        const a = (k / 16) * Math.PI * 2, px = Math.round(x + Math.cos(a) * 9), py = Math.round(y + Math.sin(a) * 4);
-        l.fillStyle = k % 2 ? '#5a5a66' : '#8a8a96'; l.fillRect(px, py, 2, 1);
-      }
-      const soon = r.t > 0 && r.t <= 6 ? 1 - r.t / 6 : 0;
-      for (let k = 0; k < 8; k++) {
-        const a = (k / 8) * Math.PI * 2 - Math.PI / 2, px = Math.round(x + Math.cos(a) * 9), py = Math.round(y + Math.sin(a) * 4);
-        const lit = on || k < Math.floor(soon * 8);
-        l.fillStyle = lit ? (on && (Math.floor(t * 6) + k) % 4 === 0 ? '#e8ffe8' : '#5ce87a') : '#2c3a30';
-        l.fillRect(px, py, 1, 1);
+      l.fillStyle = '#1a1c22'; l.beginPath(); l.ellipse(x, y, 16, 7, 0, 0, Math.PI * 2); l.fill();
+      l.fillStyle = '#6a6c78'; l.beginPath(); l.ellipse(x, y - 0.5, 15, 6, 0, 0, Math.PI * 2); l.fill();
+      l.fillStyle = '#8e909c'; l.beginPath(); l.ellipse(x, y - 1, 13, 5, 0, 0, Math.PI * 2); l.fill();
+      l.fillStyle = on ? '#1f5a30' : '#3a3c46'; l.beginPath(); l.ellipse(x, y - 1, 9, 3.5, 0, 0, Math.PI * 2); l.fill();
+      // Runas em volta (12): todas acesas quando disponível; acendendo uma a uma perto de voltar.
+      const soon = r.t > 0 && r.t <= 8 ? 1 - r.t / 8 : 0;
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2 - Math.PI / 2, rx = Math.round(x + Math.cos(a) * 12), ry = Math.round(y - 1 + Math.sin(a) * 4.5);
+        const lit = on || k < Math.floor(soon * 12);
+        const c = lit ? (on && (Math.floor(t * 8) + k) % 6 === 0 ? '#ffffff' : '#5ce87a') : '#2c3a30';
+        px1(rx, ry, c); px1(rx + 1, ry, c);
       }
       if (!on) continue;
-      // Brilho no chão e orbe flutuando.
-      l.globalAlpha = 0.25 + 0.12 * Math.sin(t * 4);
-      l.fillStyle = '#5ce87a';
-      l.beginPath(); l.ellipse(x, y, 8, 3.5, 0, 0, Math.PI * 2); l.fill();
-      l.globalAlpha = 1;
-      const oy = Math.round(y - 12 + Math.sin(t * 3 + r.x) * 1.5);
-      for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
-        const d2 = dx * dx + dy * dy;
-        if (d2 > 31) continue;
-        let c = d2 > 24 ? '#0e3a1a' : d2 > 15 ? '#1f8a3a' : d2 > 6 ? '#3fd65a' : '#8dff9a';
-        if ((Math.abs(dx) <= 1 && Math.abs(dy) <= 3) || (Math.abs(dy) <= 1 && Math.abs(dx) <= 3)) c = '#ffffff';
-        if (dx === -3 && dy === -4) c = '#e8ffe8';
-        l.fillStyle = c; l.fillRect(x + dx, oy + dy, 1, 1);
+      // Poça de brilho no chão e coluna de luz (se vê de longe, mesmo atrás de efeitos).
+      const pulse = 0.5 + 0.5 * Math.sin(t * 4 + r.x);
+      l.globalAlpha = 0.3 + 0.15 * pulse; l.fillStyle = '#5ce87a';
+      l.beginPath(); l.ellipse(x, y - 1, 13, 5, 0, 0, Math.PI * 2); l.fill();
+      for (let h = 0; h < 44; h++) {
+        const w = 4 + Math.round(2 * Math.sin(h * 0.3 - t * 6));
+        l.globalAlpha = (0.32 + 0.12 * pulse) * (1 - h / 44);
+        l.fillStyle = h % 4 === 0 ? '#c8ffd0' : '#7dff8a';
+        l.fillRect(x - w, y - 4 - h, w * 2 + 1, 1);
       }
-      if (Math.random() < 0.08) this.particles.burst(x + (Math.random() - 0.5) * 10, y - 2, 1, { ramp: 'heal', speed: 6, life: 0.8, vz: 26, g: -10 });
+      l.globalAlpha = 1;
+      // Orbe (raio 8) subindo e descendo devagar; a sombra no centro da base encolhe quando ele sobe.
+      const bob = Math.sin(t * 2.6 + r.x * 0.05);
+      const oy = Math.round(y - 15 + bob * 3.5);
+      l.globalAlpha = 0.35; l.fillStyle = '#0a2a12';
+      l.beginPath(); l.ellipse(x, y - 1, 5 + bob * 1.2, 2 + bob * 0.4, 0, 0, Math.PI * 2); l.fill();
+      l.globalAlpha = 1;
+      for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > 66) continue;
+        let c = d2 > 52 ? '#0a2a12' : d2 > 36 ? '#1f8a3a' : d2 > 16 ? '#3fd65a' : '#8dff9a';
+        if ((Math.abs(dx) <= 1 && Math.abs(dy) <= 4) || (Math.abs(dy) <= 1 && Math.abs(dx) <= 4)) c = '#ffffff';
+        if ((dx === -4 && dy === -4) || (dx === -3 && dy === -5) || (dx === -5 && dy === -3)) c = '#e8ffe8';
+        px1(x + dx, oy + dy, c);
+      }
+      // Faíscas girando em volta do orbe.
+      for (let k = 0; k < 3; k++) {
+        const a = t * 3 + k * 2.09;
+        px1(Math.round(x + Math.cos(a) * 11), Math.round(oy + Math.sin(a) * 4), '#e8ffe8');
+      }
+      if (Math.random() < 0.15) this.particles.burst(x + (Math.random() - 0.5) * 18, y - 2, 1, { ramp: 'heal', speed: 6, life: 1, vz: 34, g: -10 });
     }
   }
 
+  // Decoração de chão: sombras das copas e cogumelos.
   drawGroundDecor(world) {
     const l = this.l;
     for (const c of this.canopies) {

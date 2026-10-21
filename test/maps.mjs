@@ -75,6 +75,19 @@ for (const arena of ARENA_ORDER) {
     }
   });
 
+  test(`${arena}: relíquias de cura em chão aberto, alcançável e à vista (nunca embaixo de copa de árvore)`, () => {
+    const w = World.match(3, [['brasalisco'], ['hidrocasco']], null, arena);
+    assert(w.relics.length >= 2, `${arena}: sem relíquias`);
+    for (const r of w.relics) {
+      for (let dx = -12; dx <= 12; dx += 4) for (let dy = -8; dy <= 8; dy += 4) {
+        const p = props(w.terrain.type[w.terrain.at(r.x + dx, r.y + dy)]);
+        assert(!p.solid && !p.water, `${arena}: relíquia em ${r.x},${r.y} sobre terreno ruim`);
+      }
+      assert(!w.blocked(r.x, r.y, 16), `${arena}: relíquia em ${r.x},${r.y} encostada em obstáculo`);
+      assert(!w.decor.some((d) => d.kind === 'canopy' && Math.hypot(d.x - r.x, d.y - (r.y - 12)) < d.r + 10), `${arena}: relíquia em ${r.x},${r.y} escondida por uma copa`);
+    }
+  });
+
   test(`${arena}: o chão é decifrável — transitáveis nunca bloqueiam; sólidos bloqueiam; hitbox = desenho`, () => {
     const w = World.match(3, [['brasalisco'], ['brasalisco']], null, arena);
     const m = w.fieldOf(0);

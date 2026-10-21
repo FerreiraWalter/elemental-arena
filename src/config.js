@@ -81,7 +81,7 @@ export const MATCH = { suddenDeath: 150 };
 // Relíquias de cura (como no ARAM): orbes em pontos fixos e simétricos de cada arena. Só quem encosta é curado.
 // first: segundos até a primeira aparecer; respawn: recarga depois de pega; heal: fração da vida máxima; r: raio de coleta.
 // Somem na morte súbita (nenhuma cura funciona).
-export const RELIC = { first: 20, respawn: 35, heal: 0.22, r: 7 };
+export const RELIC = { first: 20, respawn: 35, heal: 0.12, r: 9 };
 
 // Combate focado em skills: o ataque básico é um golpe curto/médio com cara de cada monstro (nada de tiro longo
 // repetido) e cada golpe básico que ACERTA adianta as recargas das habilidades Q/E/F (Ritmo). As skills recarregam

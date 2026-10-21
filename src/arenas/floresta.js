@@ -27,7 +27,7 @@ export default {
   spawns: [{ x: 120, y: 288 }, { x: 904, y: 288 }],
   spawnsFFA: SPAWNS_FFA,
   // Relíquias de cura (simétricas: nenhum lado fica mais perto).
-  relics: [[360, 140], [664, 140], [360, 436], [664, 436]],
+  relics: [[392, 138], [632, 138], [392, 438], [632, 438]],
   waterHeal: 1,
   style: { ambient: 'leaves', bg: '#1d3a1c', canopy: true, palette: { grass: ['#24461f', '#2c5626', '#35662c', '#3f7634', '#5a9444'] } },
   build(w, B) {
