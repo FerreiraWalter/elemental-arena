@@ -1,7 +1,7 @@
 import { World } from './sim/world.js';
 import { DT, WORLD_W, WORLD_H } from './config.js';
 import { ROSTER, DEFAULT_TEAM } from './sim/species.js';
-import { ARENAS } from './arenas/index.js';
+import { ARENAS, ARENA_ORDER } from './arenas/index.js';
 import { Renderer, setPerspective } from './render/renderer.js';
 import { UI } from './ui/ui.js';
 import { NetClient, serverUrls, inviteCode } from './net/client.js';
@@ -197,6 +197,35 @@ function applySettings(s) {
   if (!online) hud.speed = s.speed;
 }
 
+// ───────────── Assistir em sequência (?watch&arenas=...) ─────────────
+// IA × IA sem parar: ao fim de cada partida mostra o resultado por alguns segundos e começa a próxima no mapa
+// seguinte da lista (e no modo seguinte, com &modos=). Times sorteados a cada partida, a menos que &team= fixe um lado.
+const PLAYLIST_WAIT = 6; // segundos mostrando o resultado antes da próxima
+function playlistFromUrl() {
+  const list = (v, all, ok) => {
+    const raw = (params.get(v) || '').toLowerCase();
+    if (raw === 'todas' || raw === 'todos' || raw === 'all') return [...all];
+    return raw.split(',').map((x) => x.trim()).filter(ok);
+  };
+  const arenas = list('arenas', ARENA_ORDER, (a) => !!ARENAS[a]);
+  const modes = list('modos', ['1v1', '2v2', 'ffa'], (m) => ['1v1', '2v2', 'ffa'].includes(m));
+  if (!arenas.length && !modes.length) return null;
+  return { arenas: arenas.length ? arenas : [ARENAS[params.get('arena')] ? params.get('arena') : 'jardim'], modes: modes.length ? modes : [params.has('ffa') ? 'ffa' : params.has('duo') ? '2v2' : '1v1'], n: 1 };
+}
+function playlistBattle(pl, fixedTeam, speed) {
+  const k = pl.n - 1, md = pl.modes[k % pl.modes.length];
+  const team = fixedTeam || [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3);
+  startBattle({ team, arena: pl.arenas[k % pl.arenas.length], spectator: true, ffa: md === 'ffa', duo: md === '2v2', playlist: pl, fixedTeam, speed });
+}
+function tickPlaylist(dt) {
+  const pl = battle?.playlist;
+  if (!pl || !world?.over || overlay === 'pause' || overlay === 'help') return;
+  pl.wait -= dt;
+  const k = pl.n, next = ARENAS[pl.arenas[k % pl.arenas.length]].name;
+  notice = { text: `Próxima: ${next} em ${Math.max(1, Math.ceil(pl.wait))}s`, t: 0.25 };
+  if (pl.wait <= 0) { pl.n++; playlistBattle(pl, battle.fixedTeam, battle.speed); }
+}
+
 // ───────────── Partida local ─────────────
 function startBattle(cfg) {
   battle = cfg;
@@ -209,12 +238,12 @@ function startBattle(cfg) {
     // Todos contra todos local: você + 3 IAs, cada um por si.
     const pick = () => [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3);
     world = World.match(seed, [cfg.team, enemy, pick(), pick()], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty, { sides: [0, 1, 2, 3] });
-    world.slotNames = ['Você', 'IA 1', 'IA 2', 'IA 3'];
+    world.slotNames = cfg.spectator ? ['IA 1', 'IA 2', 'IA 3', 'IA 4'] : ['Você', 'IA 1', 'IA 2', 'IA 3'];
   } else if (cfg.duo) {
     // 2v2 local (atalho de teste ?duo): você + IA aliada contra duas IAs.
     const pick = () => [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3);
     world = World.match(seed, [cfg.team, pick(), enemy, pick()], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty, { sides: [0, 0, 1, 1] });
-    world.slotNames = ['Você', 'IA', 'IA 1', 'IA 2'];
+    world.slotNames = cfg.spectator ? ['IA A1', 'IA A2', 'IA B1', 'IA B2'] : ['Você', 'IA', 'IA 1', 'IA 2'];
   } else world = World.match(seed, [cfg.team, enemy], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty);
   setPerspective(0, !!cfg.ffa);
   renderer.reset(world);
@@ -223,7 +252,12 @@ function startBattle(cfg) {
   overT = 0;
   acc = 0;
   hud.paused = false;
-  hud.speed = ui.settings.speed;
+  hud.speed = cfg.speed || ui.settings.speed;
+  if (cfg.playlist) {
+    const pl = cfg.playlist, modeName = cfg.ffa ? '1v1v1v1' : cfg.duo ? '2v2' : '1v1';
+    pl.wait = PLAYLIST_WAIT;
+    notice = { text: `Partida ${pl.n} · ${ARENAS[cfg.arena].name} · ${modeName}`, t: 3 };
+  }
   window.world = world; // acesso para depuração no console
   sfx.play('start');
   let seen = true;
@@ -476,7 +510,9 @@ function frame(now) {
       if (world.over) { overT += dt; if (overT > 1.5) { overlay = 'end'; ui.focus = 0; } }
     }
     hud.net = null;
+    tickPlaylist(dt);
     renderer.render(world, Math.min(1, acc / DT), overlay === 'pause' || overlay === 'help' || overlay === 'training' ? 0 : dt * hud.speed, hud);
+    drawNotice(c, dt);
     if (overlay) {
       const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
       ui.time += dt;
@@ -498,9 +534,13 @@ async function init() {
   window.__now = () => frame(performance.now()); // um quadro no tempo real (depuração com a aba em segundo plano)
   window.__state = () => ({ mode, overlay, screen: ui.screen, online });
   // Atalhos para testes: ?arena=jardim&autostart&team=a,b,c  ·  ?watch (IA × IA)  ·  ?ffa  ·  ?duo (2v2 local)
+  // Assistir em sequência: ?watch&arenas=jardim,floresta (ou =todas) &modos=1v1,2v2,ffa &vel=2
   const arena = ARENAS[params.get('arena')] ? params.get('arena') : 'jardim';
   const qTeam = (params.get('team') || '').split(',').filter((k) => ROSTER.includes(k));
-  if (params.has('autostart') || params.has('watch')) startBattle({ team: qTeam.length === 3 ? qTeam : [...DEFAULT_TEAM], arena, spectator: params.has('watch'), ffa: params.has('ffa'), duo: params.has('duo') });
+  const vel = +params.get('vel'), speed = vel > 0 ? Math.max(0.5, Math.min(4, vel)) : 0; // 0 = velocidade das opções
+  const pl = params.has('watch') ? playlistFromUrl() : null;
+  if (pl) playlistBattle(pl, qTeam.length === 3 ? qTeam : null, speed);
+  else if (params.has('autostart') || params.has('watch')) startBattle({ team: qTeam.length === 3 ? qTeam : [...DEFAULT_TEAM], arena, spectator: params.has('watch'), ffa: params.has('ffa'), duo: params.has('duo'), speed });
   else mode = 'menu';
   // Link de convite (?sala=ABCD): vai direto escolher o time e entrar na sala.
   const invite = inviteCode();
