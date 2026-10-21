@@ -6,14 +6,16 @@ import { drawBrasalisco, drawHidrocasco, drawBrotossauro, drawDummy, rockSprite,
 import { ArtSprites } from './artsprites.js';
 import * as EF from './electricfx.js';
 import * as PF from './psyfx.js';
+import * as AF from './airfx.js';
+import { holdK, AIR } from '../sim/air.js';
 import { paintTile, paintWalls, paletteFor } from './terrainpaint.js';
 import { pillarSprite, rootSprite, lighthouseSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient, sentrySprite } from './scenery.js';
 import { Particles } from './particles.js';
 import { drawHud, statusIcon, statusList } from './hud.js';
 
 const SPRITE_FN = { brasalisco: drawBrasalisco, hidrocasco: drawHidrocasco, brotossauro: drawBrotossauro, dummy: drawDummy };
-export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3', 'frog_1', 'frog_3'];
-const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890', electric: '#bff6ff', psychic: '#f0c8ff' };
+export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3', 'frog_1', 'frog_3', 'bird_1', 'bird_3'];
+const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890', electric: '#bff6ff', psychic: '#f0c8ff', air: '#e8fbff' };
 export const TEAM_COLOR = ['#ffd23a', '#ff4a5a', '#46b4ff', '#7ad84a'];
 // Controles fortes (o monstro perde o comando): etiqueta e cor mostradas sobre a cabeça e no anel do chão.
 const CC_INFO = { charm: { label: 'HIPNOTIZADO', color: '#ff9ae6' }, stun: { label: 'ATORDOADO', color: '#ffe066' }, root: { label: 'PRESO', color: '#7ad84a' } };
@@ -35,7 +37,7 @@ export function relation(world, m) {
   return m.slot === world.playerTeam ? 'self' : 'ally';
 }
 const PUNCH_HAND = { jab: 'L', armoredJab: 'L', cross: 'R', clawRip: 'R' };
-export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', psychic: '#d07aff', neutral: '#d8c08a' };
+export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', psychic: '#d07aff', air: '#9ad8ec', neutral: '#d8c08a' };
 // Escurece uma cor #rrggbb (k < 1).
 function shade(hex, k) {
   const n = parseInt(hex.slice(1), 16);
@@ -193,7 +195,7 @@ export class Renderer {
             // Quem apanha encolhe e treme; faíscas saem na direção do golpe; golpe forte ganha estrela de impacto.
             if (e.m) { const vs = this.ms(e.m); vs.hurt = e.big ? 1 : 0.7; }
             const ka = e.src && e.m ? Math.atan2(e.m.y - e.src.y, e.m.x - e.src.x) : Math.random() * 6.28;
-            const ramp = fire ? 'spark' : e.element === 'plant' ? 'leaf' : e.element === 'electric' ? 'volt' : e.element === 'psychic' ? 'psy' : e.element === 'earth' ? 'dust' : 'water';
+            const ramp = fire ? 'spark' : e.element === 'plant' ? 'leaf' : e.element === 'electric' ? 'volt' : e.element === 'psychic' ? 'psy' : e.element === 'earth' ? 'dust' : e.element === 'air' ? 'wind' : 'water';
             for (let k = 0; k < (e.big ? 10 : 5); k++) {
               const a2 = ka + (Math.random() - 0.5) * 1.1, sp = 70 + Math.random() * (e.big ? 110 : 60);
               P.add({ ramp, x: e.x, y: e.y - 6, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp * 0.7, vz: 20 + Math.random() * 40, g: 160, life: 0.3 + Math.random() * 0.15, add: fire || e.element === 'electric' });
@@ -534,10 +536,66 @@ export class Renderer {
         case 'obstacleIgnite':
           P.burst(e.x, e.y, 14, { ramp: 'fire', speed: 50, life: 0.5, add: true, vz: 40 });
           break;
-        case 'obstacleBreak':
-          P.burst(e.x, e.y, 22, { ramp: e.kind === 'crate' ? 'wood' : 'leaf', speed: 90, life: 0.8, vz: 80, g: 260, size: 2 });
+        case 'obstacleBreak': {
+          const tree = e.kind === 'tree';
+          P.burst(e.x, e.y, tree ? 34 : 22, { ramp: e.kind === 'crate' || e.kind === 'log' || tree ? 'wood' : 'leaf', speed: tree ? 110 : 90, life: 0.8, vz: tree ? 110 : 80, g: 260, size: 2 });
+          if (tree) {
+            // Árvore tombando: estalo de madeira, poeira e uma chuva de folhas (a copa cai em drawCanopies).
+            P.burst(e.x, e.y + 2, 14, { ramp: 'dust', speed: 55, life: 0.9, vz: 20, size: 3, grow: 3, alpha: 0.7 });
+            P.burst(e.x, e.y - 14, 36, { ramp: 'leafFall', speed: 80, life: 1.4, vz: 40, g: 70, size: 2 });
+            this.rings.push({ x: e.x, y: e.y, r: 4, max: (e.r || 12) + 14, t: 0, color: '#c8874a', thick: true });
+          }
           if (e.burning) P.burst(e.x, e.y, 20, { ramp: 'fire', speed: 70, life: 0.6, add: true, vz: 50 });
+          this.shake = Math.max(this.shake, tree ? 6 : 3);
+          break;
+        }
+        case 'relicPick':
+          P.burst(e.x, e.y - 8, 26, { ramp: 'heal', speed: 60, life: 0.8, vz: 50, g: 40, add: true });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: 22, t: 0, color: '#7dff8a', thick: true });
+          if (e.m && e.amount >= 1) this.texts.push({ x: e.m.x, y: e.m.y - 26, text: `+${Math.round(e.amount)} CURA`, color: '#7dff8a', t: 0, big: true });
+          break;
+        case 'instinct':
+          // Rival evoluiu: a forma base ganha um empurrão na barra de evolução (virada).
+          P.burst(e.x, e.y - 8, 14, { ramp: 'psy', speed: 50, life: 0.7, vz: 40, add: true });
+          if (e.m) this.texts.push({ x: e.m.x, y: e.m.y - 30, text: 'INSTINTO! +EVO', color: '#e8b8ff', t: 0, big: true });
+          break;
+        // ───── Vento (araras) ─────
+        case 'tornadoCast':
+          P.burst(e.x, e.y, 6 + Math.round(e.k * 10), { ramp: 'wind', speed: 50 + e.k * 50, life: 0.35, vz: 20 });
+          break;
+        case 'tornadoLift':
+          P.burst(e.x, e.y - 6, 12, { ramp: 'wind', speed: 50, life: 0.5, vz: 70, g: 40 });
+          this.rings.push({ x: e.x, y: e.y, r: 3, max: 16, t: 0, color: '#d8f6ff' });
+          break;
+        case 'tornadoEnd':
+          P.burst(e.x, e.y - 6, 10, { ramp: 'wind', speed: 60, life: 0.4, vz: 30 });
+          break;
+        case 'gust':
+          P.burst(e.x, e.y - 4, 26, { ramp: 'wind', speed: 140, life: 0.4, vz: 10 });
+          P.burst(e.x, e.y - 6, 8, { ramp: 'leafFall', speed: 90, life: 0.7, vz: 30, g: 60 });
+          this.rings.push({ x: e.x, y: e.y, r: 6, max: e.r, t: 0, color: '#d8f6ff', thick: true });
+          break;
+        case 'diveLand':
+          P.burst(e.x, e.y, 22, { ramp: 'wind', speed: 110, life: 0.45, vz: 40 });
+          P.burst(e.x, e.y, 10, { ramp: 'dust', speed: 70, life: 0.5, vz: 30, size: 2 });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r + 6, t: 0, color: '#9ad8ec', thick: true });
           this.shake = Math.max(this.shake, 3);
+          break;
+        case 'vortex':
+          P.burst(e.x, e.y, 14, { ramp: 'wind', speed: 40, life: 0.5, vz: 20 });
+          break;
+        case 'vortexBurst':
+          P.burst(e.x, e.y - 6, 30, { ramp: 'wind', speed: 120, life: 0.6, vz: 90, g: 60 });
+          this.rings.push({ x: e.x, y: e.y, r: 6, max: e.r + 8, t: 0, color: '#ffffff', thick: true });
+          this.shake = Math.max(this.shake, 4);
+          break;
+        case 'relicSpawn':
+          P.burst(e.x, e.y - 8, 12, { ramp: 'heal', speed: 30, life: 0.7, vz: 30, add: true });
+          break;
+        case 'obstacleHit':
+          // Golpe numa árvore: lascas de madeira e algumas folhas soltas (sinal de que ela vai tombar).
+          P.burst(e.x, e.y - 4, 5, { ramp: 'wood', speed: 60, life: 0.45, vz: 60, g: 260 });
+          P.burst(e.x, e.y - 16, 3, { ramp: 'leafFall', speed: 30, life: 1, vz: 10, g: 60 });
           break;
         case 'death':
           if (e.m.element === 'fire') {
@@ -714,7 +772,7 @@ export class Renderer {
       for (const f of this.impacts) { f.life -= dt; if (f.life > 0) EF.drawImpact(this.fxG, f); }
       this.impacts = this.impacts.filter((f) => f.life > 0);
     }
-    for (const z of world.zones || []) { if (z.kind === 'psy') PF.drawSpiral(this.fxG, z, t); else EF.drawZone(this.fxG, z, t); }
+    for (const z of world.zones || []) { if (z.kind === 'psy') PF.drawSpiral(this.fxG, z, t); else if (z.kind === 'wind') AF.drawVortex(this.fxG, z, t); else EF.drawZone(this.fxG, z, t); }
     this.toDrawn(world, alpha, true);
     this.drawTelegraphs(world, t);
     this.drawGroundAbilityFx(world, t, dt);
@@ -722,6 +780,7 @@ export class Renderer {
     l.drawImage(this.fxG.commit(), 0, 0);
     this.drawGroundDecor(world);
     this.drawCrowd(t);
+    this.drawRelics(world, t);
 
     // Entidades ordenadas por profundidade (y).
     const ents = [];
@@ -835,9 +894,50 @@ export class Renderer {
   }
 
   // Decoração de chão: sombras das copas e cogumelos.
+  // Relíquias de cura: base de pedra com runas sempre visível; orbe verde com cruz flutuando quando disponível;
+  // pontinhos acendendo em volta nos últimos segundos da recarga (avisa que vai voltar).
+  drawRelics(world, t) {
+    const l = this.l;
+    for (const r of world.relics || []) {
+      const x = Math.round(r.x), y = Math.round(r.y), on = r.t === 0;
+      l.globalAlpha = 0.35; l.fillStyle = '#000';
+      l.beginPath(); l.ellipse(x, y + 1, 10, 4.5, 0, 0, Math.PI * 2); l.fill();
+      l.globalAlpha = 1;
+      // Base: anel de pedra com 8 runas (verdes acesas quando disponível).
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2, px = Math.round(x + Math.cos(a) * 9), py = Math.round(y + Math.sin(a) * 4);
+        l.fillStyle = k % 2 ? '#5a5a66' : '#8a8a96'; l.fillRect(px, py, 2, 1);
+      }
+      const soon = r.t > 0 && r.t <= 6 ? 1 - r.t / 6 : 0;
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 - Math.PI / 2, px = Math.round(x + Math.cos(a) * 9), py = Math.round(y + Math.sin(a) * 4);
+        const lit = on || k < Math.floor(soon * 8);
+        l.fillStyle = lit ? (on && (Math.floor(t * 6) + k) % 4 === 0 ? '#e8ffe8' : '#5ce87a') : '#2c3a30';
+        l.fillRect(px, py, 1, 1);
+      }
+      if (!on) continue;
+      // Brilho no chão e orbe flutuando.
+      l.globalAlpha = 0.25 + 0.12 * Math.sin(t * 4);
+      l.fillStyle = '#5ce87a';
+      l.beginPath(); l.ellipse(x, y, 8, 3.5, 0, 0, Math.PI * 2); l.fill();
+      l.globalAlpha = 1;
+      const oy = Math.round(y - 12 + Math.sin(t * 3 + r.x) * 1.5);
+      for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > 31) continue;
+        let c = d2 > 24 ? '#0e3a1a' : d2 > 15 ? '#1f8a3a' : d2 > 6 ? '#3fd65a' : '#8dff9a';
+        if ((Math.abs(dx) <= 1 && Math.abs(dy) <= 3) || (Math.abs(dy) <= 1 && Math.abs(dx) <= 3)) c = '#ffffff';
+        if (dx === -3 && dy === -4) c = '#e8ffe8';
+        l.fillStyle = c; l.fillRect(x + dx, oy + dy, 1, 1);
+      }
+      if (Math.random() < 0.08) this.particles.burst(x + (Math.random() - 0.5) * 10, y - 2, 1, { ramp: 'heal', speed: 6, life: 0.8, vz: 26, g: -10 });
+    }
+  }
+
   drawGroundDecor(world) {
     const l = this.l;
     for (const c of this.canopies) {
+      if (c.o?.destroyed) continue;
       l.globalAlpha = 0.22;
       l.fillStyle = '#000';
       l.beginPath();
@@ -852,8 +952,15 @@ export class Renderer {
   drawCanopies(world) {
     const l = this.l;
     for (const c of this.canopies) {
-      const under = world.monsters.some((m) => m.alive && Math.hypot(m.x - c.x, m.y - (c.y + 4)) < c.r * 0.9);
-      c.alpha = (c.alpha ?? 0.95) + ((under ? 0.4 : 0.95) - (c.alpha ?? 0.95)) * 0.15;
+      if (c.o?.destroyed) {
+        // Árvore tombada: a copa desaba em folhas e some.
+        if (!c.fell) { c.fell = true; this.particles.burst(c.x, c.y + 10, 30, { ramp: 'leafFall', speed: 70, life: 1.3, vz: 30, g: 60, size: 2 }); }
+        c.alpha = Math.max(0, (c.alpha ?? 0.95) - 0.08);
+        if (c.alpha <= 0) continue;
+      } else {
+        const under = world.monsters.some((m) => m.alive && Math.hypot(m.x - c.x, m.y - (c.y + 4)) < c.r * 0.9);
+        c.alpha = (c.alpha ?? 0.95) + ((under ? 0.4 : 0.95) - (c.alpha ?? 0.95)) * 0.15;
+      }
       l.globalAlpha = c.alpha;
       l.drawImage(c.img, Math.round(c.x - c.img.width / 2), Math.round(c.y - c.img.height / 2 - 6));
     }
@@ -1163,7 +1270,7 @@ export class Renderer {
       this.evolveParticles(m, evoK, t);
     }
     if (m.hitFlash > 0 && Math.floor(t * 30) % 2 === 0) pose.flash = true;
-    if (!m.alive) pose.tint = [m.element === 'fire' ? '#5a5250' : m.element === 'plant' ? '#6a7a4a' : m.element === 'electric' ? '#5a6a8a' : m.element === 'psychic' ? '#6a5a7a' : '#9ac8e8', Math.min(0.8, m.deathT)];
+    if (!m.alive) pose.tint = [m.element === 'fire' ? '#5a5250' : m.element === 'plant' ? '#6a7a4a' : m.element === 'electric' ? '#5a6a8a' : m.element === 'psychic' ? '#6a5a7a' : m.element === 'air' ? '#7a5a5a' : '#9ac8e8', Math.min(0.8, m.deathT)];
     // Troca: saída vira um feixe de luz e some; entrada surge do feixe e cresce.
     let wScale = 1, hScale = 1, beam = 0;
     if (m.switchState === 'exiting') {
@@ -1245,6 +1352,11 @@ export class Renderer {
     if (flyA) lift = Math.max(lift, Math.sin(Math.PI * Math.min(1, flyA.t / flyA.ab.active)) * (flyA.ab.air ? 9 : Math.min(30, 10 + (flyA.leapDist || 100) * 0.12)));
     if (hopA) lift = Math.max(lift, Math.sin(Math.PI * Math.min(1, hopA.t / hopA.ab.active)) * (m.evolved ? 12 : 14));
     // Cauda de raio em espiral (Raiolua e Trovogato), atrás do corpo.
+    // Voadores pairam: corpo um pouco acima do chão, balançando com as asas (a sombra fica no chão).
+    if (m.alive && m.def.hover) {
+      lift += 5 + Math.sin(t * 6 + m.id) * 1.5;
+      if (Math.random() < 0.06 + Math.hypot(m.vx, m.vy) * 0.002) this.particles.add({ ramp: 'wind', x: x + (Math.random() - 0.5) * m.r * 2.4, y: y - 2, vx: -m.vx * 0.3 + (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 6, life: 0.4, alpha: 0.7 });
+    }
     if (m.alive && m.element === 'electric') EF.drawTail(l, x, y - lift - frame.top * (m.evolved ? 0.22 : 0.3), st.faceDir, m.evolved ? 1.1 : 0.85, t, m.id, Math.hypot(m.vx, m.vy), frame.w * 0.25);
     this.blitFrame(frame, x + juice.dx, y - lift, face, hScale, wScale, pose.spin ? pose.spin * 6 : 0);
     if (m.alive && m.action?.ab.overload && m.action.phase !== 'recovery') {
@@ -1313,6 +1425,11 @@ export class Renderer {
     }
     // Psíquico: aura do sapo; transe e hipnose aparecem sobre a cabeça de quem foi afetado.
     if (m.alive && m.element === 'psychic') PF.drawFrogAura(this.fxT, m, x, y - lift, frame.top, t, this.particles);
+    // Arara carregando o tornado: redemoinho em volta que fecha conforme a carga.
+    if (m.alive && m.action?.ab.hold && m.action.phase === 'windup' && m.action.t >= m.action.ab.windup) {
+      const k = holdK(m.action);
+      AF.drawCharge(this.fxT, x, y - lift + frame.top * 0.1, m.r, k, t, k >= AIR.liftMin);
+    }
     if (m.alive && m.trance > 0 && !(m.status.charm > 0)) PF.drawTrance(this.fxT, m, x, y - lift, frame.top, t);
     if (m.alive && m.status.charm > 0) PF.drawCharm(this.fxT, m, x, y - lift, frame.top, t, this.particles);
     // Casca Viva (redução de dano) e seiva (lento).
@@ -1359,7 +1476,7 @@ export class Renderer {
     const a = m.alive ? m.action : null, ab = a?.ab, col = ELEMENT_COLOR[m.element] || '#ffffff';
     const out = { w: 1, h: 1, dx: 0 };
     const P = this.particles, top = frame.top || 24;
-    const RAMP = { fire: 'spark', water: 'water', plant: 'leaf', electric: 'volt', earth: 'dust', psychic: 'psy' };
+    const RAMP = { fire: 'spark', water: 'water', plant: 'leaf', electric: 'volt', earth: 'dust', psychic: 'psy', air: 'wind' };
     const key = a ? a.ab.id + ':' + a.phase : '';
     if (key !== st.jKey) {
       // Chegada de uma esquiva/investida: poeirinha onde parou.
@@ -1473,6 +1590,12 @@ export class Renderer {
     const l = this.l;
     if (o.destroyed) {
       if (o.kind === 'bush') l.drawImage(this.stump, Math.round(o.x - 6), Math.round(o.y - 5));
+      else if (o.kind === 'tree') {
+        // Toco proporcional ao tronco, com lascas de madeira em volta.
+        const k = Math.max(1.4, o.r / 6), sw = Math.round(this.stump.width * k), sh = Math.round(this.stump.height * k);
+        l.drawImage(this.stump, Math.round(o.x - sw / 2), Math.round(o.y - sh + 3), sw, sh);
+        for (let i = 0; i < 8; i++) { l.fillStyle = i % 2 ? '#a5672e' : '#7a4a22'; l.fillRect(Math.round(o.x + (hash2(o.id, i, 5) - 0.5) * o.r * 2.4), Math.round(o.y + 2 + (hash2(o.id, i, 6) - 0.5) * o.r), 2, 1); }
+      }
       else { l.fillStyle = '#2a1a12'; for (let k = 0; k < 6; k++) l.fillRect(Math.round(o.x - 6 + hash2(o.id, k, 1) * 12), Math.round(o.y - 3 + hash2(o.id, k, 2) * 6), 2, 1); }
       return;
     }
@@ -1577,6 +1700,11 @@ export class Renderer {
         if (Math.random() < 0.3) this.particles.add({ ramp: 'smoke', x, y, z: 2, vz: 10, life: 0.8, size: 2, grow: 2, alpha: 0.4 });
       } else if (p.kind === 'wave') {
         this.drawWave(g, p, x, y, t);
+      } else if (p.kind === 'tornado') {
+        AF.drawTornado(g, x, y, p.r, t, p.id);
+        if (Math.random() < 0.25) this.particles.add({ ramp: 'dust', x: x + (Math.random() - 0.5) * p.r, y, z: 1, vz: 20, vx: (Math.random() - 0.5) * 30, life: 0.4, alpha: 0.6 });
+      } else if (p.kind === 'feather') {
+        AF.drawFeather(g, p, x, y);
       } else if (p.kind === 'thorn') {
         const an = Math.atan2(p.vy, p.vx), ca = Math.cos(an), sa = Math.sin(an);
         const S = [rgba('#2a1a0a'), rgba('#5a3a1a'), rgba('#c8b890'), rgba('#7ad84a')];

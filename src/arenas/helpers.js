@@ -60,3 +60,6 @@ export function builder(world) {
   };
   return B;
 }
+
+// Árvores que tombam (Jardim Selvagem e Floresta Ancestral): a vida cresce com o tamanho do tronco.
+export const treeHp = (r) => Math.round(70 * Math.min(1.6, Math.max(0.8, r / 12)));

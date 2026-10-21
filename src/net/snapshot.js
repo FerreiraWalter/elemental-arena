@@ -101,8 +101,9 @@ export function serialize(world, ctx) {
       : [p.id, p.kind, r1(p.x), r1(p.y), p.team, 0, r1(p.vx), r1(p.vy), p.r])),
     obs, dyn,
     haz: world.hazards.map((h) => [PH.indexOf(h.phase), r2(h.t)]),
+    rel: world.relics.map((r) => (r.t === Infinity ? -1 : r2(r.t))),
     steam: world.steam.map((s) => [r1(s.x), r1(s.y), r1(s.r), r2(s.density), r2(s.life), +!!s.ink]),
-    zones: world.zones.map((z) => [z.id, r1(z.x), r1(z.y), r1(z.r), r2(z.life), r2(z.max), z.team, +!!z.big, z.kind === 'psy' ? 1 : 0]),
+    zones: world.zones.map((z) => [z.id, r1(z.x), r1(z.y), r1(z.r), r2(z.life), r2(z.max), z.team, +!!z.big, z.kind === 'psy' ? 1 : z.kind === 'wind' ? 2 : 0, r2(z.lift || 0)]),
     dec: world.decoys.map((d) => [d.id, idxOf.get(d.owner), r1(d.x), r1(d.y), r2(d.life), r2(d.max), r2(d.facing), r1(d.vx), r1(d.vy), r2(d.atk || 0)]),
     terr,
     feed: world.feed.filter((f) => f.seq > ctx.lastFeed).map((f) => [f.text, f.color]),
@@ -208,8 +209,9 @@ export function applySnapshot(world, s, ctx) {
   ctx.decMap = decs;
   world.decoys = [...decs.values()];
   s.haz.forEach((h, i) => { if (world.hazards[i]) { world.hazards[i].phase = PH[h[0]]; world.hazards[i].t = h[1]; } });
+  (s.rel || []).forEach((t, i) => { if (world.relics[i]) world.relics[i].t = t < 0 ? Infinity : t; });
   world.steam = s.steam.map(([x, y, r, density, life, ink]) => ({ x, y, r, density, life, ink: !!ink }));
-  world.zones = (s.zones || []).map(([id, x, y, r, life, max, team, big, psy]) => ({ id, kind: psy ? 'psy' : 'shock', x, y, r, life, max, team, big: !!big }));
+  world.zones = (s.zones || []).map(([id, x, y, r, life, max, team, big, kind, lift]) => ({ id, kind: kind === 1 ? 'psy' : kind === 2 ? 'wind' : 'shock', x, y, r, life, max, team, big: !!big, lift: lift || 0 }));
 
   // Terreno.
   for (let k = 0; k < s.terr.length; k += 2) {

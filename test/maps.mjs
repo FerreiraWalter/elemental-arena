@@ -107,7 +107,15 @@ for (const arena of ARENA_ORDER) {
       assert(w.blocked(wl.x + 1, wl.y + 1, 1) && !(m.x > wl.x && m.x < wl.x + wl.w && m.y > wl.y && m.y < wl.y + wl.h), `${arena}: muro em ${wl.x},${wl.y} deixou o corpo entrar`);
     }
     // Destrutíveis desaparecem do bloqueio quando destruídos; permanentes nunca (o desenho avisa com anéis diferentes).
-    for (const o of w.obstacles) assert(o.hp === Infinity ? !o.flammable : o.flammable || o.sentry || o.kind === 'thicket', `${arena}: ${o.kind} com regra de destruição incoerente`);
+    // Árvores que tombam (Jardim/Floresta) não queimam: quebram só com dano.
+    for (const o of w.obstacles) assert(o.hp === Infinity || o.kind === 'tree' ? !o.flammable : o.flammable || o.sentry || o.kind === 'thicket', `${arena}: ${o.kind} com regra de destruição incoerente`);
+    if (arena === 'jardim' || arena === 'floresta') {
+      const tree = w.obstacles.find((o) => o.kind === 'tree');
+      assert(tree && tree.hp < Infinity, `${arena}: árvores deveriam tombar`);
+      const v = w.obstacleVersion;
+      w.hurtObstacle(tree, tree.maxHp + 1);
+      assert(tree.destroyed && !tree.solid && w.obstacleVersion > v && !w.blocked(tree.x, tree.y, 1), `${arena}: árvore não tombou ou continuou bloqueando`);
+    }
   });
 
   test(`${arena}: obstáculos não bloqueiam passagens e nada nasce preso (largura mínima de corredor)`, () => {

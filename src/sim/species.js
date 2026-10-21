@@ -14,7 +14,7 @@ export const SPECIES = {
   brasalisco: {
     key: 'brasalisco', line: 'brasalisco', stage: 1, evolvesTo: 'brasaliscoAscendido',
     name: 'Brasalisco', title: 'Forma base', element: 'fire', sprite: 'fire_1',
-    hp: 150, speed: 78, radius: 9, mass: 1,
+    hp: 150, speed: 78, radius: 9, mass: 1, evoRate: 0.95,
     abilities: [A.claw, A.emberLash, A.flameWave, A.fireDash, A.meteor, A.hop],
     dodge: A.hop,
     controls: { primary: 'emberLash', melee: 'claw', q: 'flameWave', e: 'meteor', f: 'fireDash', dodge: 'hop' },
@@ -52,7 +52,7 @@ export const SPECIES = {
   hidrocasco: {
     key: 'hidrocasco', line: 'hidrocasco', stage: 1, evolvesTo: 'hidrocascoAbissal',
     name: 'Hidrocasco', title: 'Forma base', element: 'water', sprite: 'water_1',
-    hp: 160, speed: 66, radius: 10, mass: 1.25,
+    hp: 160, speed: 66, radius: 10, mass: 1.25, evoRate: 1.55,
     abilities: [A.headbutt, A.shockWave, A.hydroBeam, A.whirlpool, A.shellGuard, A.shellRoll],
     dodge: A.shellRoll,
     controls: { primary: 'shockWave', melee: 'headbutt', q: 'hydroBeam', e: 'whirlpool', f: 'shellGuard', dodge: 'shellRoll' },
@@ -92,7 +92,7 @@ export const SPECIES = {
   brotossauro: {
     key: 'brotossauro', line: 'brotossauro', stage: 1, evolvesTo: 'brotossauroAncestral',
     name: 'Brotossauro', title: 'Broto da Montanha', element: 'plant', sprite: 'plant_1',
-    hp: 158, speed: 68, radius: 10, mass: 1.15,
+    hp: 158, speed: 68, radius: 10, mass: 1.15, evoRate: 1.15,
     abilities: [A.vineWhip, A.burstSeed, A.rootSnare, A.plantSentry, A.barkGuard, A.leafDash],
     dodge: A.leafDash,
     controls: { primary: 'burstSeed', melee: 'vineWhip', q: 'rootSnare', e: 'plantSentry', f: 'barkGuard', dodge: 'leafDash' },
@@ -130,7 +130,7 @@ export const SPECIES = {
   ouriflama: {
     key: 'ouriflama', line: 'ouriflama', stage: 1, evolvesTo: 'ouriflamaVulcanico',
     name: 'Ouriflama', title: 'Forma base', element: 'fire', sprite: 'hedgehog_1',
-    hp: 126, speed: 78, radius: 8, mass: 0.9,
+    hp: 126, speed: 78, radius: 8, mass: 0.9, evoRate: 0.95,
     abilities: [A.prick, A.quillFan, A.quillBurst, A.blazeRush, A.curlRoll],
     dodge: A.curlRoll,
     controls: { primary: 'quillFan', melee: 'prick', q: 'quillBurst', f: 'blazeRush', dodge: 'curlRoll' },
@@ -166,7 +166,7 @@ export const SPECIES = {
   gotapus: {
     key: 'gotapus', line: 'gotapus', stage: 1, evolvesTo: 'leviapus',
     name: 'Gotapus', title: 'Forma base', element: 'water', sprite: 'octo_1',
-    hp: 155, speed: 72, radius: 9, mass: 1.1,
+    hp: 155, speed: 72, radius: 9, mass: 1.1, evoRate: 1.38,
     abilities: [A.tentacleSlap, A.bounceBubble, A.inkCloud, A.bubbleTrap, A.jetDash],
     dodge: A.jetDash,
     controls: { primary: 'bounceBubble', melee: 'tentacleSlap', q: 'inkCloud', e: 'bubbleTrap', dodge: 'jetDash' },
@@ -204,11 +204,11 @@ export const SPECIES = {
   mantifolha: {
     key: 'mantifolha', line: 'mantifolha', stage: 1, evolvesTo: 'silvamante',
     name: 'Mantifolha', title: 'Forma base', element: 'plant', sprite: 'mantis_1',
-    hp: 122, speed: 82, radius: 8, mass: 0.85,
+    hp: 122, speed: 82, radius: 8, mass: 0.85, evoRate: 0.8,
     abilities: [A.scytheSlash, A.twinScythe, A.sporePuff, A.overgrowth, A.longLeap, A.wingDash],
     dodge: A.wingDash,
     controls: { primary: 'twinScythe', melee: 'scytheSlash', q: 'sporePuff', e: 'overgrowth', f: 'longLeap', dodge: 'wingDash' },
-    sig: { kind: 'marks', name: 'Marca do Louva-a-deus', desc: 'Cada acerto deixa uma MARCA na presa (máx. 3). Com 3 marcas, a Foice ou o pouso do Salto EXECUTA: +12 de dano, prende e recarrega o Salto Longo na hora.', exec: 12, leapReset: 0 },
+    sig: { kind: 'marks', name: 'Marca do Louva-a-deus', desc: 'Cada acerto deixa uma MARCA na presa (máx. 3). Com 3 marcas, a Foice ou o pouso do Salto EXECUTA: +10 de dano, prende e corta pela metade a recarga do Salto Longo.', exec: 10, leapReset: 0.5 },
     traits: ['Marca do Louva-a-deus: marque de longe, execute de perto', 'Salto longo por cima de tudo', 'Esporos que enraízam'],
     tips: 'Ponto fraco: frágil; com 2 ou 3 marcas, guarde a esquiva para o salto dela.',
     difficulty: 3,
@@ -226,7 +226,7 @@ export const SPECIES = {
     abilities: [A.mantisClaw, A.mantisFlurry, A.sporeStorm, A.ancientRoots, A.skyLeap, A.wingDash],
     dodge: A.wingDash,
     controls: { primary: 'mantisFlurry', melee: 'mantisClaw', q: 'sporeStorm', e: 'ancientRoots', f: 'skyLeap', dodge: 'wingDash' },
-    sig: { kind: 'marks', name: 'Rainha Predadora', desc: 'Marcas duram mais; a execução causa +16 de dano e recarrega metade do Salto Celeste.', exec: 16, leapReset: 0.5, markLife: 6 },
+    sig: { kind: 'marks', name: 'Rainha Predadora', desc: 'Marcas duram mais; a execução causa +13 de dano e corta 30% da recarga do Salto Celeste.', exec: 13, leapReset: 0.7, markLife: 6 },
     traits: ['Execuções mais fortes', 'Salto celeste de 250 px que enraíza', 'Rajada de foices com avanço'],
     tips: 'Ponto fraco: esquive o pouso do Salto Celeste e a execução não acontece.',
     difficulty: 3,
@@ -242,7 +242,7 @@ export const SPECIES = {
   pugilar: {
     key: 'pugilar', line: 'pugilar', stage: 1, evolvesTo: 'lutapacho',
     name: 'Pugilar', title: 'Forma base', element: 'earth', sprite: 'brawler_1',
-    hp: 142, speed: 88, radius: 9, mass: 1.05,
+    hp: 142, speed: 88, radius: 9, mass: 1.05, evoRate: 0.78,
     abilities: [A.jab, A.cross, A.kangarooHop, A.tailSweep, A.counterGuard, A.bobWeave],
     dodge: A.bobWeave,
     controls: { primary: 'jab', melee: 'cross', q: 'kangarooHop', e: 'tailSweep', f: 'counterGuard', dodge: 'bobWeave' },
@@ -280,7 +280,7 @@ export const SPECIES = {
   raiolua: {
     key: 'raiolua', line: 'raiolua', stage: 1, evolvesTo: 'trovogato',
     name: 'Raiolua', title: 'Forma base', element: 'electric', sprite: 'cat_1',
-    hp: 126, speed: 80, radius: 8, mass: 0.9,
+    hp: 126, speed: 80, radius: 8, mass: 0.9, evoRate: 0.86,
     abilities: [A.scratch, A.sparkBall, A.strike220, A.shock110, A.boltDash, A.catLeap],
     dodge: A.catLeap,
     controls: { primary: 'sparkBall', melee: 'scratch', q: 'strike220', e: 'shock110', f: 'boltDash', dodge: 'catLeap' },
@@ -318,7 +318,7 @@ export const SPECIES = {
   sapomental: {
     key: 'sapomental', line: 'sapomental', stage: 1, evolvesTo: 'sapofilosofo',
     name: 'Sapomental', title: 'Forma base', element: 'psychic', sprite: 'frog_1',
-    hp: 128, speed: 70, radius: 10, mass: 1.1,
+    hp: 128, speed: 70, radius: 10, mass: 1.1, evoRate: 0.84,
     abilities: [A.tongueLash, A.psyBubble, A.hypnoSpiral, A.mindOrbs, A.mindSwap, A.levitate],
     dodge: A.levitate,
     controls: { primary: 'psyBubble', melee: 'tongueLash', q: 'hypnoSpiral', e: 'mindOrbs', f: 'mindSwap', dodge: 'levitate' },
@@ -351,6 +351,44 @@ export const SPECIES = {
       fireCost: 1.2, wetCost: 0, waterCost: 0.7,
     },
   },
+
+  // ───────────── VOADOR ─────────────
+  araralvo: {
+    key: 'araralvo', line: 'araralvo', stage: 1, evolvesTo: 'araravento',
+    name: 'Araralvo', title: 'Forma base', element: 'air', sprite: 'bird_1', hover: true,
+    hp: 132, speed: 84, radius: 9, mass: 0.9, evoRate: 0.95,
+    abilities: [A.beakPeck, A.galeTornado, A.featherVolley, A.galeBurst, A.diveStrike, A.flutter],
+    dodge: A.flutter,
+    controls: { primary: 'galeTornado', melee: 'beakPeck', q: 'featherVolley', e: 'galeBurst', f: 'diveStrike', dodge: 'flutter' },
+    sig: { kind: 'gale', name: 'Presa no Ar', desc: 'Voa baixo: água, mato, raízes e espinhos não atrasam nem ferem. Golpes em quem está LEVANTADO no ar causam +25% de dano.', airBonus: 1.25 },
+    traits: ['Tornado: segure para carregar, solte para levantar', 'Pairando: ignora o terreno que atrasa', 'Rajada que devolve projéteis'],
+    tips: 'Ponto fraco: frágil e o tornado é lento; ande de lado e o elétrico o derruba.',
+    difficulty: 2,
+    profile: {
+      personality: 'Ventania',
+      range: [90, 190], aggression: 0.55, retreatHp: 0.35, reaction: 0.2, dodgeSkill: 0.65,
+      accuracy: 0.07, lead: 0.85,
+      fireCost: 1, wetCost: 0, waterCost: 0,
+    },
+  },
+  araravento: {
+    key: 'araravento', line: 'araralvo', stage: 2,
+    name: 'Araravento', title: 'Senhora da Tempestade', element: 'air', sprite: 'bird_3', hover: true,
+    hp: 206, speed: 80, radius: 12, mass: 1.3,
+    abilities: [A.talonRake, A.cycloneTornado, A.featherStorm, A.eyeOfStorm, A.stormDive, A.galeFlutter],
+    dodge: A.galeFlutter,
+    controls: { primary: 'cycloneTornado', melee: 'talonRake', q: 'featherStorm', e: 'eyeOfStorm', f: 'stormDive', dodge: 'galeFlutter' },
+    sig: { kind: 'gale', name: 'Rainha dos Ventos', desc: 'Voa baixo sobre qualquer terreno. Golpes em quem está LEVANTADO causam +35% de dano; o Ciclone cheio deixa um vórtice.', airBonus: 1.35 },
+    traits: ['Ciclone que deixa vórtice', 'Olho da Tempestade: puxa e levanta', 'Mergulho em área'],
+    tips: 'Ponto fraco: grande; esquive o ciclone carregado e saia do vórtice antes de estourar.',
+    difficulty: 2,
+    profile: {
+      personality: 'Tempestade',
+      range: [90, 210], aggression: 0.62, retreatHp: 0.3, reaction: 0.2, dodgeSkill: 0.6,
+      accuracy: 0.07, lead: 0.85,
+      fireCost: 1, wetCost: 0, waterCost: 0,
+    },
+  },
 };
 
 // Espécies escolhíveis no time (formas base) e time padrão (partidas rápidas e testes).
@@ -365,6 +403,6 @@ export const SPECIES = {
   }
 }
 
-export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha', 'pugilar', 'raiolua', 'sapomental'];
+export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha', 'pugilar', 'raiolua', 'sapomental', 'araralvo'];
 export const DEFAULT_TEAM = ['brasalisco', 'hidrocasco', 'brotossauro'];
 export const formsOf = (line) => Object.values(SPECIES).filter((s) => s.line === line).sort((a, b) => a.stage - b.stage);

@@ -1,4 +1,4 @@
-import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION, FIRE, CONTROL, MATCH, COMBAT, COMBO_BREAK } from '../config.js';
+import { WORLD_W, WORLD_H, TILE, TERRAIN_DT, ELEMENT_MULT, SWITCH, EVOLUTION, FIRE, CONTROL, MATCH, COMBAT, COMBO_BREAK, RELIC } from '../config.js';
 import { mulberry32, segCircle, segAabb, clamp } from '../core/math.js';
 import { Terrain, IGNITE, T, props } from './terrain.js';
 import { ARENAS } from '../arenas/index.js';
@@ -12,6 +12,7 @@ import { DEFAULT_TEAM } from './species.js';
 import * as Sig from './signature.js';
 import * as Elec from './electric.js';
 import * as Psy from './psychic.js';
+import * as Air from './air.js';
 import * as Training from './training.js';
 
 const OBSTACLE_DEFS = {
@@ -41,6 +42,8 @@ export const DIFFICULTY_MODS = {
   normal: { reaction: 1.9, dodgeSkill: 0.5, accuracy: 2.3, lead: 0.7, think: 2.2, aggression: 0.8 },
   hard: { reaction: 1.35, dodgeSkill: 0.75, accuracy: 1.5, lead: 0.85, think: 1.5, aggression: 0.92 },
 };
+
+const OBSTACLE_NAME = { crate: 'Um caixote', bush: 'Um arbusto', hedge: 'Uma sebe', giantFlower: 'Uma flor gigante', log: 'Um tronco caído', tree: 'Uma árvore' };
 
 const OBS_PAD = 24; // raio máximo de consulta coberto pela grade de obstáculos
 const makeSlot = (side) => ({ side, field: null, pending: null, cooldown: 0, deadT: 0, lastOut: null, lastOutT: -99, switches: 0 });
@@ -94,6 +97,8 @@ export class World {
     this.hazards = [];
     this.decor = [];
     def.build(this, builder(this));
+    // Relíquias de cura: t = segundos até ficar disponível (0 = disponível).
+    this.relics = (def.relics || []).map(([x, y]) => ({ x, y, t: RELIC.first }));
     this.waterTiles = [];
     for (let i = 0; i < this.terrain.type.length; i++) if (props(this.terrain.type[i]).water && !props(this.terrain.type[i]).deep) this.waterTiles.push(i);
   }
@@ -388,9 +393,10 @@ export class World {
     }
   }
 
-  addObstacle(kind, x, y, r) {
-    const d = OBSTACLE_DEFS[kind];
-    const o = { id: nextObsId++, kind, x, y, r, solid: true, blocksLOS: d.blocksLOS, flammable: d.flammable, hp: d.hp, maxHp: d.hp, burning: 0, destroyed: false, hitFlash: 0, def: d };
+  // opts.hp: vida própria desta peça (ex.: árvores que tombam só em algumas arenas).
+  addObstacle(kind, x, y, r, opts) {
+    const d = OBSTACLE_DEFS[kind], hp = opts?.hp ?? d.hp;
+    const o = { id: nextObsId++, kind, x, y, r, solid: true, blocksLOS: d.blocksLOS, flammable: d.flammable, hp, maxHp: hp, burning: 0, destroyed: false, hitFlash: 0, def: d };
     this.obstacles.push(o);
     this.obstacleVersion = (this.obstacleVersion || 0) + 1;
     return o;
@@ -576,6 +582,7 @@ export class World {
     }
     o.hp -= amount;
     o.hitFlash = 0.1;
+    if (o.kind === 'tree' && amount >= 1.5 && o.hp > 0) this.emit({ type: 'obstacleHit', x: o.x, y: o.y, kind: o.kind, r: o.r });
     if (o.hp <= 0) this.destroyObstacle(o);
   }
 
@@ -586,7 +593,8 @@ export class World {
     const wasBurning = o.burning > 0;
     o.burning = 0;
     this.emit({ type: 'obstacleBreak', o, x: o.x, y: o.y, kind: o.kind, burning: wasBurning });
-    this.say(`${o.kind === 'crate' ? 'Um caixote' : 'Um arbusto'} foi destruído`, '#d9b38c');
+    const name = OBSTACLE_NAME[o.kind];
+    if (name) this.say(name.startsWith('Uma ') ? `${name} tombou` : `${name} foi destruído`, '#d9b38c');
     if (wasBurning) this.igniteArea(o.x, o.y, o.r + 6, 3, null);
   }
 
@@ -615,7 +623,7 @@ export class World {
     }
     let mult = ELEMENT_MULT[o.element || src?.element]?.[t.element] ?? 1;
     const out = Sig.outgoing(this, src, t, o);
-    mult *= out.mult * Sig.incoming(t);
+    mult *= out.mult * Sig.incoming(t) * Air.airMult(src, t, o);
     o = out.o;
     // Casco Reflexo: bloqueio ativo reduz o dano e anula empurrões, atordoamento e queimadura.
     const guarding = Sig.isGuarding(t);
@@ -641,13 +649,16 @@ export class World {
       o = { ...o, burn: 0 };
     }
     t.hp -= dmg;
+    // Virada: forma base contra forma evoluída enche a barra mais rápido.
+    const under = (a, b) => a && b && a.def.evolvesTo && !a.evolved && b.def.stage >= 2 ? EVOLUTION.underdog : 1;
     if (src && src !== t) {
-      this.gainEnergy(src, dmg * EVOLUTION.dealt);
+      const k = under(src, t);
+      this.gainEnergy(src, dmg * EVOLUTION.dealt * k);
       // Cada ataque que acerta enche um pedaço fixo da barra (tiros de sentinelas e cópias não contam).
-      if (!o.dot && !o.minor && dmg > 0 && this.time - (src._hitBonusT ?? -9) >= EVOLUTION.hitGap) { src._hitBonusT = this.time; this.gainEnergy(src, EVOLUTION.hit); }
+      if (!o.dot && !o.minor && dmg > 0 && this.time - (src._hitBonusT ?? -9) >= EVOLUTION.hitGap) { src._hitBonusT = this.time; this.gainEnergy(src, EVOLUTION.hit * k); }
       if (!o.dot && dmg > 0 && !src.dummy) this.rhythm(src, o.tag || src.action?.ab.id);
     }
-    this.gainEnergy(t, dmg * EVOLUTION.taken);
+    this.gainEnergy(t, dmg * EVOLUTION.taken * under(t, src));
     if (src) {
       src.stats.dmgDealt += dmg;
       if (!o.dot) src.stats.hits++;
@@ -716,6 +727,27 @@ export class World {
 
   // Cura (terreno, sentinelas, habilidades). Na morte súbita não cura mais.
   get suddenDeath() { return !this.training && this.time >= MATCH.suddenDeath; }
+  // Relíquias de cura: quem encosta primeiro leva a cura inteira (só ele); depois a relíquia recarrega.
+  updateRelics(dt) {
+    if (this.mirror || this.training) return;
+    for (const r of this.relics) {
+      if (this.suddenDeath) { r.t = Infinity; continue; }
+      if (r.t > 0) { r.t = Math.max(0, r.t - dt); if (r.t === 0) this.emit({ type: 'relicSpawn', x: r.x, y: r.y }); continue; }
+      let best = null, bd = Infinity;
+      for (const m of this.monsters) {
+        if (!m.alive || !m.onField || m.dummy) continue;
+        const d = Math.hypot(m.x - r.x, m.y - r.y);
+        if (d < m.r + RELIC.r && d < bd) { bd = d; best = m; }
+      }
+      if (!best) continue;
+      const amount = Math.min(best.maxHp - best.hp, best.maxHp * RELIC.heal);
+      this.heal(best, amount);
+      r.t = RELIC.respawn;
+      this.emit({ type: 'relicPick', x: r.x, y: r.y, m: best, amount });
+      this.say(`${best.name} pegou uma relíquia de cura`, '#7dff8a');
+    }
+  }
+
   heal(m, amount) {
     if (!m.alive || this.suddenDeath) return;
     m.hp = Math.min(m.maxHp, m.hp + amount);
@@ -816,7 +848,8 @@ export class World {
       amount = Math.min(amount, budget);
       m._envBudget = budget - amount;
     }
-    m.energy = Math.min(EVOLUTION.threshold, m.energy + amount);
+    // Ritmo de evolução por espécie (quem acerta muito e rápido enche a barra mais devagar).
+    m.energy = Math.min(EVOLUTION.threshold, m.energy + amount * (m.def.evoRate ?? 1));
   }
 
   // Pede a evolução (jogador ou IA). Mesmas regras para todos.
@@ -831,6 +864,12 @@ export class World {
     m.move.throttle = 0;
     this.emit({ type: 'evolveStart', m, x: m.x, y: m.y });
     this.say(`${m.name} está evoluindo!`, '#e8b8ff');
+    // Instinto: cada forma base inimiga em campo sente a ameaça e ganha um pedaço da barra na hora.
+    for (const e of this.enemiesOf(m)) {
+      if (!e.def.evolvesTo || e.evolved || e.evolveT > 0) continue;
+      this.gainEnergy(e, EVOLUTION.instinct / (e.def.evoRate ?? 1));
+      this.emit({ type: 'instinct', m: e, x: e.x, y: e.y });
+    }
     return true;
   }
 
@@ -926,9 +965,11 @@ export class World {
     for (const m of this.monsters) if (m.alive) this.constrainToTerrain(m);
     for (const h of this.hazards) h.update(this, dt);
     Elec.updateZones(this, dt);
+    Air.updateWind(this, dt);
     this.updateProjectiles(dt);
     Sig.updateDecoys(this, dt);
     this.updateObstacles(dt);
+    this.updateRelics(dt);
     this.terrainAcc += dt;
     while (this.terrainAcc >= TERRAIN_DT) { this.terrainAcc -= TERRAIN_DT; this.terrain.update(TERRAIN_DT); }
     for (const s of this.steam) { s.life -= dt; s.density -= dt * (s.decay ?? 0.25); s.r = Math.min(s.rmax ?? 1e9, s.r + dt * 3); }
@@ -962,7 +1003,7 @@ export class World {
         }
       }
       if (m.element === 'plant' && p.vegetation && tr.fire[i] <= 0) this.heal(m, 1 * dt);
-      if (p.thorns && m.element !== 'plant' && tr.fire[i] <= 0) this.damage(m, p.thorns * dt, null, { dot: true, element: 'plant', tag: 'espinhos' });
+      if (p.thorns && m.element !== 'plant' && !m.def.hover && tr.fire[i] <= 0) this.damage(m, p.thorns * dt, null, { dot: true, element: 'plant', tag: 'espinhos' });
       if (p.water) {
         st.burn = 0;
         if (m.element === 'water' && !p.deep) this.heal(m, 2 * this.arena.waterHeal * dt);
@@ -1205,6 +1246,8 @@ export class World {
       Elec.projectileHit(this, p, m);
     } else if (p.kind === 'psyBolt' || p.kind === 'psyOrb') {
       Psy.projectileHit(this, p, m);
+    } else if (p.kind === 'tornado' || p.kind === 'feather') {
+      Air.projectileHit(this, p, m);
     } else if (p.kind === 'ember') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'ember', burn: 1.5, kb: 70, stun: 0.1, element: 'fire' });
       this.igniteTile(this.terrain.at(p.x, p.y), 1, p.owner);
@@ -1233,6 +1276,7 @@ export class World {
 
   projectileHitSolid(p, o) {
     this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y, obstacle: o });
+    if (p.kind === 'tornado' || p.kind === 'feather') { Air.projectileEnd(this, p, o); return; }
     if (p.kind === 'ember') {
       if (o) { this.hurtObstacle(o, p.dmg); if (o.flammable && !o.destroyed) this.igniteObstacle(o, p.owner); }
       this.igniteArea(p.x, p.y, 4, 1.3, p.owner);
@@ -1268,6 +1312,7 @@ export class World {
     else if (p.kind === 'inferno') this.infernoBlast(p);
     else if (p.kind === 'rock') this.emit({ type: 'rockHit', x: p.x, y: p.y });
     else if (p.kind === 'spark' || p.kind === 'voltOrb') Elec.projectileEnd(this, p);
+    else if (p.kind === 'tornado' || p.kind === 'feather') Air.projectileEnd(this, p, null);
     else this.douseArea(p.x, p.y, 12, 6, p.owner);
   }
 

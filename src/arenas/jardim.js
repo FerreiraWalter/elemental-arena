@@ -1,6 +1,7 @@
 import { T } from '../sim/tiles.js';
 import { RootVent } from '../sim/hazards.js';
 import { WORLD_W, WORLD_H } from '../config.js';
+import { treeHp } from './helpers.js';
 
 // Jardim Selvagem (1024×576): um jardim botânico em ruínas sendo devorado pela natureza, em camadas:
 //  · praça central de pedra com chafariz e estátua (marco que se vê de qualquer ponto);
@@ -8,13 +9,15 @@ import { WORLD_W, WORLD_H } from '../config.js';
 //  · raízes gigantes e muros em ruínas (sólidos) formam a cobertura ao redor da praça; sebes e flores gigantes
 //    bloqueiam mas queimam; árvores nas bordas (só o TRONCO é sólido; a copa é decoração translúcida);
 //  · canteiros, mato seco, espinheiros (ferem) e lagos nos cantos; respiros de raízes prendem quem não é planta.
-// Leitura: pedra/raiz/muro/tronco = sólido permanente · sebe/flor gigante = sólido que queima · grama/flores = passável.
+// Leitura: pedra/raiz/muro = sólido permanente (muro escuro com contorno e sombra) · árvore = sólida, mas tomba com dano ·
+// sebe/flor gigante = sólido que queima · grama/flores = passável.
 // O mapa é igual nos 4 quadrantes (espelhos): cada jogador tem a mesma cobertura perto do seu canto.
 const SPAWNS_FFA = [{ x: 150, y: 124 }, { x: 874, y: 452 }, { x: 874, y: 124 }, { x: 150, y: 452 }];
 
 // Tudo abaixo é descrito no quadrante noroeste (x < 512, y < 288) e espelhado nos outros três.
 const ROOT_ARCS = [[[300, 232], [336, 208], [380, 202], [424, 218]]];
-const WALLS = [{ x: 214, y: 152, w: 10, h: 78 }, { x: 292, y: 80, w: 86, h: 10 }, { x: 398, y: 168, w: 10, h: 44 }];
+// Muros mais grossos e afastados de tudo (≥ 30 px de folga): ou se passa com folga, ou é parede de verdade.
+const WALLS = [{ x: 212, y: 152, w: 12, h: 78 }, { x: 292, y: 78, w: 86, h: 12 }];
 const TREES = [[48, 62, 13], [104, 34, 11], [40, 214, 11], [236, 36, 12]];
 
 export default {
@@ -23,13 +26,16 @@ export default {
   subtitle: 'Ruínas devoradas pela natureza',
   description: 'Um jardim botânico em ruínas. Raízes gigantes e muros de pedra bloqueiam; sebes queimam; espinheiros ferem; respiros de raízes prendem quem não é planta. Praça central com chafariz.',
   features: [
-    'Raízes gigantes, muros e troncos: sólidos permanentes',
+    'Raízes gigantes e muros escuros: sólidos permanentes',
+    'Árvores aguentam bastante, mas tombam com golpes e tiros',
     'Sebes e flores gigantes: bloqueiam, mas queimam',
     'Espinheiros ferem e atrasam quem não é planta',
     'Respiros de raízes irrompem do chão (avisam antes)',
   ],
   spawns: [{ x: 120, y: 288 }, { x: 904, y: 288 }],
   spawnsFFA: SPAWNS_FFA,
+  // Relíquias de cura (simétricas: nenhum lado fica mais perto).
+  relics: [[512, 96], [512, 480]],
   waterHeal: 1,
   style: { ambient: 'pollen', bg: '#2f5a26', palette: { grass: ['#2f6a2a', '#3a7c30', '#468c38', '#55a042', '#77bf58'] } },
   build(w, B) {
@@ -55,7 +61,8 @@ export default {
         if (seen.some((s) => s.x === r.x && s.y === r.y)) continue;
         seen.push(r);
         w.walls.push({ ...r, kind: 'ruin' });
-        B.blob(r.x + r.w / 2, r.y + r.h / 2, r.w / 2 + 12, r.h / 2 + 12, T.STONE, undefined, 0.5, 41);
+        // Base de terra batida (não de lajota): o piso de pedra nunca encosta no muro, para não confundir chão com parede.
+        B.blob(r.x + r.w / 2, r.y + r.h / 2, r.w / 2 + 7, r.h / 2 + 7, T.DIRT, undefined, 0.4, 41);
       }
     }
     for (const wl of w.walls) B.rect(wl.x, wl.y, wl.w, wl.h, T.BLOCK);
@@ -74,11 +81,11 @@ export default {
       }
     }
     // Colunas do santuário, sebes (vegetação que queima) em grupos de 3, flores gigantes e árvores de borda (tronco sólido).
-    B.sym4([[456, 236, 6], [250, 262, 6]], (x, y, r) => w.addObstacle('pillar', x, y, r));
+    B.sym4([[462, 244, 6], [250, 262, 6]], (x, y, r) => w.addObstacle('pillar', x, y, r));
     B.sym4([[140, 216], [154, 216], [168, 216]], (x, y) => w.addObstacle('hedge', x, y, 7));
-    B.sym4([[360, 104], [374, 104], [388, 104]], (x, y) => w.addObstacle('hedge', x, y, 7));
-    B.sym4([[88, 168, 9], [330, 44, 9]], (x, y, r) => w.addObstacle('giantFlower', x, y, r));
-    B.sym4(TREES, (x, y, r) => w.addObstacle('tree', x, y, r));
+    B.sym4([[356, 128], [370, 128], [384, 128]], (x, y) => w.addObstacle('hedge', x, y, 7));
+    B.sym4([[88, 168, 9], [330, 37, 9]], (x, y, r) => w.addObstacle('giantFlower', x, y, r));
+    B.sym4(TREES, (x, y, r) => w.addObstacle('tree', x, y, r, { hp: treeHp(r) }));
     // Respiros de raízes (perigo cíclico com aviso).
     w.hazards = [];
     B.sym4([[400, 288], [512, 160]], (x, y) => w.hazards.push(new RootVent(w, x, y)));

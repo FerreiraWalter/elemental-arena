@@ -25,6 +25,8 @@ export default {
   features: ['Mapa idêntico nos 4 quadrantes: nenhum canto leva vantagem', 'Rochas bloqueiam para sempre; caixotes quebram e queimam', 'Mato seco e grama inflamáveis; lagos nos cantos curam o monstro de água', 'Centro e laterais abertos: bom para 1v1, 2v2 e 1v1v1v1'],
   spawns: [{ x: 120, y: 288 }, { x: 904, y: 288 }],
   spawnsFFA: SPAWNS_FFA,
+  // Relíquias de cura (simétricas: nenhum lado fica mais perto).
+  relics: [[512, 120], [512, 456]],
   waterHeal: 1,
   style: { court: true, crowd: true, ambient: 'dust', bg: '#3e7a2c' },
   build(w, B) {

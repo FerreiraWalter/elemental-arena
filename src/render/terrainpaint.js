@@ -269,19 +269,42 @@ export function paintWalls(base, world) {
       }
       for (let x = w.x; x < w.x + w.w; x++) { base.set(x, w.y, wood[0]); base.set(x, w.y + w.h, rgba('#3a2a1a')); }
     } else {
-      // Ruína: tijolos de pedra, topo claro, face escura e musgo.
-      const S = ['#4a4640', '#5e5850', '#746c60', '#8a8274', '#a29a8a'].map((h) => rgba(h));
-      const M = ['#3a5a2a', '#4c7034', '#64904a'].map((h) => rgba(h));
-      for (let y = w.y - 6; y < w.y + w.h; y++) for (let x = w.x; x < w.x + w.w; x++) {
-        const top = y < w.y + 2;
-        const brick = ((y >> 2) % 2 ? (x + 3) : x) % 6 === 0 || (y % 4 === 0);
-        const hsh = hash2(x, y, 91);
-        let c = top ? S[4] : brick ? S[0] : S[1 + ((hash2(x >> 2, y >> 2, 92) * 3) | 0)];
-        if (y >= w.y + w.h - 2) c = S[0];
-        if (hsh > 0.82 && (top || y < w.y + 4)) c = M[(hsh * 7) % 3 | 0];
+      // Ruína: bloco de pedra escura e azulada (bem diferente das lajotas claras do chão), com contorno preto,
+      // tampo de musgo, face frontal de tijolos e sombra no chão. Tem que ler como PAREDE à primeira vista.
+      const HT = 7; // altura aparente: o tampo sobe HT px acima da base sólida
+      const CAP = ['#56606e', '#66707e', '#78828f', '#8e98a4'].map((h) => rgba(h));
+      const FACE = ['#22242c', '#30333d', '#3c404c'].map((h) => rgba(h));
+      const M = ['#2e5a26', '#3e7430', '#5a9442'].map((h) => rgba(h));
+      const OUT = rgba('#0c0d12');
+      const darken = (x, y) => {
+        const c = base.get(x, y);
+        if (!c) return;
+        const r = c & 255, g = (c >> 8) & 255, b = (c >> 16) & 255;
+        base.set(x, y, pack(r * 0.55, g * 0.55, b * 0.6));
+      };
+      const top = w.y - HT, faceY = w.y + w.h - HT, bot = w.y + w.h;
+      // Sombra projetada à direita e embaixo.
+      for (let y = top + 3; y < bot + 3; y++) for (let x = w.x + 2; x < w.x + w.w + 3; x++) if (x >= w.x + w.w || y >= bot) darken(x, y);
+      for (let y = top; y < bot; y++) for (let x = w.x; x < w.x + w.w; x++) {
+        const edge = x === w.x || x === w.x + w.w - 1 || y === top || y === bot - 1;
+        let c;
+        if (edge) c = OUT;
+        else if (y < faceY) {
+          // Tampo: lajes grandes com borda clara no alto e tufos de musgo.
+          const slab = hash2(x >> 3, (y - top) >> 3, 93);
+          c = CAP[1 + ((slab * 2.4) | 0)];
+          if (y === top + 1 || x === w.x + 1) c = CAP[3];
+          else if (y === faceY - 1) c = CAP[0];
+          const hsh = hash2(x, y, 91);
+          if (hsh > 0.78 && valueNoise(x / 5, y / 5, 94) > 0.5) c = M[(hsh * 7) % 3 | 0];
+        } else {
+          // Face frontal: tijolos escuros com rejunte.
+          const brick = ((y >> 2) % 2 ? (x + 3) : x) % 6 === 0 || (y - faceY) % 4 === 0;
+          c = brick ? FACE[0] : FACE[1 + ((hash2(x >> 2, y >> 2, 92) * 2) | 0)];
+          if (y === faceY) c = FACE[0];
+        }
         base.set(x, y, c);
       }
-      for (let x = w.x - 1; x <= w.x + w.w; x++) base.set(x, w.y + w.h, rgba('#1e1a16', 160));
     }
   }
 }

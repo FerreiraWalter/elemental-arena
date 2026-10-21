@@ -12,7 +12,7 @@ import { drawTail } from '../render/electricfx.js';
 // Tudo desenhado no canvas no mesmo estilo pixel art; mouse e teclado funcionam em todas as telas.
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico', air: 'Voador' };
 const KEY_LABEL = { primary: 'MOUSE E', melee: 'MOUSE D', q: 'Q', e: 'E', f: 'F', dodge: 'ESPAÇO' };
 const DIFF_NAME = ['', 'fácil de jogar', 'médio', 'exige prática'];
 // Dificuldade em losangos de pixel (a fonte não tem estrelas). Retorna a largura desenhada.
@@ -351,14 +351,23 @@ export class UI {
     text(c, 'Mouse ou setas + Enter', cx, H - 8 * u, 5, '#887', 'center', u);
   }
 
+  // Troca de time de dentro da sala: abre a montagem de time já preenchida; CONFIRMAR envia e volta para a sala.
+  editRoomTeam(team) {
+    this.team = Array.isArray(team) ? [...team] : [];
+    this.flow = 'mpEdit';
+    this.go('team');
+  }
+
   renderTeam(u, W, H) {
     const c = this.c, cx = W / 2;
-    const training = this.flow === 'training';
-    text(c, this.flow === 'mp' ? 'SEU TIME PARA O ONLINE' : training ? 'TREINAMENTO' : 'MONTE SEU TIME', cx, 30 * u, 13, '#ffe9b0', 'center', u);
+    const training = this.flow === 'training', editing = this.flow === 'mpEdit';
+    // Saiu da sala (conexão caiu ou partida começou) enquanto editava: nada a confirmar.
+    if (editing && !this.mp.room) { this.flow = 'mp'; this.go('menu'); return; }
+    text(c, editing ? `TROCAR TIME · SALA ${this.mp.room.code}` : this.flow === 'mp' ? 'SEU TIME PARA O ONLINE' : training ? 'TREINAMENTO' : 'MONTE SEU TIME', cx, 30 * u, 13, '#ffe9b0', 'center', u);
     text(c, training ? 'Escolha de 1 a 3 monstros para treinar contra bonecos de pano (troque com 1/2/3).' : `Escolha 3 dos ${ROSTER.length} monstros, na ordem em que vão entrar (o 1º começa em campo).`, cx, 46 * u, 6, '#d8ccb0', 'center', u);
     const gap = 8 * u, top = 56 * u, btnH = 28 * u, btnY = H - btnH - 10 * u, orderH = 30 * u;
     const avail = btnY - orderH - 10 * u - top;
-    const COLS = ROSTER.length > 6 ? 4 : 3, ROWS = Math.ceil(ROSTER.length / COLS);
+    const COLS = ROSTER.length > 8 ? 5 : ROSTER.length > 6 ? 4 : 3, ROWS = Math.ceil(ROSTER.length / COLS);
     const ch = Math.floor((avail - gap * (ROWS - 1)) / ROWS);
     const cw = Math.min(Math.floor((W - 24 * u - gap * (COLS - 1)) / COLS), 240 * u);
     const x0 = cx - (cw * COLS + gap * (COLS - 1)) / 2;
@@ -406,16 +415,20 @@ export class UI {
       }, { custom: true });
     });
     // Ordem escolhida.
-    const sy = top + 2 * ch + gap + 8 * u;
+    const sy = top + ROWS * ch + (ROWS - 1) * gap + 8 * u;
     for (let k = 0; k < 3; k++) {
       const key = this.team[k];
       const x = cx + (k - 1) * 128 * u - 54 * u;
       panel(c, x, sy, 108 * u, 22 * u, u, key ? ELEMENT_COLOR[SPECIES[key].element] : '#3a302a');
       text(c, `${k + 1}º ${key ? SPECIES[key].name : '—'}`, x + 54 * u, sy + 15 * u, fitSize(c, `${k + 1}º ${key ? SPECIES[key].name : '—'}`, 6, 100 * u, u), key ? '#fff' : '#776', 'center', u);
     }
-    this.button(cx - 250 * u, btnY, 150 * u, btnH, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
+    this.button(cx - 250 * u, btnY, 150 * u, btnH, editing ? 'CANCELAR' : 'VOLTAR', () => { if (editing) { this.flow = 'mp'; this.go('lobby'); } else this.go('menu'); }, { back: true, color: '#aa9' });
     this.button(cx - 75 * u, btnY, 150 * u, btnH, 'ALEATÓRIO', () => { this.team = [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3); }, { color: '#e8b8ff' });
-    this.button(cx + 100 * u, btnY, 150 * u, btnH, 'CONTINUAR', () => this.go(this.flow === 'mp' ? 'mp' : 'arena'), { disabled: training ? this.team.length < 1 : this.team.length !== 3 });
+    const next = () => {
+      if (editing) { this.hooks.mpSend({ t: 'team', team: [...this.team] }); this.flow = 'mp'; this.go('lobby'); }
+      else this.go(this.flow === 'mp' ? 'mp' : 'arena');
+    };
+    this.button(cx + 100 * u, btnY, 150 * u, btnH, editing ? 'CONFIRMAR' : 'CONTINUAR', next, { disabled: training ? this.team.length < 1 : this.team.length !== 3 });
   }
 
   // ───────────── Multiplayer: criar / entrar em sala ─────────────
@@ -508,6 +521,8 @@ export class UI {
           text(c, p.ready ? 'PRONTO' : 'esperando...', x + sw - 8 * u, sy + 14 * u, 6, p.ready ? '#7ad84a' : '#bba', 'right', u);
           (p.team || []).forEach((key, i) => this.drawMonsterArt(SPECIES[key], x + 30 * u + i * 44 * u, sy + sh - 6 * u, 1, i + seat));
           if (!p.team) text(c, 'sem time', x + 8 * u, sy + sh - 10 * u, 5, '#887', 'left', u);
+          // Seu lugar: troca o time sem sair da sala (volta para cá depois de confirmar).
+          if (p.id === mp.myId) small(x + sw - (room.mode === 'ffa' ? 104 : 84) * u, sy + sh - 20 * u, 78 * u, 'TROCAR TIME', () => this.editRoomTeam(p.team), '#ffd23a');
         } else if (isHost) {
           text(c, 'vaga livre', x + sw / 2, sy + sh / 2 - 6 * u, 7, '#776', 'center', u);
           small(x + sw / 2 - 98 * u, sy + sh / 2, 92 * u, 'SENTAR AQUI', () => this.hooks.mpSend({ t: 'seat', seat }), '#ffd23a');
@@ -520,6 +535,7 @@ export class UI {
       }
     }
     const by = H - 40 * u;
+    if (!me?.team) text(c, 'Escolha seu time em TROCAR TIME', cx, by - 18 * u, 6, '#ff9a6a', 'center', u);
     this.button(cx - 270 * u, by, 120 * u, 28 * u, 'SAIR', () => this.hooks.mpLeave(), { back: true, color: '#aa9' });
     this.button(cx - 130 * u, by, 150 * u, 28 * u, me?.ready ? 'DESMARCAR' : 'PRONTO', () => this.hooks.mpSend({ t: 'ready', ready: !me?.ready }), { color: '#7ad84a', disabled: !me?.team });
     const allReady = room.players.length === room.seats && room.players.every((p) => p.team && (p.ready || p.id === room.host));

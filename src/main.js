@@ -93,7 +93,7 @@ function makeNet() {
   n.on('closed', () => {
     if (net !== n) return;
     if (online && session?.token) { reconnect(); return; }
-    const inRoom = online || ui.screen === 'lobby';
+    const inRoom = online || ui.screen === 'lobby' || ui.flow === 'mpEdit';
     online = false; ui.mp.room = null; ui.mp.busy = false; session = null;
     if (inRoom && mode !== 'loading') {
       ui.mpError('Conexão com o servidor perdida. Você saiu da sala.');

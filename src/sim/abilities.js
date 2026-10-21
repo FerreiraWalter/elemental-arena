@@ -4,6 +4,7 @@ import { T } from './tiles.js';
 import { thorns, spawnDecoy, SIG, isGuarding } from './signature.js';
 import * as Elec from './electric.js';
 import * as Psy from './psychic.js';
+import * as Air from './air.js';
 
 // Cada habilidade tem fases reais: preparação (windup, telegrafada), ativa (hitbox/efeito) e recuperação.
 // move = multiplicador de deslocamento em cada fase; turn = rad/s de rastreio da mira em windup/ativa.
@@ -27,6 +28,17 @@ function meleeTick(w, m, a, { reach, arc, dmg, kb, stun, extra }) {
     if (dd > m.r + reach + d.owner.r || Math.abs(angleDiff(a.aim, Math.atan2(d.y - m.y, d.x - m.x))) > arc / 2 + 0.4) continue;
     a.hit.add('d' + d.id);
     w.popDecoysIn(d.x, d.y, 1, m.team);
+  }
+  // Golpes também acertam o que quebra no arco: caixotes, arbustos, troncos, árvores que tombam, sentinelas inimigas.
+  for (const o of w.obstacles) {
+    if (o.destroyed || o.hp === Infinity || (o.sentry && o.team === m.team) || a.hit.has('o' + o.id)) continue;
+    const d = Math.hypot(o.x - m.x, o.y - m.y);
+    if (d > m.r + reach + o.r) continue;
+    const slack = d > 0 ? Math.asin(Math.min(1, o.r / d)) : Math.PI;
+    if (Math.abs(angleDiff(a.aim, Math.atan2(o.y - m.y, o.x - m.x))) > arc / 2 + slack) continue;
+    a.hit.add('o' + o.id);
+    w.hurtObstacle(o, dmg);
+    if (m.element === 'fire' && o.flammable && !o.destroyed) w.igniteObstacle(o, m);
   }
 }
 const melee = (o) => ({ reach: o.reach, arc: o.arc, hit: o, onActiveTick(w, m, a) { meleeTick(w, m, a, this.hit); } });
@@ -633,10 +645,10 @@ export const ABILITIES = {
   },
   scytheSlash: {
     id: 'scytheSlash', name: 'Foice Verde', element: 'plant', kind: 'melee',
-    cooldown: 0.85, windup: 0.14, active: 0.1, recovery: 0.22,
+    cooldown: 1.0, windup: 0.14, active: 0.1, recovery: 0.22,
     move: [0.3, 1, 0.4], turn: [10, 2], range: 26,
     onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 110; m.ky += Math.sin(a.aim) * 110; },
-    ...melee({ reach: 26, arc: 2.1, dmg: 12, kb: 110, stun: 0.2, extra: {} }),
+    ...melee({ reach: 26, arc: 2.1, dmg: 11, kb: 110, stun: 0.2, extra: {} }),
   },
   sporePuff: {
     id: 'sporePuff', name: 'Nuvem de Esporos', element: 'plant', kind: 'cone',
@@ -672,9 +684,9 @@ export const ABILITIES = {
   // ───── Silvamante: salto celeste, tempestade de lâminas ─────
   mantisClaw: {
     id: 'mantisClaw', name: 'Garras de Mantis', element: 'plant', kind: 'melee',
-    cooldown: 0.95, windup: 0.17, active: 0.11, recovery: 0.24,
+    cooldown: 1.2, windup: 0.17, active: 0.11, recovery: 0.24,
     move: [0.3, 0.8, 0.4], turn: [10, 2], range: 32,
-    ...melee({ reach: 32, arc: 2.3, dmg: 16, kb: -160, stun: 0.3, extra: {} }),
+    ...melee({ reach: 32, arc: 2.3, dmg: 14, kb: -160, stun: 0.3, extra: {} }),
   },
   bladeStorm: {
     id: 'bladeStorm', name: 'Tempestade de Lâminas', element: 'plant', kind: 'projectile',
@@ -964,7 +976,7 @@ Object.assign(ABILITIES, {
     cooldown: 0.85, windup: 0.12, active: 0.1, recovery: 0.18,
     move: [0.6, 1, 0.8], turn: [12, 2], range: 34,
     onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 150; m.ky += Math.sin(a.aim) * 150; },
-    ...melee({ reach: 34, arc: 2.2, dmg: 8.5, kb: 60, stun: 0.12, extra: {} }),
+    ...melee({ reach: 34, arc: 2.2, dmg: 7.5, kb: 60, stun: 0.12, extra: {} }),
     desc: 'FOICE DUPLA: golpe rápido com avanço; ótimo para acumular Marcas.',
   },
   mantisFlurry: {
@@ -972,7 +984,7 @@ Object.assign(ABILITIES, {
     cooldown: 0.8, windup: 0.13, active: 0.12, recovery: 0.2,
     move: [0.6, 1, 0.8], turn: [12, 2], range: 40,
     onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 170; m.ky += Math.sin(a.aim) * 170; },
-    ...melee({ reach: 40, arc: 2.4, dmg: 13.5, kb: 70, stun: 0.14, extra: {} }),
+    ...melee({ reach: 40, arc: 2.4, dmg: 12, kb: 70, stun: 0.14, extra: {} }),
     desc: 'RAJADA DE FOICES: avanço com foices largas.',
   },
 });
@@ -1400,5 +1412,103 @@ Object.assign(ABILITIES, {
     cooldown: 3.4, windup: 0, active: 0.28, recovery: 0.1,
     move: [1, 1, 0.7], turn: [0, 0], dash: { speed: 300, invuln: true },
     desc: 'LEVITAÇÃO ASTRAL: flutua invulnerável por cima de tudo.',
+  },
+});
+
+// ───────────── Voador: Araralvo → Araravento ─────────────
+// Golpe básico de SEGURAR E SOLTAR: o tornado carrega enquanto o botão está apertado (hold = segundos de carga
+// além da preparação) e é lançado ao soltar (ou sozinho na carga máxima). Carga ≥ 35% levanta quem ele atravessa.
+const pointIn = (m, a, range) => {
+  const p = a.point || a.aimPoint || { x: m.x + Math.cos(a.aim) * range, y: m.y + Math.sin(a.aim) * range };
+  const ang = Math.atan2(p.y - m.y, p.x - m.x), d = clamp(Math.hypot(p.x - m.x, p.y - m.y), 20, range);
+  return { x: clamp(m.x + Math.cos(ang) * d, 10, WORLD_W - 10), y: clamp(m.y + Math.sin(ang) * d, 10, WORLD_H - 10) };
+};
+Object.assign(ABILITIES, {
+  galeTornado: {
+    id: 'galeTornado', name: 'Tornado', element: 'air', kind: 'projectile', basic: true,
+    cooldown: 1.3, windup: 0.16, active: 0.02, recovery: 0.22, hold: 1.0,
+    move: [0.55, 0.6, 0.85], turn: [9, 0], range: 230, speed: 170,
+    tornado: { dmg: [5, 11], range: [120, 230], r: [6, 10], lift: [0.45, 0.95], speed: [190, 165] },
+    onActiveStart(w, m, a) { Air.tornado(w, m, a, this.tornado); },
+    desc: 'TORNADO: SEGURE para carregar e SOLTE para lançar. Atravessa todos; com carga, LEVANTA quem pega (atordoado no ar).',
+  },
+  beakPeck: {
+    id: 'beakPeck', name: 'Bicada', element: 'air', kind: 'melee', basic: true,
+    cooldown: 0.7, windup: 0.1, active: 0.08, recovery: 0.16,
+    move: [0.6, 1, 0.8], turn: [12, 2], range: 22,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 90; m.ky += Math.sin(a.aim) * 90; },
+    ...melee({ reach: 22, arc: 1.7, dmg: 7, kb: 80, stun: 0.12, extra: {} }),
+    desc: 'BICADA: bicada rápida com avanço curto.',
+  },
+  featherVolley: {
+    id: 'featherVolley', name: 'Rajada de Penas', element: 'air', kind: 'projectile',
+    cooldown: 7, windup: 0.2, active: 0.02, recovery: 0.22,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 170, speed: 290,
+    onActiveStart(w, m, a) { Air.feathers(w, m, a, { n: 5, spread: 0.6, speed: 290, range: 170, dmg: 4, slow: [1.2, 0.25] }); },
+    desc: 'RAJADA DE PENAS: leque de 5 penas cortantes que deixam LENTO.',
+  },
+  galeBurst: {
+    id: 'galeBurst', name: 'Rajada de Vento', element: 'air', kind: 'buff',
+    cooldown: 10, windup: 0.12, active: 0.05, recovery: 0.2, superArmor: true,
+    move: [0.3, 0.3, 0.8], turn: [0, 0], range: 55,
+    onActiveStart(w, m) { Air.gust(w, m, { r: 55, dmg: 6, kb: 300 }); },
+    desc: 'RAJADA DE VENTO: bate as asas e EMPURRA quem está perto; DEVOLVE projéteis inimigos próximos.',
+  },
+  diveStrike: {
+    id: 'diveStrike', name: 'Mergulho Rasante', element: 'air', kind: 'dash', leap: true,
+    cooldown: 8, windup: 0.22, active: 0.42, recovery: 0.2,
+    move: [0.1, 1, 0.4], turn: [8, 0], range: 170, minRange: 30, landR: 24, dash: { speed: 360, invuln: true },
+    onEnd(w, m) { Air.diveLand(w, m, { r: 24, dmg: 10, lift: 0.5, tag: 'diveStrike' }); },
+    desc: 'MERGULHO RASANTE: voa até o ponto (invulnerável) e mergulha: dano e LEVANTA quem estiver embaixo.',
+  },
+  flutter: {
+    id: 'flutter', name: 'Revoada', element: 'air', kind: 'dodge', air: true,
+    cooldown: 2.6, windup: 0, active: 0.2, recovery: 0.08,
+    move: [1, 1, 0.7], turn: [0, 0], dash: { speed: 330, invuln: true },
+    desc: 'REVOADA: bate as asas e desvia voando (invulnerável).',
+  },
+  // ───── Araravento ─────
+  cycloneTornado: {
+    id: 'cycloneTornado', name: 'Ciclone', element: 'air', kind: 'projectile', basic: true,
+    cooldown: 1.15, windup: 0.18, active: 0.02, recovery: 0.22, hold: 1.0,
+    move: [0.55, 0.6, 0.85], turn: [9, 0], range: 280, speed: 175,
+    tornado: { dmg: [8, 16], range: [140, 280], r: [8, 13], lift: [0.55, 1.15], speed: [205, 180], vortex: { r: 26, life: 1.4, pull: 55, dps: 3, slow: 0.3 } },
+    onActiveStart(w, m, a) { Air.tornado(w, m, a, this.tornado); },
+    desc: 'CICLONE: SEGURE e SOLTE. Maior e mais forte; com carga cheia deixa um pequeno vórtice onde termina.',
+  },
+  talonRake: {
+    id: 'talonRake', name: 'Garras do Vendaval', element: 'air', kind: 'melee', basic: true,
+    cooldown: 0.9, windup: 0.13, active: 0.1, recovery: 0.2,
+    move: [0.5, 1, 0.7], turn: [11, 2], range: 30,
+    onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * 120; m.ky += Math.sin(a.aim) * 120; },
+    ...melee({ reach: 30, arc: 2.0, dmg: 12, kb: -110, stun: 0.2, extra: {} }),
+    desc: 'GARRAS DO VENDAVAL: rasgo com as garras que PUXA o alvo para perto.',
+  },
+  featherStorm: {
+    id: 'featherStorm', name: 'Tempestade de Penas', element: 'air', kind: 'projectile',
+    cooldown: 7, windup: 0.22, active: 0.02, recovery: 0.22,
+    move: [0.5, 0.5, 0.8], turn: [8, 0], range: 200, speed: 300,
+    onActiveStart(w, m, a) { Air.feathers(w, m, a, { n: 7, spread: 0.8, speed: 300, range: 200, dmg: 6, slow: [1.4, 0.3] }); },
+    desc: 'TEMPESTADE DE PENAS: leque de 7 penas cortantes que deixam LENTO.',
+  },
+  eyeOfStorm: {
+    id: 'eyeOfStorm', name: 'Olho da Tempestade', element: 'air', kind: 'lob',
+    cooldown: 12, windup: 0.3, active: 0.05, recovery: 0.25,
+    move: [0.4, 0.4, 0.8], turn: [8, 0], range: 190, radius: 46, flight: 0.01,
+    onActiveStart(w, m, a) { const p = pointIn(m, a, this.range); Air.addVortex(w, m, p.x, p.y, { r: 46, life: 2.6, pull: 70, dps: 4, slow: 0.35, lift: 0.7, big: true }); },
+    desc: 'OLHO DA TEMPESTADE: vórtice no ponto marcado que PUXA para o centro e deixa lento; no fim, LEVANTA quem ficou dentro.',
+  },
+  stormDive: {
+    id: 'stormDive', name: 'Mergulho da Tempestade', element: 'air', kind: 'dash', leap: true,
+    cooldown: 9, windup: 0.26, active: 0.5, recovery: 0.24, superArmor: true,
+    move: [0.1, 1, 0.3], turn: [8, 0], range: 250, minRange: 40, landR: 34, dash: { speed: 430, invuln: true },
+    onEnd(w, m) { Air.diveLand(w, m, { r: 34, dmg: 16, lift: 0.7, tag: 'stormDive' }); },
+    desc: 'MERGULHO DA TEMPESTADE: voo longo e mergulho em área que LEVANTA todos embaixo.',
+  },
+  galeFlutter: {
+    id: 'galeFlutter', name: 'Revoada Veloz', element: 'air', kind: 'dodge', air: true,
+    cooldown: 2.4, windup: 0, active: 0.22, recovery: 0.08,
+    move: [1, 1, 0.7], turn: [0, 0], dash: { speed: 350, invuln: true },
+    desc: 'REVOADA VELOZ: desvio voando mais longo (invulnerável).',
   },
 });

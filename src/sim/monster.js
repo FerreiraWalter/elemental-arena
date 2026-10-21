@@ -2,6 +2,7 @@ import { turnToward, angleTo } from '../core/math.js';
 import { props } from './tiles.js';
 import { EVOLUTION, FIRE } from '../config.js';
 import { onCast, SIG } from './signature.js';
+import * as Air from './air.js';
 
 let nextId = 1;
 
@@ -164,6 +165,14 @@ export class Monster {
     }
     if (a.phase === 'windup') {
       if (ab.leap) this.aimLeap(a, false);
+      // Habilidades de segurar (tornado da arara): continua carregando enquanto o botão está apertado (jogador)
+      // ou até o tempo que a IA escolheu; solta sozinho na carga máxima.
+      if (ab.hold && a.t >= ab.windup) {
+        if (a.holding === undefined && a.holdFor === undefined) a.holdFor = Air.aiHoldFor(w, this, a);
+        const holding = a.holding !== undefined ? a.holding : a.t < a.holdFor;
+        if (holding && a.t < ab.windup + ab.hold) return;
+        a.charge = Air.holdK(a);
+      }
       if (a.t >= ab.windup) this.enterActive(w);
     } else if (a.phase === 'active') {
       ab.onActiveTick?.(w, this, a, dt);
@@ -183,7 +192,8 @@ export class Monster {
     const tr = w.terrain;
     const i = tr.at(this.x, this.y);
     let k = 1;
-    if (i >= 0) {
+    // Voadores pairam: água, chão molhado, raízes, mato e espinhos não os atrasam.
+    if (i >= 0 && !this.def.hover) {
       const p = props(tr.type[i]);
       if (p.water) k *= this.element === 'water' ? (this.def.waterSpeed || 1.25) : 0.65;
       else if (tr.wet[i] > 0) k *= this.element === 'water' ? (this.def.wetSpeed || 1.15) : 0.88;

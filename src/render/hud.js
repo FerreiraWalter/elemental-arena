@@ -5,7 +5,7 @@ import { SIG } from '../sim/signature.js';
 import { meter } from '../sim/training.js';
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico', neutral: 'Treino' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico', air: 'Voador', neutral: 'Treino' };
 const SLOTS = [['primary', 'MOUSE E'], ['melee', 'MOUSE D'], ['q', 'Q'], ['e', 'E'], ['f', 'F'], ['dodge', 'ESPAÇO']];
 
 function text(c, s, x, y, size, color, align = 'left', dpr = 1) {
@@ -72,6 +72,7 @@ function elementGlyph(c, el, x, y, s) {
     case 'water': P(2.5, 0, 1, 1, '#8fd8ff'); P(2, 1, 2, 1, '#5ab4ff'); P(1, 2, 4, 3, '#3a8cff'); P(1.5, 2.5, 1, 1.5, '#c8f0ff'); P(2, 5, 2, 1, '#2a6ad8'); break;
     case 'plant': P(3, 0, 3, 1, '#9be862'); P(2, 1, 4, 2, '#6ac84a'); P(1, 3, 3, 2, '#4aa83a'); P(0, 5, 2, 1, '#7a4a28'); break;
     case 'earth': P(1, 1, 4, 4, '#a8743e'); P(2, 0, 2, 1, '#c89a5a'); P(1, 2, 2, 1, '#c89a5a'); P(4, 3, 1, 2, '#6a4a28'); break;
+    case 'air': P(0, 1, 4, 1, '#d8f6ff'); P(3, 0, 2, 1, '#9ad8ec'); P(1, 3, 5, 1, '#ffffff'); P(4, 2, 2, 1, '#9ad8ec'); P(0, 5, 3, 1, '#9ad8ec'); P(2, 4, 2, 1, '#d8f6ff'); break;
     case 'psychic': P(1, 2, 4, 2, '#d07aff'); P(0, 3, 6, 1, '#9a4ad8'); P(2, 2, 2, 2, '#ffffff'); P(2.5, 2.5, 1, 1, '#5a2a9a'); P(2, 0, 2, 1, '#ff9ae6'); P(2, 5, 2, 1, '#ff9ae6'); break;
     case 'electric': P(3, 0, 2, 1, '#ffe24a'); P(2, 1, 2, 1, '#ffe24a'); P(1, 2, 4, 1, '#ffffff'); P(3, 3, 2, 1, '#ffe24a'); P(2, 4, 2, 1, '#ffe24a'); P(2, 5, 1, 1, '#c8a838'); break;
   }
@@ -397,7 +398,9 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     c.fillRect(x + 2 * dpr, y + 2 * dpr + (bh - 4 * dpr) * (1 - k), bw - 4 * dpr, (bh - 4 * dpr) * k);
     c.fillStyle = '#ffe9b0'; c.fillRect(x + 3 * dpr, y + 3 * dpr, 11 * dpr, 9 * dpr);
     c.font = `${5 * dpr}px ${FONT}`; c.fillStyle = '#141a2a'; c.textAlign = 'left'; c.fillText('G', x + 6 * dpr, y + 10.5 * dpr);
-    text(c, 'EVOLUIR', x + bw / 2, y + 26 * dpr, Math.min(6, bw / dpr / 9), '#fff', 'center', dpr);
+    // Virada: rival já evoluído em campo e você ainda não — a barra enche 60% mais rápido.
+    const underdog = !ready && !m.evolved && m.def.evolvesTo && world.monsters.some((e) => e.alive && e.onField && e.team !== m.team && e.def.stage >= 2);
+    text(c, underdog ? 'VIRADA x1.6' : 'EVOLUIR', x + bw / 2, y + 26 * dpr, Math.min(underdog ? 5 : 6, bw / dpr / (underdog ? 12 : 9)), underdog ? '#ffd23a' : '#fff', 'center', dpr);
     text(c, ready ? 'PRONTO!' : `${Math.floor(k * 100)}%`, x + bw / 2, y + bh - 5 * dpr, 5.5, ready ? '#e8b8ff' : '#c8bce0', 'center', dpr);
   }
 }

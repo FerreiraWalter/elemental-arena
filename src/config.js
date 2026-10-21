@@ -39,6 +39,10 @@ export const EVOLUTION = {
   swapAt: 0.55, // momento em que a forma muda
   damageTaken: 0.5, // multiplicador de dano durante a transformação (sem atordoar nem empurrar)
   shockRadius: 48, shockDamage: 8, shockKnockback: 240,
+  // Virada: uma forma base que luta contra uma EVOLUÍDA ganha energia mais rápido (bater e apanhar dela)…
+  underdog: 1.6,
+  // …e, quando um rival evolui, cada forma base inimiga em campo recebe um impulso imediato (Instinto).
+  instinct: 22,
 };
 
 // Triângulo elemental: fogo > planta > água > fogo.
@@ -49,9 +53,11 @@ export const ELEMENT_MULT = {
   fire: { plant: 1.1, water: 0.9 },
   plant: { water: 1.06, fire: 0.9 },
   // Elétrico (Raiolua): forte contra água, fraco contra planta; a terra aterra o choque.
-  electric: { water: 0.94, plant: 0.96, earth: 0.92, psychic: 1.12 },
-  earth: { electric: 1.1 },
+  electric: { water: 0.94, plant: 0.96, earth: 0.92, psychic: 1.12, air: 1.12 },
+  earth: { electric: 1.1, air: 0.92 },
   psychic: { earth: 1.08, electric: 0.9 },
+  // Voador (araras): forte contra planta e terra (ataca de cima), fraco contra o elétrico (raio no ar).
+  air: { plant: 1.1, earth: 1.08, electric: 0.9 },
 };
 
 // Fogo: queimadura (status) e chão em chamas. Valores revistos para que o fogo pressione sem prender o
@@ -71,6 +77,11 @@ export const FIRE = {
 // Morte súbita: depois deste tempo de partida, nenhuma cura funciona (terreno, sentinelas, Crescimento) e a IA
 // para de recuar. Evita partidas eternas entre monstros que se curam (ex.: água × água perto de um riacho).
 export const MATCH = { suddenDeath: 150 };
+
+// Relíquias de cura (como no ARAM): orbes em pontos fixos e simétricos de cada arena. Só quem encosta é curado.
+// first: segundos até a primeira aparecer; respawn: recarga depois de pega; heal: fração da vida máxima; r: raio de coleta.
+// Somem na morte súbita (nenhuma cura funciona).
+export const RELIC = { first: 20, respawn: 35, heal: 0.22, r: 7 };
 
 // Combate focado em skills: o ataque básico é um golpe curto/médio com cara de cada monstro (nada de tiro longo
 // repetido) e cada golpe básico que ACERTA adianta as recargas das habilidades Q/E/F (Ritmo). As skills recarregam

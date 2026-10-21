@@ -284,7 +284,7 @@ test('Evolução: cada ataque que acerta enche um pedaço fixo da barra', () => 
 });
 
 // ───────────── Marca do Louva-a-deus (Mantifolha) ─────────────
-test('Marcas: acertos de longe marcam (máx. 3); golpe de perto com 3 marcas EXECUTA e recarrega o salto', () => {
+test('Marcas: acertos de longe marcam (máx. 3); golpe de perto com 3 marcas EXECUTA e adianta o salto', () => {
   const { w, A, B } = setup('mantifolha', 'hidrocasco', { gap: 26 });
   for (let k = 0; k < 4; k++) { w.damage(B, 5, A, { element: 'plant', proj: true }); w.time += 0.3; }
   assert(B.marks.n === 3 && B.marks.by === A.id, `marcas = ${B.marks.n}`);
@@ -296,7 +296,7 @@ test('Marcas: acertos de longe marcam (máx. 3); golpe de perto com 3 marcas EXE
   assert(exec, 'não executou');
   assert(h0 - B.hp > 12 + SPECIES.mantifolha.sig.exec * 0.8, `execução fraca (${(h0 - B.hp).toFixed(1)})`);
   assert(B.marks.n === 0, 'marcas não foram consumidas');
-  assert(A.cd.longLeap === 0, 'salto não recarregou');
+  assert(A.cd.longLeap <= 4 * SPECIES.mantifolha.sig.leapReset + 1e-6, `salto não adiantou (${A.cd.longLeap.toFixed(2)})`);
 });
 
 // ───────────── Fogo: limites ─────────────
@@ -461,7 +461,9 @@ test('Combate de skills: nenhum golpe básico é tiro longo, e cada um acerta um
     const evolved = !SPECIES[key].evolvesTo;
     const def = SPECIES[key], ab = def.abilities.find((x) => x.id === def.controls.primary);
     assert(ab.basic, `${key}: básico ${ab.id} não marcado como golpe básico`);
-    assert((ab.range || 0) <= 170, `${key}: básico ${ab.id} tem alcance de tiro longo (${ab.range})`);
+    // Tornado da arara: só vai longe CARREGADO (segurar até 1 s); solto na hora, o alcance é curto.
+    const quick = ab.hold ? ab.tornado.range[0] : ab.range || 0;
+    assert(quick <= 170, `${key}: básico ${ab.id} tem alcance de tiro longo (${quick})`);
     const gap = Math.max(26, Math.min((ab.range || 40) * 0.6, 100));
     const { w, A, B } = setup(base, 'brotossauro', { gap, evolved });
     assert(A.def.key === key, `${key}: forma errada no teste (${A.def.key})`);

@@ -1,7 +1,8 @@
 import { T } from '../sim/tiles.js';
+import { treeHp } from './helpers.js';
 
 // Floresta Ancestral: árvores colossais, trilha de terra, clareira central com um pequeno santuário antigo.
-// Leitura: árvore/rocha/pilar = sólido permanente · tronco caído/arbusto = cobertura que quebra e queima ·
+// Leitura: rocha/pilar = sólido permanente · árvore = sólida, mas tomba com dano · tronco caído/arbusto = cobertura que quebra e queima ·
 // musgo, folhas, mata baixa e terra = passáveis (mata baixa atrasa; folhas secas queimam rápido).
 // Árvores maiores ficam nas bordas e nas "esquinas" da clareira; as rotas laterais ficam livres.
 const MIRS = (B) => [(p) => p, B.mirX, B.mirY, B.rot];
@@ -16,15 +17,17 @@ export default {
   id: 'floresta',
   name: 'Floresta Ancestral',
   subtitle: 'Árvores colossais e trilhas',
-  description: 'Uma floresta antiga e viva. Árvores e rochas bloqueiam tiros; troncos caídos são cobertura que quebra e queima. A trilha de terra e a clareira central são abertas.',
+  description: 'Uma floresta antiga e viva. Árvores e rochas bloqueiam tiros (as árvores tombam com muito dano); troncos caídos são cobertura que quebra e queima. A trilha de terra e a clareira central são abertas.',
   features: [
-    'Árvores e rochas: sólidas e permanentes (bloqueiam tiros e visão)',
+    'Rochas: sólidas e permanentes · árvores tombam com muito dano',
     'Troncos caídos e arbustos: cobertura que queima',
     'Mata baixa atrasa; folhas secas queimam rápido',
     'Riacho, lago raso e santuário de pilares no centro',
   ],
   spawns: [{ x: 120, y: 288 }, { x: 904, y: 288 }],
   spawnsFFA: SPAWNS_FFA,
+  // Relíquias de cura (simétricas: nenhum lado fica mais perto).
+  relics: [[360, 140], [664, 140], [360, 436], [664, 436]],
   waterHeal: 1,
   style: { ambient: 'leaves', bg: '#1d3a1c', canopy: true, palette: { grass: ['#24461f', '#2c5626', '#35662c', '#3f7634', '#5a9444'] } },
   build(w, B) {
@@ -41,8 +44,8 @@ export default {
     // Riachos descendo do topo e subindo da base até o lago central (atravessáveis; água atrasa quem não é de água).
     for (const mir of [(p) => p, B.mirY]) B.path([[512, 0], [520, 60], [512, 120], [512, 238]].map(mir), 12, T.WATER, undefined, 0.2);
     B.blob(512, 288, 20, 14, T.WATER, undefined, 0.2);
-    B.sym4(TREES, (x, y, r) => w.addObstacle('tree', x, y, r));
-    B.sym4(GIANTS, (x, y, r) => w.addObstacle('tree', x, y, r));
+    B.sym4(TREES, (x, y, r) => w.addObstacle('tree', x, y, r, { hp: treeHp(r) }));
+    B.sym4(GIANTS, (x, y, r) => w.addObstacle('tree', x, y, r, { hp: treeHp(r) }));
     for (const seg of LOGS) for (const mir of MIRS(B)) {
       const [[x0, y0], [x1, y1]] = seg.map(mir);
       const n = 4, ang = Math.atan2(y1 - y0, x1 - x0), group = {};

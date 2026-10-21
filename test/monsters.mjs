@@ -28,8 +28,8 @@ function setup(line, { evolved = false, foe = 'brotossauro', gap = 130 } = {}) {
 const cast = (w, me, id, extra = {}) => me.cast(w, me.ability(id), { aim: 0, dir: 0, aimPoint: { x: 400, y: 200 }, point: { x: 330, y: 200 }, ...extra });
 const NEW = ROSTER.slice(3);
 
-test('Todos os 9 monstros e 18 formas existem, com sprite e controles válidos', () => {
-  assert(ROSTER.length === 9 && Object.keys(SPECIES).length === 18, 'elenco incompleto');
+test('Todos os 10 monstros e 20 formas existem, com sprite e controles válidos', () => {
+  assert(ROSTER.length === 10 && Object.keys(SPECIES).length === 20, 'elenco incompleto');
   for (const s of Object.values(SPECIES)) {
     assert(s.sprite && s.controls.primary && s.controls.melee && s.controls.dodge, `${s.key} sem sprite/controles`);
     for (const id of Object.values(s.controls)) assert(s.abilities.some((a) => a.id === id), `${s.key}: controle ${id} sem habilidade`);

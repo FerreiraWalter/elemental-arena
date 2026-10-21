@@ -35,6 +35,17 @@ function lobShot(c, range) {
   return { score: 0.62 + (c.tSpeed < 25 ? 0.15 : 0) + (c.tBusy ? 0.1 : 0), target: c.t, lob: true };
 }
 
+// Alvo suspenso no ar (tornado/mergulho): a arara aproveita a Presa no Ar.
+const airborne = (c) => (c.t.lift > 0 && c.m.def.sig?.kind === 'gale' ? 0.3 : 0);
+function tornadoShot(c, range) {
+  if (!c.vis || c.d < 24 || c.d > range + 10 || c.tGuarding) return null;
+  return { score: 0.62 + (c.tBusy ? 0.2 : 0) + (c.tSpeed < 25 ? 0.1 : 0), target: c.t };
+}
+function featherFan(c, range) {
+  if (!c.vis || c.d < 20 || c.d > range) return null;
+  return { score: 0.6 + (c.tSpeed < 25 ? 0.1 : 0) + airborne(c), target: c.t };
+}
+
 export const TACTICS = {
   // ───────────── FOGO: agressivo, cria e usa terreno em chamas ─────────────
   claw(c) {
@@ -457,6 +468,44 @@ export const TACTICS = {
   },
   levitate() { return null; },
   astralLevitate() { return null; },
+  // ───── Voador: tornado carregado (a carga é escolhida em air.aiHoldFor), penas, rajada e mergulhos ─────
+  galeTornado(c) { return tornadoShot(c, 230); },
+  cycloneTornado(c) { return tornadoShot(c, 280); },
+  beakPeck(c) {
+    if (!c.vis || c.d > reach(c, 26) || c.tGuarding) return null;
+    return { score: 0.85 + (c.tBusy ? 0.2 : 0) + airborne(c), target: c.t };
+  },
+  talonRake(c) {
+    if (!c.vis || c.d > reach(c, 34) || c.tGuarding) return null;
+    return { score: 0.9 + (c.tBusy ? 0.2 : 0) + airborne(c), target: c.t };
+  },
+  featherVolley(c) { return featherFan(c, 170); },
+  featherStorm(c) { return featherFan(c, 200); },
+  galeBurst(c) {
+    const shots = c.w.projectiles.some((p) => !p.dead && !p.lob && p.team !== c.m.team && Math.hypot(p.x - c.m.x, p.y - c.m.y) < 80);
+    if (shots) return { score: 0.85, target: c.t };
+    if (c.vis && c.d < 50) return { score: 0.62 + (c.hpF < 0.5 ? 0.2 : 0), target: c.t };
+    return null;
+  },
+  eyeOfStorm(c) {
+    if (c.d < 30 || c.d > 190 || c.sinceSeen > 1) return null;
+    let s = 0.5;
+    if (c.tChanneling || c.t.status.stun > 0 || c.t.status.root > 0) s += 0.3;
+    if (c.tSpeed < 25 || c.t.status.slow > 0) s += 0.2;
+    return { score: s, target: c.t, lob: true };
+  },
+  diveStrike(c) {
+    if (c.vis && c.d < 45 && c.hpF < 0.45) return { score: 0.66, aimPoint: c.awayPoint, purpose: 'escape' };
+    if (c.vis && c.d > 80 && c.d < 175) return { score: 0.55 + (c.tBusy ? 0.25 : 0), target: c.t };
+    return null;
+  },
+  stormDive(c) {
+    if (c.vis && c.d < 50 && c.hpF < 0.4) return { score: 0.66, aimPoint: c.awayPoint, purpose: 'escape' };
+    if (c.vis && c.d > 100 && c.d < 255) return { score: 0.6 + (c.tBusy ? 0.25 : 0), target: c.t };
+    return null;
+  },
+  flutter() { return null; },
+  galeFlutter() { return null; },
   rockThrow(c) {
     if (!c.vis || c.d < 45 || c.d > 225 || c.tGuarding) return null;
     return { score: 0.7 + (c.tChanneling ? 0.3 : 0) + (c.tSpeed < 25 ? 0.1 : 0), target: c.t };

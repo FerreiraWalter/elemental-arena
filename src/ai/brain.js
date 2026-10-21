@@ -12,7 +12,7 @@ import { PathGrid } from './path.js';
 export const STATE_LABEL = {
   observe: 'Observando', acquire: 'Adquirindo alvo', approach: 'Aproximando', strafe: 'Mantendo distância',
   kite: 'Recuando taticamente', attack: 'Atacando', evade: 'Esquivando', escapeHazard: 'Fugindo do perigo',
-  retreat: 'Recuando (vida baixa)', recover: 'Atordoado', search: 'Procurando alvo', flank: 'Flanqueando',
+  retreat: 'Recuando (vida baixa)', relic: 'Indo à relíquia de cura', recover: 'Atordoado', search: 'Procurando alvo', flank: 'Flanqueando',
   protect: 'Protegendo aliado', switchTarget: 'Trocando de alvo', controlTerrain: 'Controlando terreno', victory: 'Vitória!',
   human: 'Jogador', player: 'Controlado por você', rooted: 'Enraizado', switching: 'Trocando',
 };
@@ -409,6 +409,9 @@ export class Brain {
       if (!m.action) this.setState('escapeHazard');
       return;
     }
+    // Relíquia de cura por perto e vida baixa: vai pegar (antes que o rival pegue).
+    const relic = this.relicGoal(c);
+    if (relic) { this.goalPt = relic; this.mode = 'goto'; if (!m.action) this.setState('relic'); return; }
     if (this.state === 'retreat') {
       const done = c.hpF > this.p.retreatHp + 0.2 || this.stateT > 7 || (c.d < 30 && c.vis) || w.suddenDeath;
       if (done) { this.retreatCd = 12; this.setState('acquire'); }
@@ -531,6 +534,22 @@ export class Brain {
       if (s < bestS) { bestS = s; best = { x, y }; }
     }
     return best;
+  }
+
+  relicGoal(c) {
+    const m = this.m, w = this.w;
+    if (!w.relics?.length || c.hpF > 0.6 || w.suddenDeath) return null;
+    let best = null, bestS = Infinity;
+    for (const r of w.relics) {
+      if (r.t > 1.5) continue; // disponível (ou quase): já vai indo
+      const dm = Math.hypot(r.x - m.x, r.y - m.y);
+      if (dm > 300) continue;
+      const de = c.mem ? Math.hypot(r.x - c.mem.x, r.y - c.mem.y) : 999;
+      if (c.hpF < 0.35 && de < dm * 0.7) continue; // o rival está em cima dela: arriscado demais
+      const s = dm - 0.4 * de;
+      if (s < bestS) { bestS = s; best = r; }
+    }
+    return best && { x: best.x, y: best.y };
   }
 
   retreatPoint(c) {

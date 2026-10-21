@@ -8,6 +8,7 @@
 //   Condutor — alvo MOLHADO leva +12% de dano elétrico (combina com aliados de água no 2v2).
 
 import { zoneTick as psyZoneTick } from './psychic.js';
+import { zoneTick as windZoneTick } from './air.js';
 
 export const VOLT = { max: 3, maxEvo: 5, speed: 1.1, keep: 5, decay: 1.4, wetBonus: 1.12 };
 
@@ -78,6 +79,7 @@ export function updateZones(w, dt) {
     if (z.tick > 0) continue;
     z.tick = 0.25;
     if (z.kind === 'psy') { psyZoneTick(w, z, dt); continue; }
+    if (z.kind === 'wind') { windZoneTick(w, z, dt); continue; }
     for (const t of w.monsters) {
       if (!t.alive || !t.onField || t.team === z.team || Math.hypot(t.x - z.x, t.y - z.y) > z.r + t.r * 0.6) continue;
       if (t.action?.ab.leap && t.action.phase === 'active') continue; // pulando por cima

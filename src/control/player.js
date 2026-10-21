@@ -49,6 +49,11 @@ export class PlayerController {
 
     // A mira segue o cursor durante preparação e canalização (o raio d'água acompanha o mouse, limitado pela velocidade de giro).
     const a = m.action;
+    // Segurar e soltar (tornado da arara): carrega enquanto o botão da habilidade continua apertado.
+    if (a && a.ab.hold && a.phase === 'windup') {
+      const slot = Object.keys(m.def.controls).find((k) => m.def.controls[k] === a.ab.id);
+      a.holding = !!inp.held[slot];
+    }
     if (a && a.phase !== 'recovery' && a.ab.kind !== 'dash' && a.ab.kind !== 'dodge') {
       a.aimPoint = { x: inp.aim.x, y: inp.aim.y };
       if (a.ab.kind === 'lob' && a.phase === 'windup') a.point = { x: inp.aim.x, y: inp.aim.y };

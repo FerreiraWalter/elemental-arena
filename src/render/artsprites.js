@@ -9,7 +9,7 @@ import { hash2 } from '../core/math.js';
 const FLAME = [rgba('#fff7c2'), rgba('#ffd84a'), rgba('#ff9a1f'), rgba('#f2541b'), rgba('#b3200f')];
 const WHITE = rgba('#ffffff');
 // Suba quando trocar algum PNG de assets/monsters (força o navegador a baixar de novo).
-const ART_VERSION = 9;
+const ART_VERSION = 11;
 
 // Direção para onde a arte original olha (-1 esquerda, 0 frente, 1 direita). O renderer espelha a arte
 // para que o monstro sempre olhe para a mira; sprite que olha para a esquerda precisa de -1 aqui.
@@ -23,6 +23,7 @@ const FACES = {
   brawler_1: 1, brawler_3: 1, // Pugilar e Lutapacho olham para a direita
   cat_1: 1, cat_3: 0, // Raiolua (de lado) e Trovogato (de frente)
   frog_1: 0, frog_3: 0, // Sapomental e Sapofilósofo (meditando, de frente)
+  bird_1: 1, bird_3: -1, // Araralvo olha para a direita; Araravento vira a cabeça para a esquerda
 };
 
 // Braços que socam (coordenadas na arte original, que olha para a direita). L = mão esquerda do personagem (o braço do
