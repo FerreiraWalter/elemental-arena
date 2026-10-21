@@ -25,8 +25,22 @@ export function setPerspective(side, ffa = false) {
   TEAM_COLOR[0] = side === 0 ? '#ffd23a' : '#ff4a5a'; TEAM_COLOR[1] = side === 0 ? '#ff4a5a' : '#ffd23a';
   TEAM_COLOR[2] = TEAM_COLOR[0]; TEAM_COLOR[3] = TEAM_COLOR[1];
 }
+// Relação com quem joga: você (verde), aliado no 2v2 (azul), inimigo (vermelho). Espectador e todos-contra-todos
+// usam a cor da vaga (null aqui).
+export const REL_COLOR = { self: '#5ee05a', ally: '#46b4ff', foe: '#ff4a5a' };
+export function relation(world, m) {
+  if (!world || world.playerTeam === null || world.playerTeam === undefined || world.ffa) return null;
+  const mySide = world.teams[world.playerTeam]?.side;
+  if (m.team !== mySide) return 'foe';
+  return m.slot === world.playerTeam ? 'self' : 'ally';
+}
 const PUNCH_HAND = { jab: 'L', armoredJab: 'L', cross: 'R', clawRip: 'R' };
 export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', psychic: '#d07aff', neutral: '#d8c08a' };
+// Escurece uma cor #rrggbb (k < 1).
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${Math.round((n >> 16) * k)},${Math.round(((n >> 8) & 255) * k)},${Math.round((n & 255) * k)})`;
+}
 const ROOT = [rgba('#4a2e16'), rgba('#6e4624'), rgba('#94653a'), rgba('#5aa83c'), rgba('#84c858')];
 const FLAME = ['#fff7c2', '#ffd84a', '#ff9a1f', '#f2541b', '#b3200f'].map((h) => rgba(h));
 const EMBER = [rgba('#7a1e0a', 200), rgba('#b3300f', 220), rgba('#e0561a', 230), rgba('#ff8a2a', 240)];
@@ -1086,12 +1100,14 @@ export class Renderer {
     l.ellipse(Math.round(p.x), Math.round(p.y + 2), m.r + 1, (m.r + 1) * 0.45, 0, 0, Math.PI * 2);
     l.fill();
     l.globalAlpha = 0.9 * fade;
-    l.fillStyle = TEAM_COLOR[m.team];
-    const n = 18;
+    // Anel no chão: verde = você, azul = aliado, vermelho = inimigo (cor da vaga no todos-contra-todos).
+    const rel = relation(this.world, m);
+    l.fillStyle = rel ? REL_COLOR[rel] : TEAM_COLOR[m.team];
+    const n = rel === 'foe' ? 22 : 18, R = m.r + 3;
     for (let k = 0; k < n; k++) {
-      if (k % 3 === 0) continue;
+      if (rel !== 'foe' && k % 3 === 0) continue;
       const a = (k / n) * Math.PI * 2 + this.time * 0.8;
-      l.fillRect(Math.round(p.x + Math.cos(a) * (m.r + 3)), Math.round(p.y + 2 + Math.sin(a) * (m.r + 3) * 0.45), 1, 1);
+      l.fillRect(Math.round(p.x + Math.cos(a) * R), Math.round(p.y + 2 + Math.sin(a) * R * 0.45), rel === 'foe' ? 2 : 1, 1);
     }
     l.globalAlpha = 1;
   }
@@ -1913,16 +1929,18 @@ export class Renderer {
     const W = Math.round(Math.max(24 * S, 34 * k)), H = Math.round(Math.max(5 * k, 2.4 * S));
     const bx = Math.round(ox + gx * S - W / 2), by = Math.round(oy + gy * S + 2 * S - H);
     const frac = Math.max(0, Math.min(1, m.hp / m.maxHp)), lag = Math.max(frac, Math.min(1, lagHp / m.maxHp));
-    const team = TEAM_COLOR[m.team];
+    const rel = relation(this.world, m);
+    const team = rel ? REL_COLOR[rel] : TEAM_COLOR[m.team];
     // Moldura: sombra, contorno escuro e borda na cor do time.
         c.fillStyle = '#140c0a'; c.fillRect(bx - 2 * dpr, by - 2 * dpr, W + 4 * dpr, H + 4 * dpr);
-    c.fillStyle = team; c.fillRect(bx - 1 * dpr, by - 1 * dpr, W + 2 * dpr, H + 2 * dpr);
+    c.fillStyle = rel === 'self' ? '#ffd23a' : '#3a2a20'; c.fillRect(bx - 1 * dpr, by - 1 * dpr, W + 2 * dpr, H + 2 * dpr);
     c.fillStyle = '#2a0e0c'; c.fillRect(bx, by, W, H);
     // Dano recente (some devagar) e vida atual com cor pela porcentagem.
     c.fillStyle = '#f4d0b8'; c.fillRect(bx, by, Math.round(W * lag), H);
-    const hpCol = frac > 0.5 ? ['#5ee05a', '#2f9a3a'] : frac > 0.25 ? ['#ffd23a', '#c88a1a'] : ['#ff5a4a', '#a8201a'];
+    // Preenchimento na cor da relação (verde você, azul aliado, vermelho inimigo); pisca quando está baixa.
+    const hpCol = [team, shade(team, 0.62)];
     const low = frac <= 0.25 && Math.floor(this.time * 6) % 2;
-    c.fillStyle = low ? '#ff9a8a' : hpCol[0]; c.fillRect(bx, by, Math.round(W * frac), H);
+    c.fillStyle = low ? '#ffffff' : hpCol[0]; c.fillRect(bx, by, Math.round(W * frac), H);
     c.fillStyle = hpCol[1]; c.fillRect(bx, by + H * 0.62, Math.round(W * frac), H * 0.38);
     c.fillStyle = 'rgba(255,255,255,0.35)'; c.fillRect(bx, by, Math.round(W * frac), Math.max(1, H * 0.22));
     // Escudo: faixa azul-clara por cima, a partir do fim da vida.
@@ -1968,6 +1986,12 @@ export class Renderer {
         else if (!(st.stMax[key] >= v)) st.stMax[key] = v;
       }
       const { bx, by, W, H } = this.hpBarHi(m, ov.x, ov.y, st.lagHp, k);
+      if (relation(world, m) === 'ally' && !ov.chip) {
+        c.font = `${Math.round(fs * 0.8)}px "Press Start 2P", monospace`; c.textAlign = 'center';
+        const tx = bx + W / 2, ty = by - fs * 0.6 - 2 * dpr;
+        c.lineWidth = 3 * dpr; c.strokeStyle = '#140c0a'; c.strokeText('ALIADO', tx, ty);
+        c.fillStyle = REL_COLOR.ally; c.fillText('ALIADO', tx, ty);
+      }
       st.barH = H / S; // altura da barra em pixels do mundo (as marcas e a seta, em pixel, ficam acima dela)
       // Status leves (queimando, molhado, lento, escudo…): ícones à direita da barra.
       const soft = statusList(m).filter((s) => !CC_INFO[s]);

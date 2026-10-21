@@ -210,6 +210,11 @@ function startBattle(cfg) {
     const pick = () => [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3);
     world = World.match(seed, [cfg.team, enemy, pick(), pick()], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty, { sides: [0, 1, 2, 3] });
     world.slotNames = ['Você', 'IA 1', 'IA 2', 'IA 3'];
+  } else if (cfg.duo) {
+    // 2v2 local (atalho de teste ?duo): você + IA aliada contra duas IAs.
+    const pick = () => [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3);
+    world = World.match(seed, [cfg.team, pick(), enemy, pick()], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty, { sides: [0, 0, 1, 1] });
+    world.slotNames = ['Você', 'IA', 'IA 1', 'IA 2'];
   } else world = World.match(seed, [cfg.team, enemy], cfg.spectator ? null : 0, cfg.arena, ui.settings.difficulty);
   setPerspective(0, !!cfg.ffa);
   renderer.reset(world);
@@ -492,10 +497,10 @@ async function init() {
   window.__tick = (sec) => frame(last + sec * 1000); // avança um quadro manualmente (testes/depuração)
   window.__now = () => frame(performance.now()); // um quadro no tempo real (depuração com a aba em segundo plano)
   window.__state = () => ({ mode, overlay, screen: ui.screen, online });
-  // Atalhos para testes: ?arena=jardim&autostart&team=a,b,c  ·  ?watch (IA × IA)
+  // Atalhos para testes: ?arena=jardim&autostart&team=a,b,c  ·  ?watch (IA × IA)  ·  ?ffa  ·  ?duo (2v2 local)
   const arena = ARENAS[params.get('arena')] ? params.get('arena') : 'jardim';
   const qTeam = (params.get('team') || '').split(',').filter((k) => ROSTER.includes(k));
-  if (params.has('autostart') || params.has('watch')) startBattle({ team: qTeam.length === 3 ? qTeam : [...DEFAULT_TEAM], arena, spectator: params.has('watch'), ffa: params.has('ffa') });
+  if (params.has('autostart') || params.has('watch')) startBattle({ team: qTeam.length === 3 ? qTeam : [...DEFAULT_TEAM], arena, spectator: params.has('watch'), ffa: params.has('ffa'), duo: params.has('duo') });
   else mode = 'menu';
   // Link de convite (?sala=ABCD): vai direto escolher o time e entrar na sala.
   const invite = inviteCode();

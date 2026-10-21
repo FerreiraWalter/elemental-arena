@@ -1,5 +1,5 @@
 import { STATE_LABEL } from '../ai/brain.js';
-import { TEAM_COLOR, ELEMENT_COLOR, SIG_COLOR } from './renderer.js';
+import { TEAM_COLOR, ELEMENT_COLOR, SIG_COLOR, REL_COLOR, relation } from './renderer.js';
 import { EVOLUTION, WORLD_W, WORLD_H, COMBO_BREAK } from '../config.js';
 import { SIG } from '../sim/signature.js';
 import { meter } from '../sim/training.js';
@@ -25,12 +25,10 @@ function fit(c, s, size, maxW, dpr) {
   return sz;
 }
 
-// Cor da vida: verde no seu time (como no esboço), cor do time nos outros; avermelha quando está baixa.
+// Cor da vida: verde no seu, azul no aliado (2v2), vermelho no inimigo, cor da vaga no todos-contra-todos.
 function hpColor(m, world) {
-  const k = m.hp / m.maxHp;
-  if (k < 0.3) return '#ff5a4a';
-  const mine = world.playerTeam !== null && world.teams[world.playerTeam]?.side === m.team;
-  return mine ? (k < 0.55 ? '#e8d84a' : '#4ae08a') : TEAM_COLOR[m.team];
+  const rel = relation(world, m);
+  return rel ? REL_COLOR[rel] : TEAM_COLOR[m.team];
 }
 
 function bar(c, x, y, w, h, frac, lag, color, dpr) {
@@ -511,14 +509,18 @@ export function drawHud(c, r, world, ui) {
     const w = 44 * dpr, gap = 3 * dpr;
     const total = mons.length * w + (mons.length - 1) * gap;
     let x = align === 'left' ? x0 : x0 - total;
-    if (name) text(c, name, align === 'left' ? x : x0, oy + 8 * dpr, 5, TEAM_COLOR[world.teams[slot].side], align, dpr);
+    const rel = mons[0] ? relation(world, mons[0]) : null;
+    const tag = rel === 'ally' ? 'ALIADO' : rel === 'foe' ? 'INIMIGO' : '';
+    const col = rel ? REL_COLOR[rel] : TEAM_COLOR[world.teams[slot].side];
+    const label = [tag, name].filter(Boolean).join(' · ');
+    if (label) text(c, label, align === 'left' ? x : x0, oy + 8 * dpr, 5, col, align, dpr);
     for (const m of mons) {
       c.globalAlpha = m.alive ? 1 : 0.35;
       c.fillStyle = 'rgba(20,14,12,0.85)';
       c.fillRect(x, oy + 11 * dpr, w, 15 * dpr);
       c.fillStyle = ELEMENT_COLOR[m.element];
       c.fillRect(x, oy + 11 * dpr, w, 2 * dpr);
-      c.fillStyle = TEAM_COLOR[world.teams[slot].side];
+      c.fillStyle = col;
       c.fillRect(x + dpr, oy + 20 * dpr, (w - 2 * dpr) * Math.max(0, m.hp / m.maxHp), 4 * dpr);
       if (m.alive && m.status.shield > 0 && m.shieldHp > 0) { c.fillStyle = '#8fd8ff'; c.fillRect(x + dpr, oy + 18 * dpr, (w - 2 * dpr) * Math.min(1, m.shieldHp / m.maxHp), 2 * dpr); }
       if (m.alive) text(c, m.name.slice(0, 7).toUpperCase(), x + 2 * dpr, oy + 18 * dpr, 4, '#e8dcc0', 'left', dpr);
