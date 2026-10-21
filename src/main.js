@@ -59,6 +59,7 @@ const ui = new UI(canvas, renderer.art, {
   mpCreate: (m) => mpEnter({ t: 'create', mode: m, name: playerName }),
   mpJoin: (code) => mpEnter({ t: 'join', code, name: playerName }),
   mpSend: (o) => net && net.send(o),
+  mpFocusCode: () => focusCodeInput(),
   mpLeave: () => { net?.send({ t: 'leave' }); session = null; ui.mp.room = null; ui.go('menu'); },
   mpCopyLink: async (code) => {
     const q = new URLSearchParams(location.search), link = new URL(location.href);
@@ -362,6 +363,9 @@ function cycleActive(dir = 1) {
 const KEY_SLOT = { KeyQ: 'q', KeyE: 'e', KeyF: 'f', Space: 'dodge', ShiftLeft: 'dodge', ShiftRight: 'dodge', KeyG: 'evolve' };
 
 window.addEventListener('resize', resize);
+// Tablet girando: alguns navegadores só atualizam o tamanho da janela um instante depois.
+window.addEventListener('orientationchange', () => setTimeout(resize, 250));
+window.visualViewport?.addEventListener('resize', resize);
 window.addEventListener('blur', () => { keys.clear(); if (world) world.input.held = {}; });
 window.addEventListener('paste', (e) => {
   if (mode === 'menu' && ui.screen === 'mp') {
@@ -429,7 +433,61 @@ const touch = createTouchControls({
   hold: (slot, v) => { if (world) world.input.held[slot] = v; },
   key: (code) => window.dispatchEvent(new KeyboardEvent('keydown', { code })),
   getWorld: () => world,
+  getLayout: () => ({ top: 66 * (renderer.hudScale || 1) }), // altura dos cartões do topo (px CSS)
 });
+
+// Código da sala sem teclado físico (tablet): um campo invisível abre o teclado da tela; o que for digitado vai
+// para os 4 quadrados do código. Só é focado por um toque (o sistema só abre o teclado num gesto do usuário).
+const codeInput = document.createElement('input');
+Object.assign(codeInput, { type: 'text', maxLength: 4, autocomplete: 'off', spellcheck: false, inputMode: 'text' });
+codeInput.setAttribute('autocapitalize', 'characters');
+codeInput.setAttribute('aria-label', 'Código da sala');
+codeInput.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0;font-size:16px;pointer-events:none';
+document.body.appendChild(codeInput);
+codeInput.addEventListener('input', () => {
+  const v = codeInput.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4);
+  codeInput.value = v;
+  if (!ui.mp.busy) ui.mp.code = v;
+});
+codeInput.addEventListener('keydown', (e) => {
+  e.stopPropagation(); // não duplica a letra pelo atalho global de teclado do menu
+  if (e.key === 'Enter' && ui.mp.code.length === 4 && !ui.mp.busy) { codeInput.blur(); ui.hooks.mpJoin(ui.mp.code); }
+});
+function focusCodeInput() { codeInput.value = ui.mp.code; codeInput.focus({ preventScroll: true }); }
+
+// Prévia da mira manual do toque: linha tracejada do monstro até o alvo e o círculo da área, por cima do jogo.
+function drawTouchAim(c) {
+  const pv = touch.preview, v = renderer.view;
+  if (!pv || !v) return;
+  const sx = (x) => v.ox + x * v.S, sy = (y) => v.oy + y * v.S;
+  c.save();
+  c.strokeStyle = 'rgba(200,240,255,0.9)'; c.lineWidth = 2 * v.dpr; c.setLineDash([6 * v.dpr, 5 * v.dpr]);
+  c.beginPath(); c.moveTo(sx(pv.x0), sy(pv.y0)); c.lineTo(sx(pv.x), sy(pv.y)); c.stroke();
+  c.setLineDash([]);
+  c.beginPath(); c.arc(sx(pv.x), sy(pv.y), Math.max(4 * v.dpr, pv.r * v.S), 0, Math.PI * 2);
+  c.fillStyle = 'rgba(70,180,255,0.18)'; c.fill(); c.stroke();
+  c.restore();
+}
+
+// Tablet em pé durante a batalha: dá para jogar (os controles ficam embaixo da arena), mas deitado a arena fica
+// bem maior. Sugere girar por alguns segundos, acima da arena, sem cobrir o jogo nem pausar.
+let rotateHint = { portrait: false, t: 0 };
+function drawRotateHint(c, dt) {
+  const portrait = touch.visible && innerHeight > innerWidth * 1.05;
+  if (portrait && !rotateHint.portrait) rotateHint.t = 6;
+  rotateHint.portrait = portrait;
+  if (!portrait || rotateHint.t <= 0) return;
+  rotateHint.t -= dt;
+  const v = renderer.view, u = hud.dpr * Math.max(1, Math.min(1.6, innerWidth / 420));
+  c.save();
+  c.globalAlpha = Math.min(1, rotateHint.t);
+  c.font = `${7 * u}px "Press Start 2P", monospace`; c.textAlign = 'center';
+  const t = 'Dica: deite o aparelho para a arena ficar maior', w = c.measureText(t).width + 20 * u;
+  const y = Math.max(20 * u, (v?.oy ?? canvas.height / 2) - 16 * u);
+  c.fillStyle = 'rgba(20,12,8,0.85)'; c.fillRect(canvas.width / 2 - w / 2, y - 13 * u, w, 20 * u);
+  c.fillStyle = '#ffe9b0'; c.fillText(t, canvas.width / 2, y + 1 * u);
+  c.restore();
+}
 
 function readInput() {
   const inp = world.input;
@@ -471,6 +529,9 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   touch.update(mode === 'battle' && !overlay && !!world && world.playerTeam !== null);
+  hud.touch = touch.visible; // HUD sem a barra de teclas/mouse (os botões de toque mostram as recargas)
+  ui.touchMode = touch.active;
+  if (!(mode === 'menu' && ui.screen === 'mp') && document.activeElement === codeInput) codeInput.blur();
   const c = canvas.getContext('2d');
   if (mode === 'loading') {
     c.fillStyle = '#14100e';
@@ -490,6 +551,8 @@ function frame(now) {
     smooth.lead(now, dt, alpha, world, !!overlay, net?.rtt || 60);
     hud.net = { rtt: net?.rtt || 0, room: session?.code || '' }; // sala e ping no canto da HUD
     renderer.render(world, alpha, dt, hud);
+    drawTouchAim(c);
+    drawRotateHint(c, dt);
     drawNotice(c, dt);
     if (overlay) {
       const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
@@ -512,6 +575,8 @@ function frame(now) {
     hud.net = null;
     tickPlaylist(dt);
     renderer.render(world, Math.min(1, acc / DT), overlay === 'pause' || overlay === 'help' || overlay === 'training' ? 0 : dt * hud.speed, hud);
+    drawTouchAim(c);
+    drawRotateHint(c, dt);
     drawNotice(c, dt);
     if (overlay) {
       const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));

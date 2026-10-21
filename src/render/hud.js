@@ -581,10 +581,10 @@ export function drawHud(c, r, world, ui) {
   }
   c.globalAlpha = 1;
 
-  if (world.playerTeam !== null) abilityBar(c, world, ox, aw, oy + ah + 8 * dpr, dpr, r);
+  if (world.playerTeam !== null && !ui.touch) abilityBar(c, world, ox, aw, oy + ah + 8 * dpr, dpr, r);
   // Cantos de baixo, nas margens fora da arena: sala/ping (online) e modo/arena.
   const cwid = Math.min(128 * dpr, ox - 14 * dpr);
-  if (cwid >= 84 * dpr) {
+  if (cwid >= 84 * dpr && !ui.touch) { // no toque esses cantos ficam sob o analógico e os botões
     const cy = oy + ah + 6 * dpr, chh = 34 * dpr;
     panel(c, 8 * dpr, cy, cwid, chh, '#3a5a8a', dpr, 4);
     const net = ui.net;
@@ -611,7 +611,12 @@ export function drawHud(c, r, world, ui) {
     ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 trocar · G evoluir · H ajuda · P pausar · preso? Espaço quebra o combo'
     : 'MODO ESPECTADOR · P pausar · I visão da IA';
   const hsz = fit(c, help, 5, aw, dpr);
-  text(c, help, mid, H - 6 * dpr, hsz, '#887', 'center', dpr);
+  if (!ui.touch) text(c, help, mid, H - 6 * dpr, hsz, '#887', 'center', dpr);
+  else if (ui.net?.room || ui.net?.rtt) {
+    // Toque: sala e ping numa linha embaixo, no meio (entre o analógico e os botões).
+    const ms = Math.round(ui.net.rtt || 0);
+    text(c, `SALA ${ui.net.room || '—'} · PING ${ms ? ms + 'ms' : '...'}`, mid, H - 8 * dpr, 6, ms && ms < 80 ? '#7ae07a' : ms < 160 ? '#ffe066' : '#ff6a6a', 'center', dpr);
+  }
 
   if (world.over && ffa) { ffaEnd(c, world, mid, oy, aw, ah, dpr); return; }
   if (world.over) {

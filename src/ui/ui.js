@@ -14,6 +14,7 @@ import { drawTail } from '../render/electricfx.js';
 const FONT = '"Press Start 2P", monospace';
 const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico', air: 'Voador' };
 const KEY_LABEL = { primary: 'MOUSE E', melee: 'MOUSE D', q: 'Q', e: 'E', f: 'F', dodge: 'ESPAÇO' };
+const TOUCH_LABEL = { primary: 'ATQ', melee: 'GOLPE', q: 'Q', e: 'E', f: 'F', dodge: 'ESQ' };
 const DIFF_NAME = ['', 'fácil de jogar', 'médio', 'exige prática'];
 // Dificuldade em losangos de pixel (a fonte não tem estrelas). Retorna a largura desenhada.
 function diffMarks(c, n, x, y, u, align = 'left') {
@@ -445,7 +446,7 @@ export class UI {
     this.button(cx - bw3 / 2, y, bw3, bh, 'SALA 2v2', () => this.hooks.mpCreate('2v2'), { color: '#ff8a3a', disabled: mp.busy });
     this.button(cx + bw3 / 2 + 6 * u, y, bw3, bh, 'SALA 1v1v1v1', () => this.hooks.mpCreate('ffa'), { color: '#ff5a8a', disabled: mp.busy });
     y += bh + 30 * u;
-    text(c, 'OU ENTRAR COM UM CÓDIGO (4 caracteres, digite no teclado)', cx, y, 6, '#e8dcc0', 'center', u);
+    text(c, this.touchMode ? 'OU ENTRAR COM UM CÓDIGO (toque nos quadrados para digitar)' : 'OU ENTRAR COM UM CÓDIGO (4 caracteres, digite no teclado)', cx, y, 6, '#e8dcc0', 'center', u);
     y += 12 * u;
     const bx = 44 * u, gp = 8 * u, tot = bx * 4 + gp * 3;
     for (let k = 0; k < 4; k++) {
@@ -455,6 +456,8 @@ export class UI {
       if (ch) text(c, ch, x + bx / 2, y + bx * 0.66, 18, '#ffffff', 'center', u);
       else if (k === mp.code.length && Math.floor(this.time * 2) % 2 === 0) text(c, '_', x + bx / 2, y + bx * 0.7, 16, '#ffd23a', 'center', u);
     }
+    // Toque nos quadrados: abre o teclado da tela (tablet/celular sem teclado físico).
+    this.button(cx - tot / 2, y, tot, bx, '', () => this.hooks.mpFocusCode?.(), { custom: true, noFocus: true });
     y += bx + 12 * u;
     this.button(cx - 100 * u, y, 200 * u, bh, mp.busy ? 'CONECTANDO...' : 'ENTRAR NA SALA', () => this.hooks.mpJoin(mp.code), { color: '#7ad84a', disabled: mp.code.length !== 4 || mp.busy });
     y += bh + 14 * u;
@@ -642,7 +645,7 @@ export class UI {
         const ab = def.abilities.find((a) => a.id === id);
         const tag = k === 1 && !otherIds.has(id) ? ' [NOVA]' : '';
         abilityIcon(c, ab.kind, x + 10 * u, ly - 6 * u, 7 * u, ELEMENT_COLOR[def.element]);
-        text(c, `${KEY_LABEL[slot]}`, x + 20 * u, ly, 5, '#ffd23a', 'left', u);
+        text(c, `${(this.touchMode ? TOUCH_LABEL : KEY_LABEL)[slot]}`, x + 20 * u, ly, 5, '#ffd23a', 'left', u);
         text(c, ab.name + tag, x + 66 * u, ly, 5, tag ? '#e8b8ff' : '#fff', 'left', u);
         ly += 8 * u;
         for (const line of wrap(c, ab.desc || '', 4.5, pw - 76 * u, u)) { if (ly < y + ph - 24 * u) text(c, line, x + 66 * u, ly, 4.5, '#bba', 'left', u); ly += 8 * u; }
@@ -741,7 +744,10 @@ export class UI {
     let y = 30 * u;
     text(c, actions.firstTime ? 'COMO JOGAR' : 'AJUDA', cx, y, 13, '#ffe9b0', 'center', u);
     y += 16 * u;
-    text(c, 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva/quebra combo · 1/2/3 troca · G evolui', cx, y, fitSize(c, 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva/quebra combo · 1/2/3 troca · G evolui', 5.5, pw, u), '#e8dcc0', 'center', u);
+    const how = this.touchMode
+      ? 'Analógico move · toque num botão = usa mirando no inimigo mais perto · ARRASTE do botão para mirar (volte ao botão para cancelar) · segure ATQ para carregar · 1/2/3 troca · EVO evolui'
+      : 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva/quebra combo · 1/2/3 troca · G evolui';
+    text(c, how, cx, y, fitSize(c, how, 5.5, pw, u), '#e8dcc0', 'center', u);
     y += 14 * u;
     if (m) {
       const def = m.def;
@@ -762,7 +768,8 @@ export class UI {
         const col = k % 2, row = Math.floor(k / 2);
         const bx = x + 8 * u + col * colW, by = y0 + row * 30 * u;
         abilityIcon(c, ab.kind, bx, by - 7 * u, 9 * u, ELEMENT_COLOR[def.element]);
-        text(c, `${KEY_LABEL[slot]} · ${ab.name}`, bx + 13 * u, by, fitSize(c, `${KEY_LABEL[slot]} · ${ab.name}`, 5.5, colW - 18 * u, u), '#ffd23a', 'left', u);
+        const kl = (this.touchMode ? TOUCH_LABEL : KEY_LABEL)[slot];
+        text(c, `${kl} · ${ab.name}`, bx + 13 * u, by, fitSize(c, `${kl} · ${ab.name}`, 5.5, colW - 18 * u, u), '#ffd23a', 'left', u);
         wrap(c, ab.desc || '', 4.5, colW - 18 * u, u).slice(0, 2).forEach((ln, j) => text(c, ln, bx + 13 * u, by + (9 + j * 8) * u, 4.5, '#d8ccb0', 'left', u));
         k++;
       }

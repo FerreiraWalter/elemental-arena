@@ -866,10 +866,12 @@ export class Renderer {
     const dpr = ui.dpr;
     // Escala da interface (cartões, barra de habilidades): cresce com a altura da janela para continuar legível.
     const hs = this.hudScale = Math.max(1, Math.min(2, H / dpr / 500, W / dpr / 680));
-    const top = 66 * dpr * hs, bottom = (world.playerTeam !== null ? 80 : 24) * dpr * hs;
+    // No toque não há barra de habilidades embaixo (os botões na tela mostram as recargas): a arena cresce.
+    const top = 66 * dpr * hs, bottom = (world.playerTeam !== null && !ui.touch ? 80 : 24) * dpr * hs;
     let S = Math.min(W / WORLD_W, (H - top - bottom) / WORLD_H);
     if (S >= 2) S = Math.floor(S);
-    const ox = Math.round((W - WORLD_W * S) / 2), oy = Math.round(top + (H - top - bottom - WORLD_H * S) / 2);
+    // Toque com o aparelho em pé: arena logo abaixo do placar; a parte de baixo da tela fica para os controles.
+    const ox = Math.round((W - WORLD_W * S) / 2), oy = Math.round(ui.touch && H > W * 1.05 ? top + 10 * dpr * hs : top + (H - top - bottom - WORLD_H * S) / 2);
     c.fillStyle = '#14100e';
     c.fillRect(0, 0, W, H);
     if (ui.embedded) { this.view = { ox, oy, S, dpr }; return; }
