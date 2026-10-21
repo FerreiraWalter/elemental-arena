@@ -19,7 +19,7 @@ export const SIG = {
   heat: { max: 100, decayDelay: 1.3, decay: 11, overheat: 3, exhaust: 2.2, exhaustEvolved: 1.5, dmg: 1.2, speed: 1.1, exhaustSpeed: 0.72, exhaustTaken: 1.15, waterCool: 12 },
   nova: { r: 42, dmg: 9, kb: 230, burn: 1 },
   momentum: { gain: 60, loss: 75, keep: 0.3, chargedSpeed: 1.15, strike: 1.6, kb: 1.4 },
-  guard: { block: 0, blockDot: 0, counterReach: 46 }, // guarda ativa = imune a QUALQUER ataque (dano, controle, empurrão, combo)
+  guard: { block: 0, blockDot: 0, counterReach: 46, perfect: 0.16, perfectMult: 1.5 }, // guarda ativa = imune a QUALQUER ataque; nos primeiros 0,16 s é BLOQUEIO PERFEITO (contra e devolução mais fortes)
   decoy: { life: 2.2, speed: 0.95 },
   marks: { max: 3, life: 4.5, gap: 0.14, root: 0.7 },
   sentry: { max: 2 },
@@ -170,7 +170,8 @@ export function counter(w, t, src) {
   const ang = Math.atan2(src.y - t.y, src.x - t.x);
   w.emit({ type: 'counter', m: t, target: src, x: t.x, y: t.y, ang });
   const C = ab.counter, water = !C.element || C.element === 'water';
-  w.damage(src, C.dmg, t, { tag: C.tag || 'contraMare', element: C.element || 'water', kb: C.kb ?? 260, ang, stun: C.stun ?? 0.35, ...(water ? { wet: 2.5 } : {}), counter: true, proj: true });
+  const pk = a.data.perfect ? SIG.guard.perfectMult : 1;
+  w.damage(src, C.dmg * pk, t, { tag: C.tag || 'contraMare', element: C.element || 'water', kb: (C.kb ?? 260) * pk, ang, stun: (C.stun ?? 0.35) + (a.data.perfect ? 0.2 : 0), ...(water ? { wet: 2.5 } : {}), counter: true, proj: true, big: !!a.data.perfect });
   if (water) w.douseArea(t.x + Math.cos(ang) * 14, t.y + Math.sin(ang) * 14, 14, 6, t);
   if (C.root) w.applyRoot(src, C.root); // casca viva: prende quem bateu
   // A guarda continua até o fim do tempo ativo: o contra-ataque não a encerra, senão o 2º golpe de um combo passaria.
@@ -181,6 +182,8 @@ export function blocked(w, t, src, o) {
   const a = t.action;
   if (!a.data.blockedOnce) {
     a.data.blockedOnce = true;
+    // Bloqueio perfeito: a guarda subiu no último instante antes do golpe.
+    if (a.t <= SIG.guard.perfect) { a.data.perfect = true; w.emit({ type: 'perfectBlock', m: t, x: t.x, y: t.y }); }
     if (a.ab.shieldOnBlock) { t.status.shield = 4; t.shieldHp = Math.max(t.shieldHp, a.ab.shieldOnBlock); w.emit({ type: 'shield', m: t, x: t.x, y: t.y }); }
   }
   if (!o.dot) w.emit({ type: 'block', m: t, src, x: t.x, y: t.y });
@@ -188,21 +191,43 @@ export function blocked(w, t, src, o) {
   if (!o.dot && !o.proj && !o.counter && src && src.alive && src !== t && Math.hypot(src.x - t.x, src.y - t.y) < src.r + t.r + SIG.guard.counterReach) counter(w, t, src);
 }
 
-// Projétil batendo no casco: volta contra quem atirou (fogo vira água ao bater no casco molhado).
+// Projétil batendo na guarda: volta contra quem atirou. Bola de fogo, tiro, maré e tornado: todos voltam (a maré e o
+// tornado, que atravessam, também). Fogo vira água ao bater no casco molhado. Bloqueio perfeito devolve mais forte.
 export function reflect(w, p, m) {
-  if (p.pierce) { p.dead = true; w.emit({ type: 'block', m, x: p.x, y: p.y }); return; }
+  if (isGuarding(m)) blocked(w, m, null, { proj: true });
+  const perfect = !!m.action?.data.perfect;
+  const from = p.owner;
   p.team = m.team;
   p.owner = m;
-  p.vx = -p.vx; p.vy = -p.vy;
+  // Volta na direção de quem atirou (não só invertida), para a devolução ser útil.
+  const sp = Math.hypot(p.vx, p.vy) * (perfect ? 1.25 : 1);
+  const ang = from && from.alive ? Math.atan2(from.y - m.y, from.x - m.x) : Math.atan2(-p.vy, -p.vx);
+  p.vx = Math.cos(ang) * sp; p.vy = Math.sin(ang) * sp;
+  p.x = m.x + Math.cos(ang) * (m.r + 4); p.y = m.y + Math.sin(ang) * (m.r + 4);
   p.traveled = 0;
   p.range = Math.max(160, p.range * 0.8);
-  p.dmg = Math.round(p.dmg * 0.8);
+  p.dmg = Math.round(p.dmg * (perfect ? 1.1 : 0.8));
+  p.hitSet = null; p.carry = null;
   p.closest = Infinity; p.closestM = null;
   p.level = w.terrain.heightAt(m.x, m.y);
   if ((p.kind === 'ember' || p.kind === 'magma') && m.element === 'water') p.kind = 'waterBolt'; // casco molhado apaga o fogo
   p.reflected = true;
-  w.emit({ type: 'reflect', m, x: p.x, y: p.y, kind: p.kind });
-  if (isGuarding(m)) blocked(w, m, null, { proj: true });
+  w.emit({ type: 'reflect', m, x: p.x, y: p.y, kind: p.kind, perfect });
+}
+
+// Projétil em arco (meteoro, bolha, raio do céu, raízes...) caindo em cima de uma guarda: quica de volta em quem lançou.
+export function bounceLob(w, p) {
+  if (p.bounced) return false;
+  const g = w.monsters.find((m) => m.team !== p.team && isGuarding(m) && Math.hypot(m.x - p.tx, m.y - p.ty) < (p.radius || 16) + m.r);
+  if (!g) return false;
+  blocked(w, g, null, { proj: true });
+  const from = p.owner;
+  p.bounced = true; p.team = g.team; p.owner = g;
+  p.sx = g.x; p.sy = g.y - 6; p.x = p.sx; p.y = p.sy; p.t = 0;
+  p.tx = from && from.alive ? from.x : g.x - (p.tx - (from?.x ?? g.x)); p.ty = from && from.alive ? from.y : g.y;
+  p.dmg = Math.round((p.dmg || 0) * (g.action?.data.perfect ? 1.1 : 0.8));
+  w.emit({ type: 'reflect', m: g, x: g.x, y: g.y - 6, kind: p.kind, lob: true, perfect: !!g.action?.data.perfect });
+  return true;
 }
 
 // ───────────── Ilusões de Tinta ─────────────

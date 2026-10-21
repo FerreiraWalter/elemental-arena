@@ -193,8 +193,8 @@ export class Renderer {
           if (!this.showNumbers) { if (e.dot) break; } else this.nums.push({ x: e.m.x + (Math.random() - 0.5) * 8, y: e.m.y - 22, v: e.amount, t: 0, color: e.blocked ? '#c8e8ff' : fire ? '#ffb347' : e.element === 'water' ? '#8fd8ff' : e.element === 'plant' ? '#a8f080' : '#ffffff', small: e.dot || e.blocked, big: !e.dot && e.amount >= 14 });
           if (!e.dot) {
             // Quem apanha encolhe e treme; faíscas saem na direção do golpe; golpe forte ganha estrela de impacto.
-            if (e.m) { const vs = this.ms(e.m); vs.hurt = e.big ? 1 : 0.7; }
             const ka = e.src && e.m ? Math.atan2(e.m.y - e.src.y, e.m.x - e.src.x) : Math.random() * 6.28;
+            if (e.m) { const vs = this.ms(e.m); vs.hurt = e.big ? 1 : 0.7; vs.hurtAng = ka; if (vs.an) vs.an.vsq -= e.big ? 5 : 3.5; }
             const ramp = fire ? 'spark' : e.element === 'plant' ? 'leaf' : e.element === 'electric' ? 'volt' : e.element === 'psychic' ? 'psy' : e.element === 'earth' ? 'dust' : e.element === 'air' ? 'wind' : 'water';
             for (let k = 0; k < (e.big ? 10 : 5); k++) {
               const a2 = ka + (Math.random() - 0.5) * 1.1, sp = 70 + Math.random() * (e.big ? 110 : 60);
@@ -636,9 +636,18 @@ export class Renderer {
           P.burst(e.x, e.y - 6, 8, { ramp: 'spark', speed: 60, life: 0.3, add: true });
           this.addText({ x: e.x, y: e.y - 24, text: 'ESPINHOS', t: 0, color: '#ffb070' });
           break;
-        case 'block':
-          this.addText({ x: e.x, y: e.y - 28, text: 'BLOQUEOU', t: 0, color: SIG_COLOR.guard });
-          P.burst(e.x, e.y - 6, 8, { ramp: 'water', speed: 60, life: 0.3 });
+        case 'block': {
+          const earth = e.m?.element === 'earth';
+          this.addText({ x: e.x, y: e.y - 28, text: 'BLOQUEOU', t: 0, color: earth ? '#f2d478' : SIG_COLOR.guard });
+          P.burst(e.x, e.y - 6, 8, { ramp: earth ? 'dust' : 'water', speed: 60, life: 0.3 });
+          if (e.m) { const vs = this.ms(e.m); if (vs.an) vs.an.vsq -= 3; }
+          break;
+        }
+        case 'perfectBlock':
+          this.addText({ x: e.x, y: e.y - 42, text: 'BLOQUEIO PERFEITO!', t: 0, color: '#ffffff', big: true });
+          this.rings.push({ x: e.x, y: e.y - 6, r: 4, max: 34, t: 0, color: '#ffffff', thick: true });
+          P.burst(e.x, e.y - 8, 18, { ramp: 'spark', speed: 110, life: 0.35, add: true });
+          this.hitstop = Math.max(this.hitstop, 0.12); this.flash = Math.max(this.flash, 0.05);
           break;
         case 'counter':
           this.addText({ x: e.x, y: e.y - 36, text: 'CONTRA-ATAQUE!', t: 0, color: '#ffffff', big: true });
@@ -647,7 +656,7 @@ export class Renderer {
           this.hitstop = Math.max(this.hitstop, 0.1); this.shake = Math.max(this.shake, 5);
           break;
         case 'reflect':
-          this.addText({ x: e.x, y: e.y - 18, text: 'DEVOLVEU!', t: 0, color: SIG_COLOR.guard });
+          this.addText({ x: e.x, y: e.y - 18, text: e.lob ? 'REBATEU!' : 'DEVOLVEU!', t: 0, color: e.perfect ? '#ffffff' : SIG_COLOR.guard });
           P.burst(e.x, e.y, 10, { ramp: 'water', speed: 70, life: 0.3 });
           this.rings.push({ x: e.x, y: e.y, r: 2, max: 10, t: 0, color: '#ffffff' });
           break;
@@ -1304,6 +1313,7 @@ export class Renderer {
       this.particles.add({ ramp: 'dust', x: bx + (Math.random() - 0.5) * 8, y: by, z: 2, vz: 30, vx: (Math.random() - 0.5) * 20, life: 0.4, g: 100 });
       return;
     }
+    const anim = this.animate(m, st, pose, dt);
     const frame = this.monsterFrame(m, st, pose);
     st.top = frame.top;
     // Olha para a mira. Com a mira quase na vertical, mantém o lado anterior (evita o sprite piscar de lado).
@@ -1317,7 +1327,7 @@ export class Renderer {
     if (!m.alive) fade = Math.max(0, 1 - Math.max(0, m.deathT - 1) / 1.2);
     if (fade <= 0) return;
     const juice = this.juice(m, st, frame, x, y, dt, t);
-    wScale *= juice.w; hScale *= juice.h;
+    wScale *= juice.w * anim.w; hScale *= juice.h * anim.h;
     // Rastros (afterimages) em investidas e esquivas, tingidos com a cor do elemento.
     const dashing = m.action && m.action.phase === 'active' && m.action.ab.dash;
     st.ghostT -= dt;
@@ -1369,7 +1379,8 @@ export class Renderer {
       if (Math.random() < 0.06 + Math.hypot(m.vx, m.vy) * 0.002) this.particles.add({ ramp: 'wind', x: x + (Math.random() - 0.5) * m.r * 2.4, y: y - 2, vx: -m.vx * 0.3 + (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 6, life: 0.4, alpha: 0.7 });
     }
     if (m.alive && m.element === 'electric') EF.drawTail(l, x, y - lift - frame.top * (m.evolved ? 0.22 : 0.3), st.faceDir, m.evolved ? 1.1 : 0.85, t, m.id, Math.hypot(m.vx, m.vy), frame.w * 0.25);
-    this.blitFrame(frame, x + juice.dx, y - lift, face, hScale, wScale, pose.spin ? pose.spin * 6 : 0);
+    this.blitFrame(frame, x + juice.dx + anim.ox, y - lift + anim.oy, face, hScale, wScale, pose.spin ? pose.spin * 6 : anim.tilt * face);
+    if (m.alive) this.drawDefenses(m, x, y - lift, frame, t);
     if (m.alive && m.action?.ab.overload && m.action.phase !== 'recovery') {
       const A = m.action, k = A.phase === 'windup' ? 0.3 * A.t / A.ab.windup : 0.3 + 0.7 * Math.min(1, A.t / A.ab.active);
       EF.drawCore(this.fxT, x, y - lift - frame.top * 0.45, k, t, m.id);
@@ -1402,8 +1413,8 @@ export class Renderer {
       g.set(Math.round(x + R * 0.45), Math.round(cy + R * 0.4), rgba('#ffffff', 220));
       if (Math.random() < 0.15) this.particles.add({ ramp: 'water', x: x + (Math.random() - 0.5) * R, y: cy + R * 0.6, vz: 15, life: 0.5 });
     }
-    // Casco Reflexo: domo d'água em volta durante o bloqueio.
-    if (m.alive && m.action?.ab.kind === 'guard' && m.action.phase === 'active') {
+    // Casco Reflexo: domo d'água em volta durante o bloqueio (a guarda de pedra do Pugilar usa só o arco da frente).
+    if (m.alive && m.action?.ab.kind === 'guard' && m.action.phase === 'active' && m.action.ab.element === 'water') {
       const g = this.fxT, R = m.r + 5;
       const k = 1 - m.action.t / m.action.ab.active;
       for (let q = 0; q < 56; q++) {
@@ -1481,6 +1492,84 @@ export class Renderer {
     return { canvas: pb.commit(), w: 48, h: 48, ax: 24, ay: 38, faces: 1, top: m.dummy ? 32 : 26 };
   }
 
+  // Defesas visíveis no corpo: guarda ativa (casco d'água ou punhos de pedra erguidos na frente, branco na janela do
+  // bloqueio perfeito) e a casca do Brotossauro (domo de casca e folhas enquanto reduz o dano).
+  drawDefenses(m, x, y, frame, t) {
+    const g = this.fxT, top = frame.top || 24, a = m.action;
+    if (a && a.ab.kind === 'guard' && a.phase === 'active') {
+      const water = a.ab.element === 'water', perfect = a.t <= 0.16;
+      const C = perfect ? [rgba('#ffffff'), rgba('#e8fbff')] : water ? [rgba('#c8f0ff'), rgba('#46b4ff')] : [rgba('#f2d478'), rgba('#a8743e')];
+      const R = m.r + 7, cy = y - top * 0.45, n = 26;
+      for (let q = 0; q <= n; q++) {
+        const an = m.facing - 1.25 + (q / n) * 2.5;
+        const wob = water ? Math.sin(t * 14 + q) * 0.8 : 0;
+        const px = x + Math.cos(an) * (R + wob), py = cy + Math.sin(an) * (R + wob) * 0.85;
+        g.set(px, py, C[q % 3 ? 1 : 0]); g.set(px + Math.cos(an), py + Math.sin(an) * 0.85, C[1]);
+      }
+      if (perfect && Math.floor(t * 30) % 2) for (let q = -3; q <= 3; q++) g.set(x + Math.cos(m.facing) * (R + 3) + q * 0.5, cy + Math.sin(m.facing) * (R + 3) * 0.85 - Math.abs(q), C[0]);
+    }
+    if (m.status.dr > 0 && m.drK > 0) {
+      const bark = [rgba('#7a4a28'), rgba('#a8743e'), rgba('#9be862')];
+      const R = m.r + 5, cy = y - top * 0.4, n = 30, rot = t * 0.8;
+      for (let q = 0; q < n; q++) {
+        if (q % 5 === 4) continue; // placas de casca separadas
+        const an = (q / n) * Math.PI * 2 + rot;
+        g.set(x + Math.cos(an) * R, cy + Math.sin(an) * R * 0.75, bark[q % 5 === 0 ? 2 : q % 2]);
+      }
+    }
+  }
+
+  // Animação com molas: as poses-alvo de cada fase (preparo, golpe, recuperação, esquiva, apanhar, correr) viram
+  // curvas suaves em vez de saltos. Uma mola de esticar/achatar dá o "peso": antecipação → estalo → assenta com
+  // um leve rebote. Também inclina o corpo ao correr/golpear, recua ao atirar e ao apanhar, tomba na esquiva e
+  // achata rapidinho ao virar de lado. Só visual (igual no online). Muda a pose e devolve escala/deslocamento.
+  animate(m, st, pose, dt) {
+    const an = st.an ||= { crouch: 0, lunge: 0, dash: 0, lean: 0, sq: 0, vsq: 0, ox: 0, oy: 0, tilt: 0, flip: 0, face: st.faceDir || 1, key: '' };
+    const ease = (cur, tgt, up, down) => cur + (tgt - cur) * (1 - Math.exp(-dt * (Math.abs(tgt) > Math.abs(cur) ? up : down)));
+    const a = m.alive ? m.action : null, ab = a?.ab, ph = a?.phase;
+    // Impulsos nas trocas de fase.
+    const key = a ? ab.id + ':' + ph : '';
+    if (key !== an.key) {
+      if (ph === 'active') {
+        if (ab.kind === 'melee' || ab.kind === 'dash' || ab.kind === 'cone') an.vsq -= ab.basic ? 3.5 : 5; // estica para a frente
+        else if (ab.kind === 'dodge') an.vsq -= 4;
+        else if (ab.kind === 'guard') an.vsq -= 6; // fecha a guarda num tranco
+        else an.vsq += ab.basic ? 3 : 5; // solta o poder: sobe e estica para cima
+      }
+      if (ph === 'windup' && !ab.basic) an.vsq -= 1.5; // começa a agachar
+      if (an.key.endsWith(':active') && (an.key.startsWith('longLeap') || /Leap|Dive|dive|Strike|hop/.test(an.key))) an.vsq -= 6; // pouso
+      an.key = key;
+    }
+    // Mola de esticar/achatar (sq > 0: alto e fino; sq < 0: largo e baixo).
+    const acc = -170 * an.sq - 13 * an.vsq;
+    an.vsq += acc * dt; an.sq = clamp(an.sq + an.vsq * dt, -0.3, 0.3);
+    // Poses-alvo suavizadas: entram rápido, saem devagar (o golpe estala e o corpo volta assentando).
+    an.crouch = ease(an.crouch, pose.crouch, 22, 8);
+    an.lunge = ease(an.lunge, pose.lunge, 40, 9);
+    an.dash = ease(an.dash, pose.dash, 30, 10);
+    pose.crouch = an.crouch; pose.lunge = an.lunge; pose.dash = an.dash;
+    // Inclinação: para a frente no golpe e ao correr, para trás na antecipação e ao apanhar.
+    const face = st.faceDir || 1, sp = m.def?.speed || 70;
+    const run = m.alive ? clamp((m.vx * face) / sp, -1, 1) * 0.09 : 0;
+    const leanT = pose.dead ? pose.dead * 0.25 : an.lunge * 0.3 - an.crouch * 0.14 + run - (st.hurt || 0) * 0.22;
+    an.lean = ease(an.lean, leanT, 16, 10);
+    pose.lean = an.lean;
+    // Deslocamento do sprite: avança no golpe, recua ao disparar, é empurrado ao apanhar.
+    let tx = 0, ty = 0;
+    if (a && ab.kind === 'melee' && ph !== 'windup') { const k = an.lunge * 3; tx += Math.cos(a.aim) * k; ty += Math.sin(a.aim) * k * 0.6; }
+    if (a && ph === 'active' && ['projectile', 'lob', 'beam'].includes(ab.kind)) { tx -= Math.cos(a.aim) * 2; ty -= Math.sin(a.aim) * 1.2; }
+    if (a && ph === 'windup' && ab.kind === 'melee') { tx -= Math.cos(a.aim) * 1.5 * an.crouch; } // puxa o braço para trás
+    if (st.hurt > 0 && st.hurtAng !== undefined) { tx += Math.cos(st.hurtAng) * 3 * st.hurt; ty += Math.sin(st.hurtAng) * 1.5 * st.hurt; }
+    an.ox = ease(an.ox, tx, 25, 10); an.oy = ease(an.oy, ty, 25, 10);
+    // Esquiva/investida: tomba na direção do movimento.
+    const dodging = a && ph === 'active' && (ab.kind === 'dodge' || ab.kind === 'dash') && !ab.leap;
+    an.tilt = ease(an.tilt, dodging ? Math.cos(a.dir ?? a.aim) * 0.32 : 0, 20, 9);
+    // Virada de lado: achata rapidinho na largura (lê como um giro, não um pulo de quadro).
+    if (face !== an.face) { an.face = face; an.flip = 1; }
+    an.flip = Math.max(0, an.flip - dt * 9);
+    return { w: (1 - an.sq * 0.7) * (1 - an.flip * 0.45), h: 1 + an.sq, ox: Math.round(an.ox), oy: Math.round(an.oy), tilt: an.tilt };
+  }
+
   // "Peso" das ações: carga (antecipação), estalo ao soltar, arco do golpe, linhas da esquiva e encolhida ao apanhar.
   // Só visual (roda igual no online). Retorna a escala extra e o tremor horizontal do sprite.
   juice(m, st, frame, x, y, dt, t) {
@@ -1534,8 +1623,8 @@ export class Renderer {
       }
     }
     // Estalo ao soltar (estica na largura e volta) e encolhida ao apanhar.
-    if (st.pop > 0) { out.w *= 1 + st.pop * 0.14; out.h *= 1 - st.pop * 0.1; st.pop = Math.max(0, st.pop - dt * 7); }
-    if (st.hurt > 0) { out.w *= 1 + st.hurt * 0.12; out.h *= 1 - st.hurt * 0.12; out.dx += Math.round(Math.sin(t * 90) * st.hurt * 2); st.hurt = Math.max(0, st.hurt - dt * 6); }
+    if (st.pop > 0) st.pop = Math.max(0, st.pop - dt * 7);
+    if (st.hurt > 0) { out.dx += Math.round(Math.sin(t * 90) * st.hurt * 1.5); st.hurt = Math.max(0, st.hurt - dt * 6); }
     return out;
   }
 
@@ -1988,7 +2077,18 @@ export class Renderer {
 
   drawOverhead(m, alpha, dt) {
     const st = this.ms(m);
-    st.lagHp += (m.hp - st.lagHp) * Math.min(1, dt * 3);
+    // Vida animada: a barra desliza até o valor novo; o pedaço perdido (creme) segura um instante e escorre;
+    // apanhar sacode a barra; curar acende um brilho verde no trecho recuperado.
+    if (st.prevHp === undefined) st.prevHp = st.shownHp = m.hp;
+    if (m.hp < st.prevHp - 0.5) { st.barShake = Math.min(1, (st.prevHp - m.hp) / 14 + 0.35); st.lagHold = 0.35; }
+    else if (m.hp > st.prevHp + 0.5) { st.healFlash = 1; st.healFrom = Math.min(st.healFrom ?? st.prevHp, st.prevHp); }
+    st.prevHp = m.hp;
+    st.shownHp += (m.hp - st.shownHp) * Math.min(1, dt * 14);
+    if (st.lagHold > 0) st.lagHold -= dt; else st.lagHp += (m.hp - st.lagHp) * Math.min(1, dt * 4);
+    if (st.lagHp < st.shownHp) st.lagHp = st.shownHp;
+    st.barShake = Math.max(0, (st.barShake || 0) - dt * 5);
+    st.healFlash = Math.max(0, (st.healFlash || 0) - dt * 2.2);
+    if (!st.healFlash) st.healFrom = undefined;
     if (!m.alive) return;
     if (m.status.cloak > 0 && this.isFoe(m)) return; // camuflado: sem barra de vida para o inimigo
     const l = this.l;
@@ -2063,11 +2163,12 @@ export class Renderer {
   }
 
   // Barra de vida em alta resolução centrada em (gx, gy) do mundo; devolve a caixa em pixels da tela.
-  hpBarHi(m, gx, gy, lagHp, k) {
+  hpBarHi(m, gx, gy, st, k) {
     const c = this.ctx, { ox, oy, S, dpr } = this.view;
     const W = Math.round(Math.max(24 * S, 34 * k)), H = Math.round(Math.max(5 * k, 2.4 * S));
-    const bx = Math.round(ox + gx * S - W / 2), by = Math.round(oy + gy * S + 2 * S - H);
-    const frac = Math.max(0, Math.min(1, m.hp / m.maxHp)), lag = Math.max(frac, Math.min(1, lagHp / m.maxHp));
+    const shake = st.barShake ? Math.round(Math.sin(this.time * 70) * st.barShake * 2 * dpr) : 0;
+    const bx = Math.round(ox + gx * S - W / 2) + shake, by = Math.round(oy + gy * S + 2 * S - H);
+    const frac = Math.max(0, Math.min(1, (st.shownHp ?? m.hp) / m.maxHp)), lag = Math.max(frac, Math.min(1, st.lagHp / m.maxHp));
     const rel = relation(this.world, m);
     const team = rel ? REL_COLOR[rel] : TEAM_COLOR[m.team];
     // Moldura: sombra, contorno escuro e borda na cor do time.
@@ -2082,6 +2183,14 @@ export class Renderer {
     c.fillStyle = low ? '#ffffff' : hpCol[0]; c.fillRect(bx, by, Math.round(W * frac), H);
     c.fillStyle = hpCol[1]; c.fillRect(bx, by + H * 0.62, Math.round(W * frac), H * 0.38);
     c.fillStyle = 'rgba(255,255,255,0.35)'; c.fillRect(bx, by, Math.round(W * frac), Math.max(1, H * 0.22));
+    // Cura: o trecho recuperado brilha em verde-claro e apaga.
+    if (st.healFlash > 0 && st.healFrom !== undefined) {
+      const f0 = Math.max(0, Math.min(frac, st.healFrom / m.maxHp));
+      c.fillStyle = `rgba(190,255,200,${(0.85 * st.healFlash).toFixed(2)})`;
+      c.fillRect(bx + Math.round(W * f0), by, Math.max(1, Math.round(W * (frac - f0))), H);
+    }
+    // Pancada: um clarão branco rápido na barra inteira.
+    if (st.barShake > 0.5) { c.fillStyle = `rgba(255,255,255,${((st.barShake - 0.5) * 0.6).toFixed(2)})`; c.fillRect(bx, by, W, H); }
     // Escudo: faixa azul-clara por cima, a partir do fim da vida.
     if (m.shieldHp > 0) {
       const sw = Math.min(W, W * m.shieldHp / m.maxHp);
@@ -2124,7 +2233,7 @@ export class Renderer {
         if (v <= 0) delete st.stMax[key];
         else if (!(st.stMax[key] >= v)) st.stMax[key] = v;
       }
-      const { bx, by, W, H } = this.hpBarHi(m, ov.x, ov.y, st.lagHp, k);
+      const { bx, by, W, H } = this.hpBarHi(m, ov.x, ov.y, st, k);
       if (relation(world, m) === 'ally' && !ov.chip) {
         c.font = `${Math.round(fs * 0.8)}px "Press Start 2P", monospace`; c.textAlign = 'center';
         const tx = bx + W / 2, ty = by - fs * 0.6 - 2 * dpr;
@@ -2132,6 +2241,29 @@ export class Renderer {
         c.fillStyle = REL_COLOR.ally; c.fillText('ALIADO', tx, ty);
       }
       st.barH = H / S; // altura da barra em pixels do mundo (as marcas e a seta, em pixel, ficam acima dela)
+      // Casca (Brotossauro, F): escudinho à esquerda da barra com a redução de dano e o tempo que falta.
+      if (m.status.dr > 0 && m.drK > 0) {
+        st.drMax = Math.max(st.drMax || 0, m.status.dr);
+        const sh = Math.round(H * 2.4), sw = Math.round(sh * 0.82), sx = bx - sw - 4 * dpr, sy = by + H / 2 - sh / 2;
+        const pulse = 0.85 + 0.15 * Math.sin(this.time * 6);
+        c.save();
+        c.beginPath();
+        c.moveTo(sx, sy); c.lineTo(sx + sw, sy); c.lineTo(sx + sw, sy + sh * 0.55); c.lineTo(sx + sw / 2, sy + sh); c.lineTo(sx, sy + sh * 0.55); c.closePath();
+        c.fillStyle = '#140c0a'; c.lineWidth = 3 * dpr; c.strokeStyle = '#140c0a'; c.stroke();
+        c.fillStyle = `rgba(122,74,40,${pulse})`; c.fill();
+        c.lineWidth = 1.2 * dpr; c.strokeStyle = '#9be862'; c.stroke();
+        c.fillStyle = '#9be862'; c.fillRect(sx + sw / 2 - dpr, sy + sh * 0.18, 2 * dpr, sh * 0.5); c.fillRect(sx + sw * 0.25, sy + sh * 0.32, sw * 0.5, 2 * dpr);
+        const fsz = Math.round(fs * 0.75);
+        c.font = `${fsz}px "Press Start 2P", monospace`; c.textAlign = 'right';
+        const txt = `-${Math.round(m.drK * 100)}%`;
+        c.lineWidth = 3 * dpr; c.strokeStyle = '#140c0a'; c.strokeText(txt, sx - 2 * dpr, by + H / 2);
+        c.fillStyle = '#c8f0a0'; c.fillText(txt, sx - 2 * dpr, by + H / 2);
+        // Tempo restante: filete embaixo do escudo.
+        const rk = Math.min(1, m.status.dr / st.drMax);
+        c.fillStyle = '#140c0a'; c.fillRect(sx, sy + sh + 2 * dpr, sw, 2 * dpr);
+        c.fillStyle = '#9be862'; c.fillRect(sx, sy + sh + 2 * dpr, sw * rk, 2 * dpr);
+        c.restore();
+      } else st.drMax = 0;
       // Status leves (queimando, molhado, lento, escudo…): ícones à direita da barra.
       const soft = statusList(m).filter((s) => !CC_INFO[s]);
       const isz = Math.max(6 * dpr, H + 1 * dpr);
@@ -2170,7 +2302,7 @@ export class Renderer {
         c.restore();
       }
     }
-    for (const d of this.decoyOv || []) if (d.owner.alive) this.hpBarHi(d.owner, d.x, d.y, this.ms(d.owner).lagHp, k);
+    for (const d of this.decoyOv || []) if (d.owner.alive) this.hpBarHi(d.owner, d.x, d.y, this.ms(d.owner), k);
     this.decoyOv = [];
     c.restore();
   }

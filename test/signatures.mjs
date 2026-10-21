@@ -549,6 +549,38 @@ test('Redemoinho: o Hidrocasco anda MAIS rápido girando do que caminhando', () 
 });
 
 // Guardas F: imunes a QUALQUER ataque enquanto ativas (dano, controle, empurrão, puxão, combo).
+// ───────────── Guarda repele conforme o tipo ─────────────
+test('Guarda: maré (que atravessa) volta para quem lançou; meteoro em arco quica de volta; bloqueio perfeito contra-ataca mais forte', () => {
+  // Maré do Hidrocasco contra a guarda do Pugilar: volta e acerta quem lançou.
+  let { w, A, B } = setup('pugilar', 'hidrocasco', { gap: 110 });
+  B.controller = null;
+  ready(A); ready(B);
+  const wave = w.spawnProjectile({ kind: 'wave', owner: B, ang: Math.PI, speed: 200, r: 8, range: 200, dmg: 10, pierce: true, x: B.x - 14, y: B.y });
+  cast(w, A, 'counterGuard');
+  until(w, () => wave.team === A.team || wave.dead, 1);
+  assert(wave.team === A.team && wave.vx > 0, 'maré não voltou');
+  const hpB = B.hp;
+  until(w, () => B.hp < hpB, 1.5);
+  assert(B.hp < hpB, 'maré devolvida não acertou quem lançou');
+  // Meteoro (arco) caindo na guarda: quica de volta em quem lançou.
+  ({ w, A, B } = setup('hidrocasco', 'brasalisco', { gap: 140 }));
+  ready(A);
+  const met = w.spawnProjectile({ kind: 'meteor', owner: B, lob: true, x: B.x, y: B.y - 6, tx: A.x, ty: A.y, flight: 0.5, radius: 22, dmg: 14 });
+  cast(w, A, 'shellGuard');
+  until(w, () => met.bounced || met.dead, 1);
+  assert(met.bounced && met.team === A.team && Math.abs(met.tx - B.x) < 2, 'meteoro não quicou de volta');
+  // Bloqueio perfeito: golpe logo no começo da guarda → contra-ataque mais forte que o comum.
+  const counterDmg = (delay) => {
+    const { w, A, B } = setup('pugilar', 'brasalisco', { gap: 26 });
+    ready(A); cast(w, A, 'counterGuard');
+    step(w, delay);
+    const h = B.hp; w.damage(A, 8, B, {});
+    return h - B.hp;
+  };
+  const perfect = counterDmg(0.05), late = counterDmg(0.3);
+  assert(perfect > late * 1.3, `bloqueio perfeito fraco (${perfect.toFixed(1)} vs ${late.toFixed(1)})`);
+});
+
 for (const [line, guardId, evolved] of [['hidrocasco', 'shellGuard', false], ['hidrocasco', 'abyssGuard', true], ['pugilar', 'counterGuard', false], ['pugilar', 'armorGuard', true]]) {
   test(`Guarda ${guardId}: bloqueia qualquer tipo de ataque (golpes, cone, onda, meteoro, raízes, atordoamento, combo)`, () => {
     const { w, A, B } = setup(line, 'brasalisco', { gap: 26, evolved });

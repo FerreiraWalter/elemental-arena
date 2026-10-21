@@ -1119,6 +1119,7 @@ export class World {
         p.h = Math.sin(Math.PI * k) * 70;
         if (p.flat) p.h = 0;
         if (k >= 1) {
+          if (Sig.bounceLob(this, p)) continue; // caiu numa guarda: quica de volta
           p.dead = true;
           if (p.kind === 'roots') this.eruptRoots(p);
           else if (p.kind === 'sentrySeed') Sig.plantSentry(this, p);
@@ -1147,7 +1148,7 @@ export class World {
           if (!p.evadedBy) { p.evadedBy = m; m.stats.evaded++; this.gainEnergy(m, EVOLUTION.dodge); this.emit({ type: 'evaded', m, x: m.x, y: m.y }); }
           continue;
         }
-        if (Sig.isGuarding(m) && !p.pierce) { if (t < best) { best = t; hitGuard = m; hitM = null; } continue; }
+        if (Sig.isGuarding(m)) { if (t < best) { best = t; hitGuard = m; hitM = null; } continue; } // até maré e tornado voltam
         if (p.pierce) {
           // Onda: atravessa, atinge cada monstro uma vez e continua.
           p.hitSet ||= new Set();

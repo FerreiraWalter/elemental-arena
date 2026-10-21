@@ -97,9 +97,10 @@ export class ArtSprites {
     const breathe = 1 + Math.sin(t * 3.2 + pose.seed) * 0.025 * (1 - pose.moving);
     const size = SIZE[name] || 1;
     const sx = (1 + pose.dash * 0.18 + pose.crouch * 0.06 - pose.dead * 0.1) * (pose.scale || 1) * size;
+    // pose.lean vem suavizado pelo renderer (molas); sem ele, a inclinação é calculada aqui.
     const sy = (breathe - pose.crouch * 0.08 - pose.dash * 0.1 - pose.dead * 0.35) * (pose.scale || 1) * size;
     const bob = Math.abs(Math.sin(pose.walk)) * 1.4 * pose.moving;
-    const lean = pose.lunge * 0.22 - pose.crouch * 0.08 + pose.dead * 0.25;
+    const lean = pose.lean ?? (pose.lunge * 0.22 - pose.crouch * 0.08 + pose.dead * 0.25);
     const legZone = M.h * 0.72;
     const step = Math.sin(pose.walk) * 1.6 * pose.moving;
     const arm = pose.punch && ARMS[name]?.[pose.punch.side];
