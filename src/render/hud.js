@@ -275,7 +275,7 @@ function sigGauge(world, m) {
       const foes = world.monsters.filter((o) => o.alive && o.team !== m.team);
       if (foes.some((o) => o.status.charm > 0 && o.charmBy === m)) return { label: 'HIPNOTIZADO!', k: 1, color: '#ff9ae6', blink: true };
       const n = Math.max(0, ...foes.map((o) => o.trance || 0));
-      return { label: `TRANSE NO ALVO ${n}/3`, k: n / 3, color: '#d07aff', blink: n >= 2 };
+      return { label: `TRANSE ${n}/3`, k: n / 3, color: '#d07aff', blink: n >= 2 };
     }
     case 'marks': {
       const foe = world.monsters.find((o) => o.alive && o.marks?.by === m.id && o.marks.n > 0);
@@ -325,7 +325,7 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
   // Quebra de combo: pronta (energia + recarga) ou quanto falta.
   {
     const ok = m.breakCd <= 0 && m.energy >= COMBO_BREAK.cost;
-    const s = m.breakCd > 0 ? `COMBO ${Math.ceil(m.breakCd)}s` : ok ? 'COMBO PRONTO' : 'COMBO: SEM ENERGIA';
+    const s = m.breakCd > 0 ? `COMBO ${Math.ceil(m.breakCd)}s` : ok ? 'COMBO PRONTO' : 'SEM COMBO';
     text(c, s, px + lw, y + 30 * dpr, fit(c, s, 4.5, lw * 0.4, dpr), ok ? '#ffb04a' : '#6a7488', 'right', dpr);
   }
   // Status atuais do seu monstro, com nome (fácil de ler).
@@ -404,10 +404,19 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
   }
 }
 
-// Aviso de Quebra de Combo: aparece quando o seu monstro está atordoado ou no ar.
+// Aviso de controle no seu monstro (hipnotizado / atordoado / preso / no ar), com o tempo que falta, e a Quebra
+// de Combo quando ela vale (atordoado, hipnotizado ou no ar; raízes só prendem no lugar).
+const CC_BANNER = { charm: ['VOCÊ ESTÁ HIPNOTIZADO', '#ff9ae6'], stun: ['VOCÊ ESTÁ ATORDOADO', '#ffe066'], root: ['VOCÊ ESTÁ PRESO', '#7ad84a'] };
 function comboPrompt(c, world, x, y, dpr) {
   const m = world.active;
-  if (!m || world.over || !(m.status.stun > 0.1 || m.lift > 0)) return;
+  if (!m || world.over || !m.alive) return;
+  const cc = m.status.charm > 0.05 ? 'charm' : m.status.stun > 0.05 ? 'stun' : m.status.root > 0.05 ? 'root' : null;
+  if (!cc && !(m.lift > 0)) return;
+  if (cc) {
+    const [label, col] = CC_BANNER[cc];
+    text(c, `${label} · ${m.status[cc].toFixed(1)}s`, x, y - 11 * dpr, 8, col, 'center', dpr);
+    if (cc === 'root') { text(c, 'Pode atacar, mas não anda nem esquiva', x, y, 6, '#c8d8b0', 'center', dpr); return; }
+  }
   let s, col;
   if (world.canBreakCombo?.(m)) { s = 'ESPAÇO: QUEBRAR COMBO!'; col = Math.floor(performance.now() / 150) % 2 ? '#ffffff' : '#ffb04a'; }
   else if (m.breakCd > 0) { s = `Quebra de combo em ${m.breakCd.toFixed(0)}s`; col = '#aa9'; }

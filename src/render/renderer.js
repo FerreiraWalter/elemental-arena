@@ -9,12 +9,15 @@ import * as PF from './psyfx.js';
 import { paintTile, paintWalls, paletteFor } from './terrainpaint.js';
 import { pillarSprite, rootSprite, lighthouseSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient, sentrySprite } from './scenery.js';
 import { Particles } from './particles.js';
-import { drawHud } from './hud.js';
+import { drawHud, statusIcon, statusList } from './hud.js';
 
 const SPRITE_FN = { brasalisco: drawBrasalisco, hidrocasco: drawHidrocasco, brotossauro: drawBrotossauro, dummy: drawDummy };
 export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3', 'frog_1', 'frog_3'];
 const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890', electric: '#bff6ff', psychic: '#f0c8ff' };
 export const TEAM_COLOR = ['#ffd23a', '#ff4a5a', '#46b4ff', '#7ad84a'];
+// Controles fortes (o monstro perde o comando): etiqueta e cor mostradas sobre a cabeça e no anel do chão.
+const CC_INFO = { charm: { label: 'HIPNOTIZADO', color: '#ff9ae6' }, stun: { label: 'ATORDOADO', color: '#ffe066' }, root: { label: 'PRESO', color: '#7ad84a' } };
+const hardCC = (m) => (m.status.charm > 0 ? 'charm' : m.status.stun > 0 ? 'stun' : m.status.root > 0 ? 'root' : null);
 // Cor do seu lado é sempre dourada (no online, quem joga no lado B vê as cores trocadas).
 // 1v1/2v2: o seu lado é sempre dourado. Todos-contra-todos: cor fixa por vaga (a mesma para todos os jogadores).
 export function setPerspective(side, ffa = false) {
@@ -804,6 +807,7 @@ export class Renderer {
     c.lineWidth = 2 * dpr;
     c.strokeRect(ox - dpr, oy - dpr, WORLD_W * S + 2 * dpr, WORLD_H * S + 2 * dpr);
     this.view = { ox, oy, S, dpr };
+    this.drawOverheadHi(world, alpha);
     this.drawFloaters(dt);
     if (this.debug) this.drawDebug(world);
     drawHud(c, this, world, ui);
@@ -1199,6 +1203,17 @@ export class Renderer {
       this.blitFrame(g.frame, g.x, g.y, g.face, 1, 1, 0);
     }
     st.ghosts = st.ghosts.filter((g) => g.life > 0);
+    // Controle de grupo (hipnotizado / atordoado / preso): anel pontilhado girando no chão, na cor do efeito.
+    const cc = m.alive && hardCC(m);
+    if (cc) {
+      const R = m.r + 4 + Math.sin(t * 8) * 0.6, n = 22, col = CC_INFO[cc].color;
+      l.fillStyle = col;
+      for (let k = 0; k < n; k++) {
+        if ((k + Math.floor(t * 12)) % 3 === 0) continue;
+        const a = (k / n) * Math.PI * 2 + t * (cc === 'root' ? 0 : 2.5);
+        l.fillRect(Math.round(x + Math.cos(a) * R), Math.round(y + 2 + Math.sin(a) * R * 0.42), 1, 1);
+      }
+    }
     l.globalAlpha = fade * (m.status.invuln > 0 && Math.floor(t * 24) % 2 ? 0.55 : 1);
     // Camuflado (tinta): o inimigo quase não o vê; o próprio time vê translúcido.
     if (m.status.cloak > 0) l.globalAlpha *= this.isFoe(m) ? 0.12 + (Math.floor(t * 10) % 7 === 0 ? 0.12 : 0) : 0.45;
@@ -1824,41 +1839,36 @@ export class Renderer {
     const l = this.l;
     const p = this.lerpPos(m, alpha);
     const x = Math.round(p.x) - 10, y = Math.round(p.y) - Math.max(26, st.top + 2);
-    // Energia de evolução (barrinha roxa; brilha quando pronta).
+    // A barra de vida e as etiquetas de status são desenhadas depois, em alta resolução (drawOverheadHi).
+    const cc = hardCC(m);
+    st.ov = { x: p.x, y, cc, chip: !!cc || (m.trance > 0) };
+    // Energia de evolução (barrinha roxa logo abaixo da vida; brilha quando pronta).
     if (m.def.evolvesTo && !m.evolved) {
       l.fillStyle = '#140c0a';
-      l.fillRect(x - 1, y + 2, 22, 2);
+      l.fillRect(x - 5, y + 4, 30, 2);
       l.fillStyle = m.canEvolve ? (Math.floor(this.time * 8) % 2 ? '#ffffff' : '#e8b8ff') : '#a070d8';
-      l.fillRect(x, y + 2, Math.round((m.energy / EVOLUTION.threshold) * 20), 1);
+      l.fillRect(x - 4, y + 4, Math.round((m.energy / EVOLUTION.threshold) * 28), 1);
+    }
+    // Atordoado: estrelas girando em volta da cabeça.
+    if (m.status.stun > 0) {
+      for (let k = 0; k < 3; k++) {
+        const an = this.time * 6 + k * 2.1, sx = Math.round(x + 10 + Math.cos(an) * 9), sy2 = Math.round(y + 7 + Math.sin(an) * 2.5);
+        l.fillStyle = '#140c0a'; l.fillRect(sx - 2, sy2 - 1, 5, 3); l.fillRect(sx - 1, sy2 - 2, 3, 5);
+        l.fillStyle = k === 0 ? '#ffffff' : '#ffe066'; l.fillRect(sx - 1, sy2, 3, 1); l.fillRect(sx, sy2 - 1, 1, 3);
+      }
     }
     const w = this.world;
     if (m === w.active) {
-      const by = y - 7 + Math.round(Math.sin(this.time * 6) * 1.2);
+      const by = Math.round(y - (st.barH || 4) - (st.ov.chip ? (st.chipH || 10) : m.marks?.n > 0 ? 5 : 0) - 6 + Math.sin(this.time * 6) * 1.2);
       l.fillStyle = '#140c0a';
       l.fillRect(x + 6, by - 1, 9, 6);
       l.fillStyle = '#ffe066';
       for (let k = 0; k < 4; k++) l.fillRect(x + 7 + k, by + k, 7 - k * 2, 1);
     }
 
-    l.fillStyle = '#140c0a';
-    l.fillRect(x - 1, y - 1, 22, 4);
-    l.fillStyle = '#5a1a14';
-    l.fillRect(x, y, 20, 2);
-    l.fillStyle = '#ffffff';
-    l.fillRect(x, y, Math.round((st.lagHp / m.maxHp) * 20), 2);
-    l.fillStyle = TEAM_COLOR[m.team];
-    l.fillRect(x, y, Math.round((m.hp / m.maxHp) * 20), 2);
-    // Ícones de status: chama (queimando) / gota (molhado) / raiz (preso) / estrelas (atordoado).
-    let ix = x + 22;
-    if (m.status.burn > 0) { l.fillStyle = '#ff7a1a'; l.fillRect(ix, y - 1, 2, 3); l.fillStyle = '#ffd84a'; l.fillRect(ix, y, 1, 2); ix += 3; }
-    if (m.status.wet > 0) { l.fillStyle = '#5ab4ff'; l.fillRect(ix, y, 2, 2); l.fillRect(ix, y - 1, 1, 1); ix += 3; }
-    if (m.status.root > 0) { l.fillStyle = '#7ad84a'; l.fillRect(ix, y - 1, 1, 3); l.fillRect(ix + 1, y + 1, 1, 1); ix += 3; }
-    if (m.status.stun > 0) {
-      for (let k = 0; k < 3; k++) { const an = this.time * 6 + k * 2.1; l.fillStyle = '#ffe066'; l.fillRect(Math.round(x + 10 + Math.cos(an) * 7), Math.round(y - 5 + Math.sin(an) * 2), 1, 1); }
-    }
     // Barra da mecânica própria (para os dois lados lerem): calor laranja, ímpeto amarelo.
     const kind = m.def.sig?.kind;
-    let sy = y + 3;
+    let sy = y + (m.def.evolvesTo && !m.evolved ? 6 : 4);
     if (kind === 'heat' && (m.heat > 0 || m.status.exhaust > 0)) {
       l.fillStyle = '#140c0a'; l.fillRect(x - 1, sy, 22, 3);
       const full = m.status.overheat > 0;
@@ -1872,11 +1882,12 @@ export class Renderer {
       sy += 3;
     }
     // Marcas de caça recebidas (Mantifolha): folhas verdes acima da vida; 3 = pronto para a execução.
+    const mY = Math.round(y + 1 - (st.barH || 4) - 3);
     if (m.marks?.n > 0) {
       for (let k = 0; k < 3; k++) {
         const on = k < m.marks.n;
         l.fillStyle = on ? (m.marks.n >= 3 && Math.floor(this.time * 8) % 2 ? '#ffffff' : SIG_COLOR.marks) : '#2a3a20';
-        l.fillRect(x + 4 + k * 5, y - 5, 3, 2); l.fillRect(x + 5 + k * 5, y - 6, 1, 1);
+        l.fillRect(x + 4 + k * 5, mY, 3, 2); l.fillRect(x + 5 + k * 5, mY - 1, 1, 1);
       }
     }
     // Barra de preparação: dourada = IMPARÁVEL (não é interrompido por dano), branca = pode ser interrompido.
@@ -1892,8 +1903,113 @@ export class Renderer {
     if (a && a.phase === 'recovery' && a.ab.recovery >= 0.4 && a.ab.kind !== 'dodge') {
       l.fillStyle = '#c8e8ff';
       const k = Math.floor(this.time * 6) % 2;
-      l.fillRect(x + 21, y - 8 + k, 1, 2); l.fillRect(x + 23, y - 6 - k, 1, 2);
+      l.fillRect(x - 7, y - 4 + k, 1, 2); l.fillRect(x - 9, y - 2 - k, 1, 2);
     }
+  }
+
+  // Barra de vida em alta resolução centrada em (gx, gy) do mundo; devolve a caixa em pixels da tela.
+  hpBarHi(m, gx, gy, lagHp, k) {
+    const c = this.ctx, { ox, oy, S, dpr } = this.view;
+    const W = Math.round(Math.max(24 * S, 34 * k)), H = Math.round(Math.max(5 * k, 2.4 * S));
+    const bx = Math.round(ox + gx * S - W / 2), by = Math.round(oy + gy * S + 2 * S - H);
+    const frac = Math.max(0, Math.min(1, m.hp / m.maxHp)), lag = Math.max(frac, Math.min(1, lagHp / m.maxHp));
+    const team = TEAM_COLOR[m.team];
+    // Moldura: sombra, contorno escuro e borda na cor do time.
+        c.fillStyle = '#140c0a'; c.fillRect(bx - 2 * dpr, by - 2 * dpr, W + 4 * dpr, H + 4 * dpr);
+    c.fillStyle = team; c.fillRect(bx - 1 * dpr, by - 1 * dpr, W + 2 * dpr, H + 2 * dpr);
+    c.fillStyle = '#2a0e0c'; c.fillRect(bx, by, W, H);
+    // Dano recente (some devagar) e vida atual com cor pela porcentagem.
+    c.fillStyle = '#f4d0b8'; c.fillRect(bx, by, Math.round(W * lag), H);
+    const hpCol = frac > 0.5 ? ['#5ee05a', '#2f9a3a'] : frac > 0.25 ? ['#ffd23a', '#c88a1a'] : ['#ff5a4a', '#a8201a'];
+    const low = frac <= 0.25 && Math.floor(this.time * 6) % 2;
+    c.fillStyle = low ? '#ff9a8a' : hpCol[0]; c.fillRect(bx, by, Math.round(W * frac), H);
+    c.fillStyle = hpCol[1]; c.fillRect(bx, by + H * 0.62, Math.round(W * frac), H * 0.38);
+    c.fillStyle = 'rgba(255,255,255,0.35)'; c.fillRect(bx, by, Math.round(W * frac), Math.max(1, H * 0.22));
+    // Escudo: faixa azul-clara por cima, a partir do fim da vida.
+    if (m.shieldHp > 0) {
+      const sw = Math.min(W, W * m.shieldHp / m.maxHp);
+      c.fillStyle = 'rgba(160,220,255,0.85)'; c.fillRect(bx + Math.max(0, Math.round(W * frac) - sw), by - 1 * dpr, sw, Math.max(2 * dpr, H * 0.4));
+    }
+    // Marcas a cada 25 de vida.
+    c.fillStyle = 'rgba(20,12,10,0.55)';
+    for (let v = 25; v < m.maxHp; v += 25) c.fillRect(Math.round(bx + W * v / m.maxHp), by, Math.max(1, dpr), H * (v % 100 ? 0.5 : 1));
+    return { bx, by, W, H };
+  }
+
+  // Vida e status sobre cada monstro, em alta resolução (por cima da arte em pixel): barra grossa com cor pela
+  // vida restante, borda na cor do time, marcas a cada 25 de vida, escudo, número; acima, a etiqueta do controle
+  // (HIPNOTIZADO / ATORDOADO / PRESO / TRANSE) com o tempo que falta; ao lado, os status leves em ícones.
+  drawOverheadHi(world, alpha) {
+    const c = this.ctx, { ox, oy, S, dpr } = this.view;
+    const k = Math.max(1, (this.hudScale || 1)) * dpr;
+    const fs = Math.round(Math.max(6 * k, Math.min(8 * k, S * 2)));
+    const placed = []; // etiquetas já desenhadas (as próximas sobem para não ficar uma por cima da outra)
+    c.save();
+    c.textBaseline = 'middle';
+    // Hipnose: fio pontilhado rosa ligando o hipnotizado ao sapo que o controla.
+    for (const m of world.monsters) {
+      if (!m.alive || !(m.status.charm > 0) || !m.charmBy?.alive) continue;
+      const a = this.lerpPos(m, alpha), b = this.lerpPos(m.charmBy, alpha);
+      c.strokeStyle = 'rgba(255,154,230,0.55)'; c.lineWidth = Math.max(1, S * 0.35);
+      c.setLineDash([S * 2, S * 2]); c.lineDashOffset = -this.time * S * 12;
+      c.beginPath(); c.moveTo(ox + a.x * S, oy + (a.y - 8) * S); c.lineTo(ox + b.x * S, oy + (b.y - 8) * S); c.stroke();
+      c.setLineDash([]);
+    }
+    for (const m of world.monsters) {
+      if (!m.alive) continue;
+      if (m.status.cloak > 0 && this.isFoe(m)) continue;
+      const st = this.ms(m), ov = st.ov;
+      if (!ov) continue;
+      // Duração máxima vista de cada status (para a barrinha de tempo restante).
+      st.stMax ??= {};
+      for (const key of ['charm', 'stun', 'root', 'slow', 'burn', 'wet']) {
+        const v = m.status[key] || 0;
+        if (v <= 0) delete st.stMax[key];
+        else if (!(st.stMax[key] >= v)) st.stMax[key] = v;
+      }
+      const { bx, by, W, H } = this.hpBarHi(m, ov.x, ov.y, st.lagHp, k);
+      st.barH = H / S; // altura da barra em pixels do mundo (as marcas e a seta, em pixel, ficam acima dela)
+      // Status leves (queimando, molhado, lento, escudo…): ícones à direita da barra.
+      const soft = statusList(m).filter((s) => !CC_INFO[s]);
+      const isz = Math.max(6 * dpr, H + 1 * dpr);
+      let ix = bx + W + 4 * dpr;
+      for (const s of soft.slice(0, 3)) { statusIcon(c, s, ix, by + H / 2 - isz / 2, isz); ix += isz + 1 * dpr; }
+      // Etiqueta do controle: pílula colorida, pulsando, com o tempo restante.
+      let label = null, col = null, rem = 0, max = 1, icon = null;
+      if (ov.cc) {
+        const info = CC_INFO[ov.cc];
+        label = info.label; col = info.color; icon = ov.cc;
+        rem = m.status[ov.cc]; max = st.stMax[ov.cc] || rem;
+      } else if (m.trance > 0) {
+        label = `TRANSE ${m.trance}/3`; col = '#d07aff'; icon = 'charm'; rem = m.trance; max = 3;
+      }
+      if (label) {
+        c.font = `${Math.round(fs)}px "Press Start 2P", monospace`;
+        const secs = ov.cc ? ` ${rem.toFixed(1)}s` : '';
+        const txt = label + secs, tw = c.measureText(txt).width;
+        const ph = fs + 4 * dpr, pw = tw + ph + 5 * dpr;
+        const pulse = 1 + (ov.cc ? Math.sin(this.time * 10) * 0.025 : 0);
+        const px = Math.round(ox + ov.x * S - pw / 2);
+        let py = Math.round(by - ph - (m.marks?.n > 0 ? 6 * S : 3 * dpr));
+        for (let tries = 0; tries < 4 && placed.some((r) => px < r.x + r.w + 4 * dpr && r.x < px + pw + 4 * dpr && py < r.y + r.h + 4 * dpr && r.y < py + ph + 4 * dpr); tries++) py -= ph + 6 * dpr;
+        placed.push({ x: px, y: py, w: pw, h: ph });
+        st.chipH = (by - py) / S;
+        c.save();
+        c.translate(px + pw / 2, py + ph / 2); c.scale(pulse, pulse); c.translate(-(px + pw / 2), -(py + ph / 2));
+        c.fillStyle = '#140c0a'; c.fillRect(px - 2 * dpr, py - 2 * dpr, pw + 4 * dpr, ph + 4 * dpr);
+        c.fillStyle = col; c.globalAlpha = 0.8; c.fillRect(px - 1 * dpr, py - 1 * dpr, pw + 2 * dpr, ph + 2 * dpr); c.globalAlpha = 1;
+        c.fillStyle = 'rgba(20,12,10,0.88)'; c.fillRect(px, py, pw, ph);
+        statusIcon(c, icon, px + 2 * dpr, py + 2 * dpr, ph - 4 * dpr);
+        c.textAlign = 'left';
+        c.fillStyle = col; c.fillText(txt, px + ph + 1 * dpr, py + ph / 2 + dpr);
+        // Tempo restante: barrinha que encolhe na base da pílula.
+        c.fillStyle = col; c.fillRect(px, py + ph - 2 * dpr, pw * Math.max(0, Math.min(1, rem / max)), 2 * dpr);
+        c.restore();
+      }
+    }
+    for (const d of this.decoyOv || []) if (d.owner.alive) this.hpBarHi(d.owner, d.x, d.y, this.ms(d.owner).lagHp, k);
+    this.decoyOv = [];
+    c.restore();
   }
 
   isFoe(m) {
@@ -1932,13 +2048,10 @@ export class Renderer {
   drawDecoyOverhead(d, alpha) {
     const owner = d.owner;
     if (!owner || !this.isFoe(owner)) return;
-    const l = this.l;
     const px = (d.px ?? d.x) + (d.x - (d.px ?? d.x)) * alpha, py = (d.py ?? d.y) + (d.y - (d.py ?? d.y)) * alpha;
-    const x = Math.round(px) - 10, y = Math.round(py) - Math.max(26, (d._top || 24) + 2);
-    // A cópia mostra a mesma vida do dono: de longe, não há como saber qual é a verdadeira.
-    l.fillStyle = '#140c0a'; l.fillRect(x - 1, y - 1, 22, 4);
-    l.fillStyle = '#5a1a14'; l.fillRect(x, y, 20, 2);
-    l.fillStyle = TEAM_COLOR[owner.team]; l.fillRect(x, y, Math.round((owner.hp / owner.maxHp) * 20), 2);
+    const y = Math.round(py) - Math.max(26, (d._top || 24) + 2);
+    // A cópia mostra a mesma barra de vida do dono (desenhada em drawOverheadHi): não há como saber qual é a verdadeira.
+    (this.decoyOv ??= []).push({ x: px, y, owner });
   }
 
   // Círculo rúnico das Raízes: anel duplo com runas girando; rachaduras avançam para o centro e brotos
