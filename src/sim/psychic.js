@@ -186,46 +186,37 @@ export function tongue(w, m, a, { reach, dmg, tag }) {
 }
 
 // Troca Mental: troca de lugar com o inimigo mirado; sem alvo, teletransporte curto até onde mirou.
+// Troca Mental / Troca Astral: troca de lugar com quem está perto do ponto mirado. Inimigo: atordoa, fere e soma
+// transe. Aliado (só a Troca Astral, ab.allies): resgate — fica invulnerável um instante e se livra de prisões.
+// Sem ninguém no ponto, teletransporta até ab.blink px.
 export function mindSwap(w, m, a, ab) {
   const p = a.aimPoint || { x: m.x + Math.cos(a.aim) * ab.range, y: m.y + Math.sin(a.aim) * ab.range };
-  let best = null, bd = 46;
-  for (const t of w.enemiesOf(m)) {
+  const pool = ab.allies ? [...w.enemiesOf(m), ...w.alliesOf(m)] : w.enemiesOf(m);
+  let best = null, bd = ab.pick ?? 46;
+  for (const t of pool) {
     const d = Math.hypot(t.x - p.x, t.y - p.y);
     if (d < bd && Math.hypot(t.x - m.x, t.y - m.y) <= ab.range + t.r && w.los(m.x, m.y, t.x, t.y, { noSteam: true })) { bd = d; best = t; }
   }
   const fx = m.x, fy = m.y;
-  if (best && !best.status.invuln && !(best.status.shield > 0 && best.shieldHp > 0)) {
+  const ally = best && best.team === m.team;
+  if (best && (ally || (!best.status.invuln && !(best.status.shield > 0 && best.shieldHp > 0)))) {
     const tx = best.x, ty = best.y;
     m.x = m.px = tx; m.y = m.py = ty; m.level = w.terrain.heightAt(tx, ty);
     best.x = best.px = fx; best.y = best.py = fy; best.level = w.terrain.heightAt(fx, fy);
     best.kx = best.ky = 0;
-    if (best.action && !best.action.ab.superArmor) best.interrupt(w);
-    w.damage(best, ab.dmg, m, { tag: ab.id, element: 'psychic', stun: ab.stun });
-    addTrance(w, best, m, 1);
-    w.emit({ type: 'mindSwap', m, t: best, x0: fx, y0: fy, x: tx, y: ty });
+    if (ally) {
+      best.status.invuln = Math.max(best.status.invuln, ab.allyInvuln ?? 0.4);
+      best.status.root = 0; best.status.slow = 0; best.status.charm = 0;
+    } else {
+      if (best.action && !best.action.ab.superArmor) best.interrupt(w);
+      w.damage(best, ab.dmg, m, { tag: ab.id, element: 'psychic', stun: ab.stun });
+      addTrance(w, best, m, 1);
+    }
+    w.emit({ type: 'mindSwap', m, t: best, x0: fx, y0: fy, x: tx, y: ty, ally, ab: ab.id });
     return;
   }
-  // Sem alvo: teleporta até o ponto (no máximo blink), pousando num lugar válido.
   const ang = Math.atan2(p.y - m.y, p.x - m.x), d = Math.min(ab.blink, Math.hypot(p.x - m.x, p.y - m.y));
   m.x = m.px = m.x + Math.cos(ang) * d; m.y = m.py = m.y + Math.sin(ang) * d;
   w.landAirborne(m, { from: { x: fx, y: fy } });
-  w.emit({ type: 'mindSwap', m, x0: fx, y0: fy, x: m.x, y: m.y, blink: true });
-}
-
-// Projeção Astral: o espírito atravessa os inimigos (fere e soma transe) e, no fim, volta para o corpo.
-export function astralHit(w, m, a, { dmg, tag }) {
-  for (const t of w.enemiesOf(m)) {
-    if (a.hit.has(t.id) || Math.hypot(t.x - m.x, t.y - m.y) > m.r + t.r + 6) continue;
-    a.hit.add(t.id);
-    w.damage(t, dmg, m, { tag, element: 'psychic', stun: 0.2, ang: a.aim });
-    addTrance(w, t, m, 1);
-  }
-  w.popDecoysIn(m.x, m.y, m.r + 6, m.team);
-}
-export function astralReturn(w, m, a) {
-  const b = a.data.body;
-  if (!b) return;
-  w.emit({ type: 'astralReturn', m, x0: m.x, y0: m.y, x: b.x, y: b.y });
-  m.x = m.px = b.x; m.y = m.py = b.y; m.level = w.terrain.heightAt(b.x, b.y);
-  m.vx = m.vy = m.kx = m.ky = 0;
+  w.emit({ type: 'mindSwap', m, x0: fx, y0: fy, x: m.x, y: m.y, blink: true, ab: ab.id });
 }

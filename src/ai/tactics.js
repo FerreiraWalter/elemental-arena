@@ -462,9 +462,19 @@ export const TACTICS = {
     if (c.hpF < 0.35 || c.inEnemyArea || c.hazardHere > 0.3) return { score: 0.65, target: c.t, lob: true };
     return { score: 0.3 + (c.t.status.charm > 0 ? 0.2 : 0), target: c.t, lob: true };
   },
-  astralProjection(c) {
-    if (c.vis && c.d > 40 && c.d < 140 && !c.tGuarding) return { score: 0.62 + (c.tBusy ? 0.2 : 0), target: c.t };
-    return null;
+  // Troca Astral: igual à Troca Mental (mais longe) e também resgata o aliado encurralado com pouca vida.
+  astralSwap(c) {
+    const m = c.m;
+    if (c.hpF > 0.45) for (const al of c.w.alliesOf(m)) {
+      const d = Math.hypot(al.x - m.x, al.y - m.y);
+      const pressed = c.w.enemiesOf(al).some((e) => Math.hypot(e.x - al.x, e.y - al.y) < 70);
+      if (d > 60 && d < 255 && al.hp < al.maxHp * 0.35 && pressed) return { score: 0.85, aimPoint: { x: al.x, y: al.y }, purpose: 'support' };
+    }
+    if (!c.vis || c.d < 40 || c.d > 250 || c.tGuarding) return null;
+    const inMine = c.w.zones.some((z) => z.kind === 'psy' && z.team === m.team && Math.hypot(z.x - m.x, z.y - m.y) < z.r);
+    if (inMine) return { score: 0.85, target: c.t, lob: true };
+    if (c.hpF < 0.35 || c.inEnemyArea || c.hazardHere > 0.3) return { score: 0.65, target: c.t, lob: true };
+    return { score: 0.32 + (c.t.status.charm > 0 ? 0.2 : 0), target: c.t, lob: true };
   },
   levitate() { return null; },
   astralLevitate() { return null; },

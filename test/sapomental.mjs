@@ -111,18 +111,40 @@ test('Espiral Hipnótica deixa lento e pulsa transe', () => {
   assert(B.status.slow > 0 && (B.trance > 0 || B.status.charm > 0), 'espiral não fez efeito');
 });
 
-test('Sapofilósofo: Coro de Orbes dispara teleguiado; Projeção Astral fere e volta ao corpo', () => {
+test('Sapofilósofo: Coro de Orbes dispara teleguiado; Troca Astral troca de lugar com o inimigo de longe (260 px)', () => {
   const { w, A, B } = setup('brasalisco', { gap: 150, evolved: true });
   assert(A.def.key === 'sapofilosofo', 'não evoluiu');
+  assert(A.def.controls.f === 'astralSwap', 'F não é a Troca Astral');
   const hp = B.hp;
   cast(w, A, 'orbChorus');
   step(w, 2.5);
   assert(B.hp < hp, 'coro de orbes não acertou');
-  const { w: w2, A: A2, B: B2 } = setup('brasalisco', { gap: 60, evolved: true });
-  const x0 = A2.x, hp2 = B2.hp;
-  cast(w2, A2, 'astralProjection', { aimPoint: { x: 450, y: 250 } });
-  until(w2, () => !A2.action, 2);
-  assert(B2.hp < hp2 && Math.abs(A2.x - x0) < 4, `projeção não feriu/voltou (x ${A2.x.toFixed(0)} vs ${x0})`);
+  const { w: w2, A: A2, B: B2 } = setup('brasalisco', { gap: 235, evolved: true });
+  const a0 = { x: A2.x, y: A2.y }, b0 = { x: B2.x, y: B2.y }, hp2 = B2.hp;
+  cast(w2, A2, 'astralSwap', { aimPoint: { x: B2.x, y: B2.y } });
+  step(w2, 0.3);
+  assert(Math.hypot(A2.x - b0.x, A2.y - b0.y) < 12 && Math.hypot(B2.x - a0.x, B2.y - a0.y) < 12, 'não trocou a 235 px');
+  assert(B2.hp < hp2 && (B2.trance > 0 || B2.status.charm > 0), 'troca não feriu/somou transe');
+});
+
+test('Troca Astral resgata o aliado (2v2): troca de lugar, deixa invulnerável e solta das raízes', () => {
+  const w = World.match(5, [['sapomental'], ['hidrocasco'], ['brasalisco'], ['brasalisco']], 0, 'quadra', 'normal', { sides: [0, 0, 1, 1] });
+  for (const m of w.roster) m.ai.update = () => { m.move.throttle = 0; };
+  w.coaches = w.coaches.map(() => null);
+  const A = w.fieldOf(0); A.controller = null; w.humans.clear();
+  until(w, () => w.monsters.every((m) => !m.switchState), 2);
+  for (const o of w.obstacles) if (Math.hypot(o.x - 350, o.y - 250) < 260) { o.destroyed = true; o.solid = false; }
+  A.energy = EVOLUTION.threshold; w.requestEvolve(A); until(w, () => A.evolved && A.evolveT <= 0, 3);
+  const Al = w.fieldOf(1);
+  A.x = A.px = 250; A.y = A.py = 250; Al.x = Al.px = 460; Al.y = Al.py = 250;
+  Al.status.root = 2; Al.status.invuln = 0;
+  for (const k in A.cd) A.cd[k] = 0;
+  const hp = Al.hp;
+  cast(w, A, 'astralSwap', { aimPoint: { x: Al.x, y: Al.y } });
+  until(w, () => A.action?.phase !== 'windup', 1);
+  step(w, 0.05);
+  assert(Math.hypot(A.x - 460, A.y - 250) < 12 && Math.hypot(Al.x - 250, Al.y - 250) < 12, 'não trocou com o aliado');
+  assert(Al.status.invuln > 0 && !(Al.status.root > 0) && Al.hp === hp, 'resgate sem proteção (ou feriu o aliado)');
 });
 
 test('Sincronização: transe, hipnose e zona psíquica chegam ao espelho online', () => {

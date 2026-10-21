@@ -317,7 +317,7 @@ export class Renderer {
             P.burst(px, py - 8, 14, { ramp: 'psy', speed: 60, life: 0.4, add: true });
           }
           this.psyLinks.push({ x0: e.x0, y0: e.y0 - 8, x1: e.x, y1: e.y - 8, life: 0.3 });
-          this.addText({ x: e.x, y: e.y - 34, text: e.blink ? 'TELEPORTE' : 'TROCA MENTAL!', t: 0, color: '#f4c8ff' });
+          this.addText({ x: e.x, y: e.y - 34, text: e.blink ? 'TELEPORTE' : e.ally ? 'RESGATE!' : e.ab === 'astralSwap' ? 'TROCA ASTRAL!' : 'TROCA MENTAL!', t: 0, color: e.ally ? '#b8ffc8' : '#f4c8ff' });
           break;
         case 'spiral':
           this.rings.push({ x: e.x, y: e.y, r: 3, max: e.r, t: 0, color: '#ff9ae6', thick: true });
@@ -337,14 +337,6 @@ export class Renderer {
         case 'psyBlock':
           P.burst(e.x, e.y, 10, { ramp: 'psy', speed: 70, life: 0.3, add: true });
           this.rings.push({ x: e.x, y: e.y, r: 2, max: 9, t: 0, color: '#ffffff' });
-          break;
-        case 'astralStart':
-          this.rings.push({ x: e.x, y: e.y - 6, r: 4, max: 20, t: 0, color: '#f4c8ff', thick: true });
-          P.burst(e.x, e.y - 8, 16, { ramp: 'psy', speed: 50, life: 0.5, add: true, vz: 20 });
-          break;
-        case 'astralReturn':
-          this.psyLinks.push({ x0: e.x0, y0: e.y0 - 8, x1: e.x, y1: e.y - 8, life: 0.3 });
-          this.rings.push({ x: e.x, y: e.y - 6, r: 18, max: 3, t: 0, color: '#d07aff', thick: true });
           break;
         // ───── Elétrico ─────
         case 'zap':
