@@ -399,6 +399,16 @@ window.addEventListener('paste', (e) => {
   }
 });
 window.addEventListener('pointerdown', () => sfx.unlock(), { capture: true });
+// iPhone/iPad: o Safari ignora o "user-scalable=no" da página. Dois toques rápidos (ex.: errar o botão de ataque
+// e tocar de novo no campo) davam zoom na tela inteira, e a pinça também. Bloqueia o segundo toque rápido e a pinça.
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = performance.now();
+  if (now - lastTouchEnd < 350 && e.cancelable) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
 window.addEventListener('keydown', (e) => {
   sfx.unlock();
   if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();

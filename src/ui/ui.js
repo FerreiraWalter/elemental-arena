@@ -129,7 +129,7 @@ export class UI {
     r.shakeEnabled = false;
     r.reset(world, false);
     yield;
-    for (let row = 0; row < ROWS; row += 4) { r.paintRows(row, Math.min(ROWS, row + 4)); yield; }
+    for (let row = 0; row < ROWS; row += 2) { r.paintRows(row, Math.min(ROWS, row + 2)); yield; }
     r.paintBaseExtras();
     this.demo = { renderer: r, world };
   }
@@ -158,7 +158,7 @@ export class UI {
     r.art = this.art;
     r.reset(world, false);
     yield;
-    for (let row = 0; row < ROWS; row += 4) { r.paintRows(row, Math.min(ROWS, row + 4)); yield; }
+    for (let row = 0; row < ROWS; row += 2) { r.paintRows(row, Math.min(ROWS, row + 2)); yield; }
     r.paintBaseExtras();
     r.render(world, 1, 1 / 60, { dpr: 1, embedded: true, speed: 1 });
     const img = makeCanvas(WORLD_W, WORLD_H);
@@ -170,6 +170,7 @@ export class UI {
   pointerMove(x, y) { this.mouse = { x, y }; }
   pointerDown(x, y) {
     this.mouse = { x, y };
+    this.lastInput = this.time;
     for (const b of this.buttons) {
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { if (!b.disabled) { this.hooks.sfx?.('click'); b.onClick(); } else this.hooks.sfx?.('deny'); return true; }
     }
@@ -253,12 +254,20 @@ export class UI {
     this.buttons = [];
     // Fundo: luta de demonstração escurecida.
     this.ensureDemo();
-    // Prévias das arenas: aos poucos desde o menu (na tela de arenas, com mais tempo por quadro).
-    if (this.time > 1.5 && this.fade <= 0) this.buildPreviews(this.screen === 'arena' ? 12 : 5);
+    // Aparelho lento no menu (média dos quadros acima de ~22 ms): fundo e prévias ficam ainda mais econômicos.
+    this.slow = (this.slow ?? 0.016) * 0.95 + Math.min(0.1, dt) * 0.05;
+    const lite = this.slow > 0.022;
+    // Prévias das arenas: na escolha do time só quando ninguém está tocando (não engasga a escolha); na tela de
+    // arenas, com mais tempo por quadro. No menu inicial não (era o que deixava o menu pesado no iPhone).
+    if (this.screen === 'arena') this.buildPreviews(lite ? 8 : 12);
+    else if (this.screen === 'team' && this.fade <= 0 && this.time - (this.lastInput ?? -9) > 1) this.buildPreviews(lite ? 2 : 4);
     const d = this.demo;
     if (d) {
       if (dt > 0) for (let k = 0; k < Math.round(dt * 60); k++) d.world.step(1 / 60);
-      d.renderer.render(d.world, 1, dt, { dpr, embedded: true, speed: 1 });
+      // A luta de fundo fica escurecida atrás do menu: redesenhada a 30 quadros/s (15 no aparelho lento).
+      this.demoDt = (this.demoDt || 0) + dt;
+      this.demoN = ((this.demoN || 0) + 1) % (lite ? 4 : 2);
+      if (this.demoN === 0 || !d.drawn) { d.renderer.render(d.world, 1, this.demoDt, { dpr, embedded: true, speed: 1 }); this.demoDt = 0; d.drawn = true; }
       c.imageSmoothingEnabled = false;
       const S = Math.max(W / WORLD_W, H / WORLD_H);
       c.drawImage(d.renderer.low, (W - WORLD_W * S) / 2, (H - WORLD_H * S) / 2, WORLD_W * S, WORLD_H * S);
