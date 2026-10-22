@@ -427,19 +427,19 @@ test('Combate de skills: nenhum golpe básico é tiro longo, e cada um acerta um
 
 test('Ritmo: golpe básico que acerta adianta as recargas de Q/E/F (e não vale para skills)', () => {
   const { w, A, B } = setup('brasalisco', 'brotossauro', { gap: 60 });
-  A.cd.emberRing = 5; A.cd.ignition = 5; A.cd.shyLeap = 5;
+  A.cd.flameJet = 5; A.cd.ignition = 5; A.cd.shyLeap = 5;
   assert(cast(w, A, 'coalShot', { aimPoint: { x: B.x, y: B.y } }), 'pedra não saiu');
   until(w, () => B.hp < B.maxHp, 1);
   step(w, 0.02);
   // a recarga também anda com o tempo (~0,4 s até acertar): o ganho do Ritmo é o que passa disso
   const lim = 5 - COMBAT.rhythm + 0.05;
-  assert(A.cd.emberRing < lim && A.cd.ignition < lim && A.cd.shyLeap < lim, 'Ritmo não adiantou Q/E/F');
+  assert(A.cd.flameJet < lim && A.cd.ignition < lim && A.cd.shyLeap < lim, 'Ritmo não adiantou Q/E/F');
   // Skill acertando não gera Ritmo.
   const { w: w2, A: A2, B: B2 } = setup('brasalisco', 'brotossauro', { gap: 60 });
   A2.cd.shyLeap = 5;
-  A2.cast(w2, ABILITIES.emberRing, { aim: 0, dir: 0 });
+  A2.cast(w2, ABILITIES.flameJet, { aim: 0, dir: 0 });
   until(w2, () => B2.hp < B2.maxHp, 1.5);
-  assert(B2.hp < B2.maxHp, 'Bumerangue não acertou');
+  assert(B2.hp < B2.maxHp, 'Jato de Fogo não acertou');
   assert(A2.cd.shyLeap > 5 - 1.6, 'skill não deveria gerar Ritmo');
 });
 

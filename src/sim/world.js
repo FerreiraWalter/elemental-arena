@@ -1145,7 +1145,6 @@ export class World {
       // Psíquico: esferas em órbita (não andam em linha) e projéteis teleguiados.
       if (p.orbit && Psy.updateOrbit(this, p, dt)) continue;
       if (p.homing) Psy.steerHoming(this, p, dt);
-      if (p.kind === 'boomerang') { Forge.steer(this, p, dt); if (p.dead) continue; }
       const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
       let best = 2, hitM = null, hitO = null, hitWall = false, hitGuard = null, hitDecoy = null;
       for (const m of this.monsters) {

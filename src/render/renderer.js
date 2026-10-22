@@ -643,7 +643,7 @@ export class Renderer {
         case 'wallRise': case 'tsunamiWarn': case 'tsunami': case 'krakenWake': case 'krakenWindup': case 'krakenDown': case 'krakenRage':
           ARF.onEvent(this, e, P);
           break;
-        case 'coalDrop': case 'coalOut': case 'coalPick': case 'sparkShot': case 'ignition': case 'smokePuff': case 'boomerangEnd': case 'boomerangCatch':
+        case 'coalDrop': case 'coalOut': case 'coalPick': case 'sparkShot': case 'ignition': case 'smokePuff':
           FF.onEvent(this, e, P);
           break;
         case 'charged':
@@ -1274,7 +1274,7 @@ export class Renderer {
           for (let q = -ab.half; q <= ab.half; q += 0.08) g.set(m.x + Math.cos(a.aim + q) * ab.len * k, m.y + Math.sin(a.aim + q) * ab.len * k, rgba('#ff4a1a', 160));
         } else if (ab.kind === 'beam') {
           const L = world.raycast(m.x, m.y, a.aim, ab.range).len;
-          const c = rgba(blink ? '#e8f8ff' : '#4fb0ff', 200);
+          const c = m.element === 'fire' ? rgba(blink ? '#ffe066' : '#ff6a2a', 200) : rgba(blink ? '#e8f8ff' : '#4fb0ff', 200);
           for (let s = 10; s < L; s += 4) g.set(m.x + Math.cos(a.aim) * s, m.y + Math.sin(a.aim) * s - 3, c);
         } else if (ab.kind === 'aoe') {
           const fire = m.element === 'fire';
@@ -1939,8 +1939,6 @@ export class Renderer {
         AF.drawFeather(g, p, x, y);
       } else if (p.kind === 'coalRock') {
         FF.drawCoalRock(g, p, x, y, t, this.particles);
-      } else if (p.kind === 'boomerang') {
-        FF.drawBoomerang(g, p, x, y, t, this.particles);
       } else if (p.kind === 'forgeBomb') {
         FF.drawForgeBomb(this, g, p, x, y, t);
       } else if (p.kind === 'krakenBall' || p.kind === 'krakenRock' || p.kind === 'krakenArm') {
@@ -2041,7 +2039,11 @@ export class Renderer {
       const a = m.action;
       if (!m.alive || !a) continue;
       const ab = a.ab;
-      if (ab.id === 'hydroBeam' && a.phase === 'active' && a.data.beam) {
+      if (ab.id === 'flameJet' && a.data.beam && a.phase === 'active') {
+        FF.drawFlameJet(g, a.data.beam, ab, a, t, this.particles);
+      } else if (ab.id === 'flameJet' && a.phase === 'windup') {
+        FF.drawJetCharge(g, m, a, ab, t, this.particles);
+      } else if (ab.id === 'hydroBeam' && a.phase === 'active' && a.data.beam) {
         const b = a.data.beam;
         const L = Math.hypot(b.ex - b.ox, b.ey - b.oy);
         const ca = (b.ex - b.ox) / (L || 1), sa = (b.ey - b.oy) / (L || 1);
@@ -2181,9 +2183,10 @@ export class Renderer {
       else if (m.evolved && m.element === 'water') { g.globalAlpha = 0.3; g.drawImage(this.glows.blue, m.x - R, m.y - R - 10, R * 2, R * 2); }
       if (m.evolveT > 0) { g.globalAlpha = 0.8; g.drawImage(this.glows.white, m.x - 40, m.y - 60, 80, 80); }
       const a = m.action;
-      if (a?.ab.id === 'hydroBeam' && a.phase === 'active' && a.data.beam) {
+      if ((a?.ab.id === 'hydroBeam' || a?.ab.id === 'flameJet') && a.phase === 'active' && a.data.beam) {
         const b = a.data.beam;
         g.globalAlpha = 0.5;
+        if (a.ab.id === 'flameJet') { for (let s = 0; s <= 1; s += 0.1) g.drawImage(this.glows.fire, b.ox + (b.ex - b.ox) * s - 14, b.oy + (b.ey - b.oy) * s - 14, 28, 28); continue; }
         for (let s = 0; s <= 1; s += 0.1) g.drawImage(this.glows.blue, b.ox + (b.ex - b.ox) * s - 12, b.oy + (b.ey - b.oy) * s - 12, 24, 24);
       }
       if (a?.ab.kind === 'cone' && a.phase === 'active' && m.element === 'fire') { g.globalAlpha = 0.8; g.drawImage(this.glows.fire, m.x + Math.cos(a.aim) * 36 - 40, m.y + Math.sin(a.aim) * 36 - 40, 80, 80); }

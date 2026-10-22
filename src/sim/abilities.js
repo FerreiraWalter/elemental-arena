@@ -1535,12 +1535,12 @@ Object.assign(ABILITIES, {
     ...melee({ reach: 18, arc: Math.PI * 2, dmg: 5, kb: 170, stun: 0.1, extra: { burn: 0.8 }, radial: true }),
     desc: 'RABADA FUMEGANTE: giro com o rabo em brasa que EMPURRA para longe todo mundo em volta.',
   },
-  emberRing: {
-    id: 'emberRing', name: 'Bumerangue de Brasa', element: 'fire', kind: 'projectile',
-    cooldown: 7, windup: 0.16, active: 0.02, recovery: 0.2,
-    move: [0.6, 0.6, 0.9], turn: [9, 0], range: 165, speed: 330,
-    onActiveStart(w, m, a) { Forge.boomerang(w, m, a, { speed: 330, out: 165, r: 6, dmg: 5 }); },
-    desc: 'BUMERANGUE DE BRASA: vai e VOLTA para você, fere na ida e na volta e DETONA as suas brasas por onde passa.',
+  flameJet: {
+    id: 'flameJet', name: 'Jato de Fogo', element: 'fire', kind: 'beam',
+    cooldown: 8, windup: 0.35, active: 0.9, recovery: 0.35, superArmor: true,
+    move: [0.2, 0.15, 0.6], turn: [4, 1.1], range: 165, width: 6, dps: 12,
+    onActiveTick(w, m, a, dt) { Forge.jetTick(w, m, a, this, dt); },
+    desc: 'JATO DE FOGO: raio de fogo contínuo que queima quem está na linha, acende o chão e DETONA as suas brasas por onde passa.',
   },
   ignition: {
     id: 'ignition', name: 'Ignição', element: 'fire', kind: 'aoe', superArmor: true,

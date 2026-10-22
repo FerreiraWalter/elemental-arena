@@ -1,5 +1,5 @@
 // Brasalinha → Fornalhonte (fogo de longe): brasas no chão, Centelha Ativa / Forja Ardente, Ignição,
-// bumerangue, recuo para trás, salva das chaminés, tranco que recolhe brasas e sincronização online.
+// jato de fogo, recuo para trás, salva das chaminés, tranco que recolhe brasas e sincronização online.
 // node test/brasalinha.mjs
 import { World } from '../src/sim/world.js';
 import { DT, EVOLUTION } from '../src/config.js';
@@ -38,7 +38,7 @@ test('Brasalinha está no elenco, evolui para Fornalhonte e tem os 6 botões, co
   assert(ROSTER.includes('brasalisco'), 'Brasalinha fora do elenco');
   const b = SPECIES.brasalisco, e = SPECIES.brasaliscoAscendido;
   assert(b.name === 'Brasalinha' && e.name === 'Fornalhonte' && b.evolvesTo === 'brasaliscoAscendido', 'nomes/evolução');
-  assert(b.controls.primary === 'coalShot' && b.controls.melee === 'smokeTail' && b.controls.q === 'emberRing' && b.controls.e === 'ignition' && b.controls.f === 'shyLeap' && b.controls.dodge === 'sparkHop', 'controles da base');
+  assert(b.controls.primary === 'coalShot' && b.controls.melee === 'smokeTail' && b.controls.q === 'flameJet' && b.controls.e === 'ignition' && b.controls.f === 'shyLeap' && b.controls.dodge === 'sparkHop', 'controles da base');
   assert(e.controls.primary === 'forgeShot' && e.controls.melee === 'forgeStomp' && e.controls.q === 'chimneyVolley' && e.controls.e === 'forgeEruption' && e.controls.f === 'colossusRam' && e.controls.dodge === 'emberRoll', 'controles do Fornalhonte');
   assert(b.abilities.find((a) => a.id === 'coalShot').range >= 150, 'o básico deveria ser de longe');
   assert(b.sig.kind === 'forge' && e.sig.kind === 'forge', 'mecânica própria');
@@ -50,7 +50,7 @@ test('Sem debuff próprio: atirar sem parar não deixa a Brasalinha lenta, fraca
   for (let k = 0; k < 12; k++) { A.action = null; A.cd.coalShot = 0; cast(w, A, 'coalShot'); step(w, 0.3); }
   A.action = null;
   assert(A.speedMult(w) >= sp0 - 1e-6, 'ficou lenta depois de atacar muito');
-  assert(A.ready('emberRing') && A.ready('ignition') && A.ready('shyLeap'), 'perdeu os poderes depois de atacar muito');
+  assert(A.ready('flameJet') && A.ready('ignition') && A.ready('shyLeap'), 'perdeu os poderes depois de atacar muito');
 });
 
 test('Pedra em Brasa: acerta de longe e deixa uma BRASA aos pés do alvo (que arma depois de meio segundo)', () => {
@@ -121,23 +121,18 @@ test('Ignição: TODAS as brasas explodem; o mesmo alvo pego por várias leva me
   assert(lost > 6 && lost < 6 * 3, `dano da Ignição fora do esperado (${lost.toFixed(1)})`);
 });
 
-test('Bumerangue de Brasa: vai, VOLTA para a Brasalinha, acerta na ida e na volta e detona brasas no caminho', () => {
-  const { w, A, B } = setup('brotossauro', { gap: 90 });
-  const z = Forge.dropCoal(w, A, A.x + 50, A.y);
+test('Jato de Fogo: raio contínuo que queima quem está na linha, acende o chão e detona as brasas no caminho', () => {
+  const { w, A, B } = setup('brotossauro', { gap: 110 });
+  const z = Forge.dropCoal(w, A, A.x + 55, A.y);
   z.age = 1;
-  let hits = 0, caught = false, blasts = 0;
-  assert(cast(w, A, 'emberRing'), 'não lançou');
-  for (let k = 0; k < 3 / DT && !caught; k++) {
-    w.step(DT);
-    for (const e of w.drainEvents()) {
-      if (e.type === 'hit' && e.m === B && e.tag === 'emberRing') hits++;
-      if (e.type === 'boomerangCatch') caught = true;
-      if (e.type === 'explosion') blasts++;
-    }
-  }
-  assert(hits === 2, `esperava 2 acertos (ida e volta), veio ${hits}`);
-  assert(caught, 'bumerangue não voltou');
-  assert(z.life <= 0 && blasts >= 1, 'não detonou a brasa no caminho');
+  let blasts = 0;
+  assert(cast(w, A, 'flameJet', { aimPoint: { x: B.x, y: B.y } }), 'não usou');
+  for (let k = 0; k < 1.6 / DT; k++) { w.step(DT); for (const e of w.drainEvents()) if (e.type === 'explosion') blasts++; }
+  assert(B.hp < B.maxHp - 6, `jato quase não feriu (${(B.maxHp - B.hp).toFixed(1)})`);
+  assert(z.life <= 0 && blasts >= 1, 'jato não detonou a brasa no caminho');
+  let lit = 0;
+  for (let x = A.x + 20; x < B.x; x += 8) if (w.terrain.fire[w.terrain.at(x, A.y)] > 0 || w.terrain.soot[w.terrain.at(x, A.y)] > 0) lit++;
+  assert(lit > 0, 'jato não acendeu o chão');
 });
 
 test('Recuo Arredio: salta PARA TRÁS (contra a mira), invulnerável, deixando 2 brasas onde estava', () => {
@@ -207,7 +202,7 @@ test('Partida inteira com a Brasalinha (IA): usa as habilidades, espalha e recol
     assert(w.over, `partida em ${arena} não terminou`);
   }
   assert(drops > 5 && picks > 0, `brasas: ${drops} caíram, ${picks} recolhidas`);
-  for (const id of ['coalShot', 'emberRing', 'ignition']) assert(casts.has(id), `IA nunca usou ${id}`);
+  for (const id of ['coalShot', 'flameJet', 'ignition']) assert(casts.has(id), `IA nunca usou ${id}`);
 });
 
 let fails = 0;

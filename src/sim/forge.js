@@ -5,9 +5,11 @@
 //  · Centelha Ativa / Forja Ardente (assinatura): passar por cima de uma brasa sua a RECOLHE e guarda uma CENTELHA:
 //    o próximo tiro sai INCANDESCENTE (maior, explode em área). A Brasalinha ganha velocidade; o Fornalhonte, couraça.
 //  · Ignição / Erupção da Forja (E): todas as suas brasas explodem de uma vez, e uma explosão sai em volta de você.
-//  · Bumerangue de Brasa (Q da base): vai e volta, fere na ida e na volta e detona as suas brasas por onde passa.
+//  · Jato de Fogo (Q da base): raio de fogo contínuo (como o Hidro-Raio): queima, acende o chão e DETONA as
+//    brasas que atravessa.
 //  · Salva das Chaminés (Q do Fornalhonte): três bombas de magma em arco; cada uma deixa uma brasa.
-import { clamp } from '../core/math.js';
+import { clamp, pointSeg } from '../core/math.js';
+import { isGuarding } from './signature.js';
 import { WORLD_W, WORLD_H } from '../config.js';
 
 export const FORGE = {
@@ -15,10 +17,9 @@ export const FORGE = {
   life: 9, // segundos até a brasa apagar sozinha
   popR: 15, // raio do estouro de quem pisa
   chainK: 0.4, // mesma explosão de Ignição pegando o mesmo alvo de novo: só 40% do dano
-  boomerangLife: 2.6,
 };
 
-export const KINDS = new Set(['coalRock', 'boomerang']);
+export const KINDS = new Set(['coalRock']);
 export const sparkMax = (m) => m.def.sig?.sparkMax ?? 2;
 const coalMax = (m) => m.def.sig?.coalMax ?? 5;
 const isForge = (m) => m?.def?.sig?.kind === 'forge';
@@ -108,41 +109,33 @@ export function shoot(w, m, a, s) {
   });
 }
 
-// Bumerangue: vai até `out` px, desacelerando, e volta acelerando até a dona.
-export function boomerang(w, m, a, o) {
-  const ang = a.aim;
-  w.spawnProjectile({
-    kind: 'boomerang', tag: a.ab.id, owner: m, ang, speed: o.speed, base: o.speed, r: o.r, range: 9999, out: o.out, dmg: o.dmg, pierce: true,
-    x: m.x + Math.cos(ang) * (m.r + 4), y: m.y + Math.sin(ang) * (m.r + 4) - 4,
-  });
-}
-
-// Chamado antes de mover o projétil (como o teleguiado psíquico).
-export function steer(w, p, dt) {
-  if (p.kind !== 'boomerang') return;
-  const o = p.owner;
-  if (p.age > FORGE.boomerangLife || !o.alive || !o.onField) { p.dead = true; w.emit({ type: 'boomerangEnd', x: p.x, y: p.y }); return; }
-  if (!p.back) {
-    const k = clamp(p.traveled / p.out, 0, 1);
-    const sp = p.base * (1 - 0.75 * k);
-    const ang = Math.atan2(p.vy, p.vx);
-    p.vx = Math.cos(ang) * sp; p.vy = Math.sin(ang) * sp;
-    if (k >= 1) { p.back = true; p.hitSet = new Set(); p.backT = 0; } // na volta, pode acertar de novo
-  } else {
-    p.backT += dt;
-    const dx = o.x - p.x, dy = o.y - 6 - p.y, d = Math.hypot(dx, dy);
-    if (d < o.r + 6) { p.dead = true; w.emit({ type: 'boomerangCatch', m: o, x: o.x, y: o.y }); return; }
-    const sp = Math.min(p.base * 1.15, p.base * (0.25 + p.backT * 2.4));
-    p.vx = dx / d * sp; p.vy = dy / d * sp;
+// Jato de Fogo: raio contínuo da boca até a primeira parede/obstáculo (mesmo traçado do Hidro-Raio).
+// Queima quem está na linha (empurra de leve), acende o chão e DETONA as brasas que atravessa.
+export function jetTick(w, m, a, ab, dt) {
+  const ox = m.x + Math.cos(a.aim) * (m.r + 1), oy = m.y + Math.sin(a.aim) * (m.r + 1) - 4;
+  const L = w.raycast(ox, oy, a.aim, ab.range);
+  const b = a.data.beam = { ox, oy, ex: ox + Math.cos(a.aim) * L.len, ey: oy + Math.sin(a.aim) * L.len };
+  const ca = Math.cos(a.aim), sa = Math.sin(a.aim);
+  for (const t of w.enemiesOf(m)) {
+    if (pointSeg(t.x, t.y, b.ox, b.oy, b.ex, b.ey).d > ab.width + t.r) continue;
+    w.damage(t, ab.dps * dt, m, { dot: true, burn: 1.2, element: 'fire', tag: ab.id });
+    if (!isGuarding(t)) { t.kx += ca * 220 * dt; t.ky += sa * 220 * dt; }
   }
-  // Passou por uma brasa sua: detona.
+  a.data.acc = (a.data.acc || 0) + dt;
+  if (a.data.acc >= 0.08) {
+    a.data.acc -= 0.08;
+    for (let s = 6; s <= L.len; s += 7) if (w.rng() < 0.35) w.igniteTile(w.terrain.at(b.ox + ca * s, b.oy + sa * s), 1.2, m);
+    if (L.hit && L.hit.flammable && !L.hit.destroyed) { w.igniteObstacle(L.hit, m); w.hurtObstacle(L.hit, 2, m); }
+    w.popDecoysIn(b.ex, b.ey, 8, m.team);
+  }
   for (const z of w.zones) {
-    if (z.kind !== 'coal' || z.owner !== o || z.life <= 0 || z.age < 0.15) continue;
-    if (Math.hypot(z.x - p.x, z.y - p.y) > z.r + p.r + 4) continue;
+    if (z.kind !== 'coal' || z.owner !== m || z.life <= 0 || z.age < 0.15) continue;
+    if (pointSeg(z.x, z.y, b.ox, b.oy, b.ex, b.ey).d > ab.width + z.r) continue;
     z.life = 0;
-    p.chain ||= new Map();
-    blast(w, o, z.x, z.y, z.big ? 28 : 24, o.def.sig?.chainDmg ?? 7, { tag: 'bumerangue', stun: 0.1 }, p.chain);
+    a.data.chain ||= new Map();
+    blast(w, m, z.x, z.y, z.big ? 28 : 24, m.def.sig?.chainDmg ?? 7, { tag: ab.id, stun: 0.1 }, a.data.chain);
   }
+  for (const p of w.projectiles) if (!p.dead && !p.lob && p.kind === 'waterBolt' && p.team !== m.team && pointSeg(p.x, p.y, b.ox, b.oy, b.ex, b.ey).d < ab.width + p.r) w.clash(p, null);
 }
 
 // Ignição / Erupção da Forja: explode todas as brasas e solta uma explosão em volta de si.
@@ -204,10 +197,6 @@ export function shyLeapStart(w, m, a, o) {
 export function projectileHit(w, p, t) {
   const ang = Math.atan2(p.vy, p.vx);
   const base = { ang, x: p.x, y: p.y, proj: true, element: 'fire', tag: p.tag || p.kind };
-  if (p.kind === 'boomerang') {
-    w.damage(t, p.dmg, p.owner, { ...base, burn: 1, kb: p.back ? -60 : 80, stun: 0.05 });
-    return;
-  }
   w.damage(t, p.dmg, p.owner, { ...base, burn: p.hot ? 1.6 : 0.5, kb: p.hot ? 120 : 50, stun: p.hot ? 0.18 : 0, big: !!p.hot });
   if (p.hot) blast(w, p.owner, t.x, t.y, p.hot.R, p.hot.dmg, { tag: p.tag, kb: 120, big: true }, null, t);
   // A brasa cai aos pés do alvo, um pouco para o lado de quem atirou.
@@ -216,11 +205,6 @@ export function projectileHit(w, p, t) {
 
 // solid: bateu em obstáculo/parede (não só acabou o alcance).
 export function projectileEnd(w, p, o, solid) {
-  if (p.kind === 'boomerang') {
-    if (o) w.hurtObstacle(o, p.dmg);
-    w.emit({ type: 'boomerangEnd', x: p.x, y: p.y });
-    return;
-  }
   const ang = Math.atan2(p.vy, p.vx);
   if (o) { w.hurtObstacle(o, p.dmg); if (o.flammable && !o.destroyed) w.igniteObstacle(o, p.owner); }
   if (p.hot) blast(w, p.owner, p.x, p.y, p.hot.R, p.hot.dmg, { tag: p.tag, kb: 120, big: true });

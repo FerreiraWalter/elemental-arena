@@ -523,9 +523,9 @@ export const TACTICS = {
   forgeShot(c) { return coalShot(c, 170); },
   smokeTail(c) { return tailPeel(c, 18); },
   forgeStomp(c) { return tailPeel(c, 24); },
-  emberRing(c) {
-    if (!c.vis || c.d < 24 || c.d > 175 || c.tGuarding) return null;
-    return { score: 0.58 + coalsNear(c, c.t, 40) * 0.08 + (c.tSpeed < 25 ? 0.1 : 0), target: c.t };
+  flameJet(c) {
+    if (!c.vis || c.d < 24 || c.d > 170 || c.tGuarding) return null;
+    return { score: 0.6 + coalsNear(c, c.t, 40) * 0.08 + (c.tBusy ? 0.25 : 0) + (c.tSpeed < 25 ? 0.1 : 0), target: c.t };
   },
   chimneyVolley(c) {
     if (c.d < 50 || c.d > 220 || c.sinceSeen > 1) return null;

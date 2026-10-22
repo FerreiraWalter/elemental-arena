@@ -1,4 +1,4 @@
-// Efeitos da forja (Brasalinha / Fornalhonte): brasas no chão, pedras em brasa, bumerangue, bombas e eventos.
+// Efeitos da forja (Brasalinha / Fornalhonte): brasas no chão, pedras em brasa, jato de fogo, bombas e eventos.
 import { hash2 } from '../core/math.js';
 import { rgba } from './pixel.js';
 
@@ -50,18 +50,31 @@ export function drawCoalRock(g, p, x, y, t, particles) {
   if (Math.random() < (hot ? 0.5 : 0.15)) particles.add({ ramp: 'smoke', x, y: hy, vz: 8, life: 0.7, size: 2, grow: 2, alpha: 0.4 });
 }
 
-// Bumerangue de brasa: anel de fogo girando (quatro "pás" em volta de um centro escuro).
-export function drawBoomerang(g, p, x, y, t, particles) {
-  const R = Math.round(p.r), hy = y - 5, spin = t * 22 + p.id;
-  for (let q = 0; q < 28; q++) {
-    const a = (q / 28) * Math.PI * 2 + spin;
-    const blade = Math.cos(a * 2) > 0.2;
-    const rr = blade ? R : R - 2;
-    g.set(x + Math.cos(a) * rr, hy + Math.sin(a) * rr * 0.7, blade ? LAVA[q % 2] : LAVA[3]);
-    if (blade) g.set(x + Math.cos(a) * (rr - 1), hy + Math.sin(a) * (rr - 1) * 0.7, LAVA[2]);
+// Jato de fogo: núcleo quase branco, bordas amarelo → laranja → vermelho, largura ondulando como labareda; a ponta
+// abre em leque de faíscas onde bate. Some suave no último 0,15 s.
+export function drawFlameJet(g, b, ab, a, t, particles) {
+  const L = Math.hypot(b.ex - b.ox, b.ey - b.oy), ca = (b.ex - b.ox) / (L || 1), sa = (b.ey - b.oy) / (L || 1);
+  const fade = Math.min(1, (ab.active - a.t) / 0.15, a.t / 0.08);
+  for (let s = 0; s <= L; s += 0.8) {
+    const wob = Math.sin(s * 0.3 - t * 34) * 1.3 + Math.sin(s * 0.11 + t * 9) * 0.8;
+    const W = (3.2 + Math.sin(s * 0.45 - t * 46) * 1.1 + s / L * 1.6) * fade;
+    for (let q = -W; q <= W; q += 0.8) {
+      const k = 1 - Math.abs(q) / (W + 0.01);
+      const ci = k > 0.82 ? 0 : k > 0.6 ? 1 : k > 0.35 ? 2 : k > 0.15 ? 3 : 4;
+      g.set(b.ox + ca * s - sa * (q + wob), b.oy + sa * s + ca * (q + wob), LAVA[ci]);
+    }
   }
-  g.set(x, hy, ROCK[1]); g.set(x + 1, hy, ROCK[2]);
-  if (Math.random() < 0.7) { const a = Math.random() * 6.28; particles.add({ ramp: 'fire', x: x + Math.cos(a) * R, y: hy + Math.sin(a) * R * 0.7, vz: 15, life: 0.3, add: true }); }
+  particles.burst(b.ex, b.ey, 2, { ramp: 'fire', speed: 80, life: 0.3, add: true, vz: 40 });
+  if (Math.random() < 0.6) { const s = Math.random() * L; particles.add({ ramp: 'fire', x: b.ox + ca * s, y: b.oy + sa * s, vx: -sa * 30 * (Math.random() - 0.5), vy: -20, vz: 30, life: 0.35, add: true }); }
+  if (Math.random() < 0.25) particles.add({ ramp: 'smoke', x: b.ex, y: b.ey, vz: 20, life: 0.8, size: 2, grow: 2, alpha: 0.4 });
+}
+
+// Preparação do jato: brasa crescendo na boca e faíscas sendo sugadas para ela.
+export function drawJetCharge(g, m, a, ab, t, particles) {
+  const r = 1 + (a.t / ab.windup) * 3.5;
+  const x = m.x + Math.cos(a.aim) * (m.r + 2), y = m.y + Math.sin(a.aim) * (m.r + 2) - 4;
+  for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) { const d = Math.hypot(dx, dy); if (d <= r) g.set(x + dx, y + dy, LAVA[Math.min(4, Math.floor((d / r) * 3.5))]); }
+  if (Math.random() < 0.7) { const an = Math.random() * 6.28; particles.add({ ramp: 'fire', x: x + Math.cos(an) * 14, y: y + Math.sin(an) * 14, vx: -Math.cos(an) * 60, vy: -Math.sin(an) * 60, life: 0.22, drag: 0, add: true }); }
 }
 
 // Bomba de magma das chaminés: sombra crescendo no chão + rocha em brasa no alto deixando fumaça.
@@ -108,12 +121,6 @@ export function onEvent(r, e, P) {
       break;
     case 'smokePuff':
       P.burst(e.x, e.y - 4, 14, { ramp: 'smoke', speed: 30, life: 1, vz: 20, size: 2, grow: 3, alpha: 0.6 });
-      break;
-    case 'boomerangEnd':
-      P.burst(e.x, e.y - 4, 8, { ramp: 'fire', speed: 50, life: 0.3, add: true });
-      break;
-    case 'boomerangCatch':
-      P.burst(e.x, e.y - 6, 6, { ramp: 'spark', speed: 40, life: 0.25, add: true });
       break;
   }
 }
