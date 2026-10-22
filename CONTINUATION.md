@@ -101,6 +101,15 @@ Feedback: iPhone travava ao confirmar o time; HUD grande e arena pequena (notebo
 - **FPS:** fogo no chão com brasas escritas direto no buffer (`PixelBuf.mark`) e menos chamas em incêndio grande; água recalculada 1/6 por quadro e brasas em 8 turmas (antes tudo no mesmo quadro → picos periódicos). A/B no mesmo navegador: Jardim em chamas média 18,9 → 14,7 ms, p99 38 → 26; Abismo p99 34 → 17, máx 45 → 19. **Qualidade gráfica** (AUTOMÁTICA / ALTA / LEVE, `settings.quality`): teto de pixels do canvas (retina pesava) e, na automática, desce de degrau se >25% dos quadros passam de 25 ms em 3 s; no último degrau liga `renderer.lowFx` (menos chamas, 400 partículas).
 - NÃO testado em aparelho real (só emulação de tamanho no navegador do PC). Conferir no iPhone/iPad: fluxo time → arenas, câmera seguindo, botões de toque.
 
+## 6h. Rework da Brasalinha e arenas novas (2026-10-22)
+- **Brasalinha → Fornalhonte** (chave interna continua `brasalisco`/`brasaliscoAscendido`): kit 100% novo de longe, sem a Fornalha (calor/superaquecer/exaustão saíram do jogo inteiro). Mecânica `forge` em `src/sim/forge.js` (brasas = zonas `coal`, centelhas, Ignição, bumerangue, salva, tranco), desenho em `src/render/forgefx.js`, sprites `forge_1/forge_3` recortados por `tools/extract_forja.py` de `assets/source/brasalinha.webp`. Testes em `test/brasalinha.mjs`.
+- Equilíbrio medido (IA × IA, poucos seeds): base ~56–63%, evoluído ~55–61%. A Rabada/Pisão empurram para fora (golpe `radial`).
+- **Terra Rachada** (`terra`): `RisingWall` sobe paredes (`w.walls`, tipo `earth`) em horários fixos; o cliente recria por `sync()`; o chão pinta a parede quando termina de subir (`paintRisenWalls`).
+- **Atlântida** (`atlantida`, `asymmetric`, `scroll`): `Tsunami` contínua (início 10 s, 8 px/s, para em x 700) alaga colunas de tiles e arrasta quem não nada; câmera rola (`layout`). `Kraken` = obstáculo `kraken` + perigo; vida/dano/ritmo por modo em `KRAKEN`; golpe final dá cura e energia.
+- Tela de arena em grade 3×2. Não testado em aparelho real.
+- Rodada seguinte: Brasalinha manteve o corpo da 1ª arte e ganhou máscara de dragão desenhada à mão (`HEADS` em `tools/extract_forja.py`); Fornalhonte é o dragão alado de `assets/source/brasalinha2.webp`. Coliseu da Atlântida virou super arena (raio 236, Kraken no centro, onda para em x 556); Kraken acorda aos 5 s, arremessa em todo o mapa, tem tentáculo (`krakenArm`) e fúria abaixo de 50%.
+- Celular: tela de time compacta (`teamCardCompact`/`teamDetail`, 2 colunas em pé). Canvas dimensionado pelo tamanho real na página e conferido a cada quadro (bug do iPhone que exigia girar a tela); página fixa (`position: fixed; inset: 0`).
+
 ## 7. Próximos passos (ordem)
 1. Confirmar no navegador real (com GPU) a HUD nova em 1280×720 e em janelas menores; o painel de testes desta sessão não renderizava em segundo plano.
 2. Extremos de confronto (ver 6c) — decidir se mexe em mecânica.

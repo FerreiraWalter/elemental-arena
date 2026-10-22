@@ -251,6 +251,9 @@ export class UI {
     this.fade = Math.max(0, this.fade - dt * 4);
     const c = this.c, W = this.canvas.width, H = this.canvas.height;
     const u = Math.max(1, Math.min(W / 760, H / 520)) ;
+    // Celular (lado menor da tela < 500 px CSS): telas com muito texto usam um layout compacto, letra maior.
+    this.phone = Math.min(W, H) / (dpr || 1) < 500;
+    this.portrait = H > W * 1.05;
     this.buttons = [];
     // Fundo: luta de demonstração escurecida.
     this.ensureDemo();
@@ -400,15 +403,22 @@ export class UI {
   }
 
   renderTeam(u, W, H) {
+    // Celular em pé: a escala segue a largura (~400 de largura lógica, 2 colunas), não a altura.
+    if (this.phone && this.portrait) u = Math.max(u, W / 400);
     const c = this.c, cx = W / 2;
     const training = this.flow === 'training', editing = this.flow === 'mpEdit';
     // Saiu da sala (conexão caiu ou partida começou) enquanto editava: nada a confirmar.
     if (editing && !this.mp.room) { this.flow = 'mp'; this.go('menu'); return; }
     text(c, editing ? `TROCAR TIME · SALA ${this.mp.room.code}` : this.flow === 'mp' ? 'SEU TIME PARA O ONLINE' : training ? 'TREINAMENTO' : 'MONTE SEU TIME', cx, 30 * u, 13, '#ffe9b0', 'center', u);
-    text(c, training ? 'Escolha de 1 a 3 monstros para treinar contra bonecos de pano (troque com 1/2/3).' : `Escolha 3 dos ${ROSTER.length} monstros, na ordem em que vão entrar (o 1º começa em campo).`, cx, 46 * u, 6, '#d8ccb0', 'center', u);
-    const gap = 8 * u, top = 56 * u, btnH = 28 * u, btnY = H - btnH - 10 * u, orderH = 30 * u;
-    const avail = btnY - orderH - 10 * u - top;
-    const COLS = ROSTER.length > 8 ? 5 : ROSTER.length > 6 ? 4 : 3, ROWS = Math.ceil(ROSTER.length / COLS);
+    // Celular: cartões só com arte, nome e elemento (letra maior) e um painel embaixo com a mecânica do monstro
+    // tocado. Antes os 10 cartões com todos os textos ficavam com letra de ~3 px num celular deitado.
+    const compact = this.phone;
+    if (!compact) text(c, training ? 'Escolha de 1 a 3 monstros para treinar contra bonecos de pano (troque com 1/2/3).' : `Escolha 3 dos ${ROSTER.length} monstros, na ordem em que vão entrar (o 1º começa em campo).`, cx, 46 * u, 6, '#d8ccb0', 'center', u);
+    const gap = (compact ? 5 : 8) * u, top = (compact ? 40 : 56) * u, btnH = 28 * u, btnY = H - btnH - 10 * u, orderH = 30 * u;
+    const detailH = compact ? (this.portrait ? 70 : 48) * u : 0;
+    const avail = btnY - orderH - 10 * u - top - detailH;
+    const COLS = compact && this.portrait ? (W / u < 420 ? 2 : 3) : ROSTER.length > 8 ? 5 : ROSTER.length > 6 ? 4 : 3, ROWS = Math.ceil(ROSTER.length / COLS);
+    const focus = SPECIES[this.teamFocus] ? this.teamFocus : this.team[this.team.length - 1] || ROSTER[0];
     const ch = Math.floor((avail - gap * (ROWS - 1)) / ROWS);
     const cw = Math.min(Math.floor((W - 24 * u - gap * (COLS - 1)) / COLS), 240 * u);
     const x0 = cx - (cw * COLS + gap * (COLS - 1)) / 2;
@@ -417,7 +427,11 @@ export class UI {
       const x = x0 + (k % COLS) * (cw + gap), y = top + Math.floor(k / COLS) * (ch + gap);
       const idx = this.team.indexOf(key);
       const hover = this.mouse.x >= x && this.mouse.x <= x + cw && this.mouse.y >= y && this.mouse.y <= y + ch;
-      panel(c, x, y, cw, ch, u, idx >= 0 ? '#ffd23a' : hover ? ELEMENT_COLOR[def.element] : '#5a4636');
+      panel(c, x, y, cw, ch, u, idx >= 0 ? '#ffd23a' : hover || (compact && key === focus) ? ELEMENT_COLOR[def.element] : '#5a4636');
+      if (compact) {
+        this.teamCardCompact(def, key, k, x, y, cw, ch, idx, u);
+        return;
+      }
       const model = this.art.models[def.sprite];
       const scale = Math.max(1, Math.min(3, Math.floor((ch * 0.4) / (model ? model.h : 36))));
       const artH = (model ? model.h : 36) * scale;
@@ -457,19 +471,58 @@ export class UI {
     });
     // Ordem escolhida.
     const sy = top + ROWS * ch + (ROWS - 1) * gap + 8 * u;
+    if (compact) this.teamDetail(SPECIES[focus], cx, sy + orderH, Math.min(W - 24 * u, 720 * u), detailH - 4 * u, u);
     for (let k = 0; k < 3; k++) {
       const key = this.team[k];
-      const x = cx + (k - 1) * 128 * u - 54 * u;
-      panel(c, x, sy, 108 * u, 22 * u, u, key ? ELEMENT_COLOR[SPECIES[key].element] : '#3a302a');
-      text(c, `${k + 1}º ${key ? SPECIES[key].name : '—'}`, x + 54 * u, sy + 15 * u, fitSize(c, `${k + 1}º ${key ? SPECIES[key].name : '—'}`, 6, 100 * u, u), key ? '#fff' : '#776', 'center', u);
+      const sw = Math.min(108 * u, (W - 32 * u) / 3 - 8 * u), x = cx + (k - 1) * (sw + 20 * u) - sw / 2;
+      panel(c, x, sy, sw, 22 * u, u, key ? ELEMENT_COLOR[SPECIES[key].element] : '#3a302a');
+      text(c, `${k + 1}º ${key ? SPECIES[key].name : '—'}`, x + sw / 2, sy + 15 * u, fitSize(c, `${k + 1}º ${key ? SPECIES[key].name : '—'}`, compact ? 7 : 6, sw - 8 * u, u), key ? '#fff' : '#776', 'center', u);
     }
-    this.button(cx - 250 * u, btnY, 150 * u, btnH, editing ? 'CANCELAR' : 'VOLTAR', () => { if (editing) { this.flow = 'mp'; this.go('lobby'); } else this.go('menu'); }, { back: true, color: '#aa9' });
-    this.button(cx - 75 * u, btnY, 150 * u, btnH, 'ALEATÓRIO', () => { this.team = [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3); }, { color: '#e8b8ff' });
+    const bw = Math.min(150 * u, (W - 40 * u) / 3), bgap = Math.min(25 * u, (W - bw * 3) / 4);
+    this.button(cx - bw * 1.5 - bgap, btnY, bw, btnH, editing ? 'CANCELAR' : 'VOLTAR', () => { if (editing) { this.flow = 'mp'; this.go('lobby'); } else this.go('menu'); }, { back: true, color: '#aa9' });
+    this.button(cx - bw / 2, btnY, bw, btnH, 'ALEATÓRIO', () => { this.team = [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3); }, { color: '#e8b8ff' });
     const next = () => {
       if (editing) { this.hooks.mpSend({ t: 'team', team: [...this.team] }); this.flow = 'mp'; this.go('lobby'); }
       else this.go(this.flow === 'mp' ? 'mp' : 'arena');
     };
-    this.button(cx + 100 * u, btnY, 150 * u, btnH, editing ? 'CONFIRMAR' : 'CONTINUAR', next, { disabled: training ? this.team.length < 1 : this.team.length !== 3 });
+    this.button(cx + bw / 2 + bgap, btnY, bw, btnH, editing ? 'CONFIRMAR' : 'CONTINUAR', next, { disabled: training ? this.team.length < 1 : this.team.length !== 3 });
+  }
+
+  // Cartão compacto (celular): arte grande, nome, elemento e a ordem escolhida. Tocar escolhe/tira e mostra os
+  // detalhes no painel de baixo.
+  teamCardCompact(def, key, k, x, y, cw, ch, idx, u) {
+    const c = this.c, model = this.art.models[def.sprite];
+    const textH = 28 * u;
+    const scale = Math.max(1, Math.min(3, Math.floor((ch - textH - 8 * u) / (model ? model.h : 36))));
+    const artH = (model ? model.h : 36) * scale;
+    this.drawMonsterArt(def, x + cw / 2, y + 4 * u + Math.min(artH, ch - textH - 4 * u), scale, k);
+    const name = def.name.toUpperCase();
+    text(c, name, x + cw / 2, y + ch - 16 * u, fitSize(c, name, 9, cw - 8 * u, u), ELEMENT_COLOR[def.element], 'center', u);
+    const sub = `${ELEMENT_NAME[def.element]} · ${def.profile.personality}`;
+    text(c, sub, x + cw / 2, y + ch - 6 * u, fitSize(c, sub, 6, cw - 8 * u, u), '#d8ccb0', 'center', u);
+    if (idx >= 0) {
+      c.fillStyle = '#ffd23a'; c.fillRect(x + 4 * u, y + 4 * u, 18 * u, 18 * u);
+      text(c, String(idx + 1), x + 13 * u, y + 18 * u, 10, '#140c08', 'center', u, false);
+    }
+    if (def.difficulty) diffMarks(c, def.difficulty, x + cw - 6 * u, y + 12 * u, u, 'right');
+    this.button(x, y, cw, ch, '', () => {
+      this.teamFocus = key;
+      if (idx >= 0) this.team.splice(idx, 1);
+      else if (this.team.length < 3) this.team.push(key);
+    }, { custom: true });
+  }
+
+  // Painel de detalhes do monstro tocado (celular): mecânica, como joga e o ponto fraco.
+  teamDetail(def, cx, y, w, h, u) {
+    const c = this.c, x = cx - w / 2;
+    if (h < 20 * u) return;
+    panel(c, x, y, w, h, u, ELEMENT_COLOR[def.element]);
+    const head = `${def.name.toUpperCase()} → ${SPECIES[def.evolvesTo]?.name || ''}   ·   ${def.sig ? def.sig.name.toUpperCase() : ''}`;
+    text(c, head, x + 8 * u, y + 13 * u, fitSize(c, head, 7, w - 16 * u, u), SIG_COLOR[def.sig?.kind] || '#ffe9b0', 'left', u);
+    const body = def.sig?.desc || def.traits.join(' · ');
+    const lines = wrap(c, body, 6, w - 16 * u, u);
+    const room = Math.max(1, Math.floor((h - 18 * u) / (9 * u)));
+    lines.slice(0, room).forEach((ln, j) => text(c, ln, x + 8 * u, y + 24 * u + j * 9 * u, 6, '#e8dcc0', 'left', u));
   }
 
   // ───────────── Multiplayer: criar / entrar em sala ─────────────
@@ -597,10 +650,11 @@ export class UI {
     const descH = 24 * u;
     const top = 44 * u, bottom = btnY - descH - 8 * u;
     const gap = 8 * u;
-    const cols = 2, rows = 2;
+    const cols = ids.length > 4 ? 3 : 2, rows = Math.ceil(ids.length / cols);
     const ch = Math.floor((bottom - top - gap * (rows - 1)) / rows);
     const cwMax = Math.floor((Math.min(W - 24 * u, 1100 * u) - gap * (cols - 1)) / cols);
-    const textH = 56 * u; // nome + subtítulo + 2 linhas de recursos
+    // Celular: só nome e subtítulo (maiores); os recursos ficavam com letra de ~2 px e vazavam do cartão.
+    const textH = (this.phone ? 30 : rows > 2 ? 40 : 56) * u; // nome + subtítulo + linhas de recursos
     // Prévia 16:9 que cabe na altura e na largura do cartão.
     let ph = Math.min(ch - textH - 8 * u, (cwMax - 12 * u) * 9 / 16);
     ph = Math.max(40 * u, ph);
@@ -618,9 +672,10 @@ export class UI {
         c.fillStyle = 'rgba(10,8,6,0.7)'; c.fillRect(x + (cw - pw) / 2, y + 6 * u, pw, ph);
         text(c, 'CARREGANDO' + '.'.repeat(1 + (Math.floor(this.time * 3) % 3)), x + cw / 2, y + 6 * u + ph / 2, 6, '#bba', 'center', u);
       }
-      const ty = y + ph + 20 * u;
-      text(c, A.name.toUpperCase(), x + 8 * u, ty, fitSize(c, A.name.toUpperCase(), 7, cw - 16 * u, u), sel ? '#ffd23a' : '#f4ead0', 'left', u);
-      text(c, A.subtitle, x + 8 * u, ty + 11 * u, fitSize(c, A.subtitle, 5, cw - 16 * u, u), '#bba', 'left', u);
+      const ty = y + ph + (this.phone ? 18 : 20) * u;
+      text(c, A.name.toUpperCase(), x + 8 * u, ty, fitSize(c, A.name.toUpperCase(), this.phone ? 9 : 7, cw - 16 * u, u), sel ? '#ffd23a' : '#f4ead0', 'left', u);
+      text(c, A.subtitle, x + 8 * u, ty + (this.phone ? 12 : 11) * u, fitSize(c, A.subtitle, this.phone ? 6.5 : 5, cw - 16 * u, u), '#bba', 'left', u);
+      if (this.phone) { this.button(x, y, cw, ch, '', () => { this.arena = id; }, { custom: true }); return; }
       // Recursos em linhas curtas (cortadas ao espaço disponível).
       let ly = ty + 22 * u;
       for (const f of A.features) {
@@ -632,7 +687,8 @@ export class UI {
     });
     const A = this.arena && ARENAS[this.arena];
     const desc = A ? A.description : 'Clique em uma arena para selecioná-la.';
-    wrap(c, desc, 5.5, Math.min(W - 40 * u, 700 * u), u).slice(0, 2).forEach((ln, k) => text(c, ln, cx, bottom + 16 * u + k * 10 * u, 5.5, '#e8dcc0', 'center', u));
+    const dsz = this.phone ? 6.5 : 5.5;
+    wrap(c, desc, dsz, Math.min(W - 40 * u, 700 * u), u).slice(0, 2).forEach((ln, k) => text(c, ln, cx, bottom + 16 * u + k * 10 * u, dsz, '#e8dcc0', 'center', u));
     this.button(cx - 170 * u, btnY, 150 * u, btnH, 'VOLTAR', () => this.go('team'), { back: true, color: '#aa9' });
     const tr = this.flow === 'training';
     if (!tr) this.button(W - 214 * u, 12 * u, 202 * u, 22 * u, this.ffaLocal ? 'MODO: 1v1v1v1 (você + 3 IAs)' : 'MODO: 1v1 (contra 1 IA)', () => { this.ffaLocal = !this.ffaLocal; }, { color: this.ffaLocal ? '#ff5a8a' : '#ff8a3a', size: 6 });
@@ -827,7 +883,7 @@ export class UI {
     }
     // Como ler a tela.
     y += 4 * u;
-    const legend = [['stun', 'atordoado'], ['root', 'preso'], ['burn', 'queimando'], ['wet', 'molhado'], ['exhaust', 'exausto'], ['cloak', 'camuflado']];
+    const legend = [['stun', 'atordoado'], ['root', 'preso'], ['burn', 'queimando'], ['wet', 'molhado'], ['slow', 'lento'], ['cloak', 'camuflado']];
     let lx = x + 8 * u;
     for (const [k2, name] of legend) { statusIcon(c, k2, lx, y - 6 * u, 8 * u); text(c, name, lx + 10 * u, y, 5, '#e8dcc0', 'left', u); lx += 64 * u; if (lx > x + pw - 60 * u) { lx = x + 8 * u; y += 12 * u; } }
     y += 14 * u;

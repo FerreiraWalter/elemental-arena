@@ -136,8 +136,7 @@ export function statusIcon(c, kind, x, y, s) {
     case 'root': P(1, 1, 1, 4, '#7ad84a'); P(3, 2, 1, 3, '#5a3a1a'); P(4.5, 1, 1, 4, '#7ad84a'); P(1, 4, 4.5, 1, '#5a3a1a'); break;
     case 'stun': P(1, 1, 1, 1, '#ffe066'); P(4, 2, 1, 1, '#ffe066'); P(2, 4, 1, 1, '#ffe066'); P(3, 3, 1, 1, '#ffffff'); break;
     case 'shield': P(1, 1, 4, 4, '#8fd8ff'); P(2, 2, 2, 2, 'rgba(10,6,4,0.9)'); break;
-    case 'overheat': P(1, 1, 1, 4, '#ffd84a'); P(4, 1, 1, 4, '#ffd84a'); P(2.5, 2, 1, 3, '#ff7a1a'); break;
-    case 'exhaust': P(1, 1, 4, 1, '#c8b8a0'); P(3, 2, 1, 1, '#c8b8a0'); P(2, 3, 1, 1, '#c8b8a0'); P(1, 4, 4, 1, '#c8b8a0'); break;
+    case 'haste': P(1, 1.5, 2, 1, '#ffb040'); P(0.5, 3, 3, 1, '#ffd84a'); P(1, 4.5, 2, 1, '#ffb040'); P(3.5, 2, 1.5, 2.5, '#ff7a1a'); break;
     case 'cloak': P(1, 2, 4, 3, '#6a5aa0'); P(2, 3, 1, 1, '#ffffff'); P(3.5, 3, 1, 1, '#ffffff'); break;
     case 'charged': P(3, 0.5, 1, 2, '#ffe066'); P(2, 2.5, 2, 1, '#ffe066'); P(2, 3.5, 1, 2, '#ffe066'); break;
     case 'slow': P(1, 1, 4, 1, '#9be862'); P(1.5, 2, 1, 2, '#9be862'); P(3.5, 2, 1, 3, '#5aa83c'); P(2.5, 4, 1, 1, '#c8ff7a'); break;
@@ -148,10 +147,10 @@ export function statusIcon(c, kind, x, y, s) {
   }
 }
 
-export const STATUS_NAME = { burn: 'queimando', wet: 'molhado', root: 'preso', stun: 'atordoado', shield: 'escudo', overheat: 'superaquecido', exhaust: 'exausto', cloak: 'camuflado', charged: 'em disparada', slow: 'lento (seiva/choque)', dr: 'casca (menos dano)', regen: 'regenerando', volt: 'eletrizado', charm: 'hipnotizado' };
+export const STATUS_NAME = { burn: 'queimando', wet: 'molhado', root: 'preso', stun: 'atordoado', shield: 'escudo', haste: 'disparada', cloak: 'camuflado', charged: 'em disparada', slow: 'lento (seiva/choque)', dr: 'casca (menos dano)', regen: 'regenerando', volt: 'eletrizado', charm: 'hipnotizado' };
 export function statusList(m) {
   const st = m.status, out = [];
-  for (const k of ['stun', 'charm', 'root', 'burn', 'wet', 'slow', 'dr', 'shield', 'overheat', 'exhaust', 'cloak']) if (st[k] > 0 && (k !== 'shield' || m.shieldHp > 0)) out.push(k);
+  for (const k of ['stun', 'charm', 'root', 'burn', 'wet', 'slow', 'dr', 'shield', 'haste', 'cloak']) if (st[k] > 0 && (k !== 'shield' || m.shieldHp > 0)) out.push(k);
   if (m.charged) out.push('charged');
   if (m.def?.sig?.kind === 'volt' && m.volt >= (m.def.sig.voltMax ?? 3)) out.push('volt');
   return out;
@@ -246,10 +245,11 @@ function sigGauge(world, m) {
   if (!sig) return null;
   const st = m.status;
   switch (sig.kind) {
-    case 'heat':
-      if (st.exhaust > 0) return { label: `EXAUSTO ${st.exhaust.toFixed(1)}s`, k: st.exhaust / (sig.exhaust ?? SIG.heat.exhaust), color: SIG_COLOR.exhaust, warn: true };
-      if (st.overheat > 0) return { label: `SUPERAQUECIDO ${st.overheat.toFixed(1)}s`, k: st.overheat / SIG.heat.overheat, color: SIG_COLOR.overheat, blink: true };
-      return { label: `CALOR ${Math.round(m.heat)}%`, k: m.heat / 100, color: SIG_COLOR.heat, warn: m.heat > 75 };
+    case 'forge': {
+      const max = sig.sparkMax ?? 2, n = m.spark || 0;
+      const coals = world.zones.filter((z) => z.kind === 'coal' && z.owner === m && z.life > 0).length;
+      return { label: `CENTELHA ${n}/${max} · BRASAS ${coals}`, k: n / max, color: SIG_COLOR.forge, blink: n >= max };
+    }
     case 'momentum':
       return m.charged ? { label: 'EM DISPARADA!', k: 1, color: SIG_COLOR.momentum, blink: true } : { label: `ÍMPETO ${Math.round(m.momentum)}%`, k: m.momentum / 100, color: '#c8a838' };
     case 'guard': {
@@ -342,7 +342,7 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     const cd = m.waitFor ? m.waitFor(ab.id) : m.cd[ab.id];
     const charges = ab.charges ? (m.ch[ab.id] ?? ab.charges) : 0;
     const using = m.action?.ab === ab;
-    const locked = m.status.exhaust > 0 && m.isSpecial?.(ab.id);
+    const locked = false;
     const denied = deny && deny.slot === slot && Math.floor(deny.t * 14) % 2 === 0;
     const off = cd > 0 || locked;
     panel(c, x, y, bw, bh, denied ? '#ff4a4a' : using ? '#ffe066' : off ? '#34405a' : ELEMENT_COLOR[m.element], dpr, 4);
@@ -386,7 +386,7 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
       c.fillRect(x + 2 * dpr, y + 2 * dpr, bw - 4 * dpr, bh - 4 * dpr);
       text(c, 'EXAUSTO', x + bw / 2, y + bh / 2 + 3 * dpr, fit(c, 'EXAUSTO', 5.5, bw - 6 * dpr, dpr), '#d8ccb8', 'center', dpr);
     }
-    if (denied) text(c, deny.reason === 'exhaust' ? 'EXAUSTO' : deny.reason === 'root' ? 'PRESO' : 'RECARGA', x + bw / 2, y - 4 * dpr, 5, '#ff8a8a', 'center', dpr);
+    if (denied) text(c, deny.reason === 'root' ? 'PRESO' : 'RECARGA', x + bw / 2, y - 4 * dpr, 5, '#ff8a8a', 'center', dpr);
     x += bw + gap;
   }
   // Botão de evolução: enche com a energia; pisca quando está pronto.

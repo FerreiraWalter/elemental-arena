@@ -42,7 +42,14 @@ export class NetSmoother {
     if (this.lastRecv) this.jitter = this.jitter * 0.9 + Math.abs(now - this.lastRecv - SNAP_MS) * 0.1;
     this.lastRecv = now;
     this.q.push(s);
-    if (this.q.length > 40) this.q.splice(0, this.q.length - 40);
+    if (this.q.length > 40) {
+      // Aba em segundo plano (no celular: trocou de app, notificação, tela bloqueada): a fila cresce e os mais velhos
+      // saem. O terreno e as mensagens vão só como DIFERENÇAS: junta os dos descartados no mais velho que fica, senão
+      // o que mudou neles (alagamento da tsunami, fogo, grama, raízes) nunca chegaria ao espelho.
+      const dropped = this.q.splice(0, this.q.length - 40), keep = this.q[0];
+      keep.terr = dropped.flatMap((d) => d.terr || []).concat(keep.terr || []);
+      keep.feed = dropped.flatMap((d) => d.feed || []).concat(keep.feed || []);
+    }
     const slot = world.playerTeam;
     if (slot !== null && s.teams[slot] && s.teams[slot].f >= 0) {
       const r = s.mons[s.teams[slot].f];
@@ -114,7 +121,6 @@ export class NetSmoother {
   canCast(m, id, ab, now, rtt) {
     if (!m.alive || !m.onField || m.locked || m.status.stun > 0) return false;
     if (m.status.root > 0 && ab.dash) return false;
-    if (m.status.exhaust > 0 && m.isSpecial(id)) return false;
     const tol = (rtt + this.delay) / 1000;
     if ((this.srv.cd[id] || 0) - tol > 0.05 || this.localCd(id, now) > 0.05) return false;
     if (ab.charges && this.chargesLeft(id, ab) <= 0) return false;

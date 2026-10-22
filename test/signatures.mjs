@@ -5,6 +5,7 @@ import { DT, EVOLUTION, FIRE, CONTROL, COMBAT } from '../src/config.js';
 import { SPECIES } from '../src/sim/species.js';
 import { ABILITIES } from '../src/sim/abilities.js';
 import { SIG } from '../src/sim/signature.js';
+import * as Forge from '../src/sim/forge.js';
 import { serialize, makeSyncCtx, applySnapshot } from '../src/net/snapshot.js';
 import { createMirror } from '../src/net/mirror.js';
 import * as Training from '../src/sim/training.js';
@@ -33,58 +34,15 @@ function setup(me, foe = 'brotossauro', { gap = 60, evolved = false } = {}) {
 const cast = (w, m, id, extra = {}) => m.cast(w, m.ability(id), { aim: 0, dir: 0, aimPoint: { x: 400, y: 200 }, point: { x: 260, y: 200 }, ...extra });
 const ready = (m) => { m.action = null; for (const k in m.cd) m.cd[k] = 0; m.status.stun = 0; };
 
-// ───────────── Fornalha (Brasalisco) ─────────────
-test('Fornalha: ataques aquecem; em 100% SUPERAQUECE (mais dano) e depois fica EXAUSTO (sem poderes, lento, leva mais dano)', () => {
-  const { w, A, B } = setup('brasalisco', 'brotossauro', { gap: 22 });
-  assert(A.heat === 0, 'calor inicial');
-  cast(w, A, 'claw'); step(w, 0.05);
-  assert(A.heat > 0, 'garra não aqueceu');
-  // Mede um golpe normal e um superaquecido (mesmo alvo, mesmo golpe).
-  ready(A); A.heat = 0; B.hp = B.maxHp; const h0 = B.hp; cast(w, A, 'claw'); until(w, () => !A.action, 1); const normal = h0 - B.hp;
-  ready(A); A.heat = 95; B.hp = B.maxHp; B.x = A.x + 22; B.y = A.y; B.kx = B.ky = 0;
-  const h1 = B.hp; cast(w, A, 'claw');
-  assert(A.status.overheat > 0, 'não superaqueceu ao passar de 100%');
-  until(w, () => !A.action, 1); const hot = h1 - B.hp;
-  assert(hot > normal * 1.12, `superaquecido não bate mais forte (${normal.toFixed(1)} → ${hot.toFixed(1)})`);
-  step(w, SIG.heat.overheat + 0.1);
-  assert(A.status.exhaust > 0 && A.heat === 0, 'não ficou exausto depois do superaquecimento');
-  ready(A);
-  assert(!A.ready('flameWave') && !A.ready('meteor') && !A.ready('fireDash'), 'exausto conseguiu usar poder especial');
-  assert(A.ready('emberLash') && A.ready('claw'), 'exausto deveria manter os ataques básicos');
-  assert(A.speedMult(w) < 0.8, 'exausto deveria ficar lento');
-  const hp = A.hp; w.damage(A, 10, B, { element: 'plant' });
-  assert(hp - A.hp > 10 * 0.9 * 1.1, 'exausto deveria levar mais dano');
-  step(w, SIG.heat.exhaust + 0.1);
-  assert(A.status.exhaust <= 0 && A.ready('flameWave'), 'exaustão não terminou');
-});
-
-test('Fornalha: água esfria o calor', () => {
-  const { w, A, B } = setup('brasalisco', 'hidrocasco', { gap: 60 });
-  A.heat = 60;
-  w.damage(A, 5, B, { element: 'water', wet: 2 });
-  assert(A.heat <= 60 - SIG.heat.waterCool + 0.01, 'jato d’água não esfriou');
-});
-
-test('Núcleo Vulcânico (Ascendido): superaquecer solta uma onda que fere e afasta quem está perto', () => {
-  const { w, A, B } = setup('brasalisco', 'brotossauro', { gap: 30, evolved: true });
-  assert(A.def.key === 'brasaliscoAscendido', 'não evoluiu');
-  ready(A); A.heat = 99; const hp = B.hp;
-  cast(w, A, 'magmaLash', { aim: Math.PI, aimPoint: { x: 0, y: 200 } }); // golpe para trás: só a onda acerta
-  assert(A.status.overheat > 0, 'não superaqueceu');
-  step(w, 0.05);
-  assert(B.hp < hp, 'onda de calor não feriu quem estava perto');
-  assert(Math.hypot(B.kx, B.ky) > 50 || Math.hypot(B.x - A.x, B.y - A.y) > 36, 'onda não afastou');
-});
-
 // ───────────── Casco Reflexo (Hidrocasco) ─────────────
 test('Casco Reflexo: bloqueio reduz o dano de perto e contra-ataca quem bateu', () => {
-  const { w, A, B } = setup('hidrocasco', 'brasalisco', { gap: 24 });
+  const { w, A, B } = setup('hidrocasco', 'ouriflama', { gap: 24 });
   ready(B);
   B.facing = Math.PI;
   cast(w, A, 'shellGuard');
   assert(A.action?.ab.kind === 'guard' && A.action.phase === 'active', 'não entrou no casco');
   const hpA = A.hp, hpB = B.hp;
-  cast(w, B, 'claw', { aim: Math.PI, dir: Math.PI, aimPoint: { x: 0, y: 200 } });
+  cast(w, B, 'prick', { aim: Math.PI, dir: Math.PI, aimPoint: { x: 0, y: 200 } });
   until(w, () => B.action?.phase === 'recovery' || !B.action, 1);
   const taken = hpA - A.hp;
   assert(taken < 13 * 0.3, `bloqueio deixou passar dano demais (${taken.toFixed(1)})`);
@@ -314,16 +272,6 @@ test('Fogo: queimadura limitada (duração e dano por segundo) e chão de ataque
   assert(lost < 3 * (FIRE.groundDps + FIRE.burnDps) * 1.25, `3 s em brasa tiraram ${lost.toFixed(1)}`);
 });
 
-test('Fogo: Sopro Ígneo num alvo parado causa dano moderado (sem tirar vida demais)', () => {
-  const { w, A, B } = setup('brasalisco', 'hidrocasco', { gap: 40 });
-  B.def = { ...B.def, mass: 999 }; // não é empurrado para fora do cone
-  const h0 = B.hp;
-  cast(w, A, 'flameWave');
-  step(w, 2.5);
-  const lost = h0 - B.hp;
-  assert(lost > 5 && lost < 22, `cone tirou ${lost.toFixed(1)}`);
-});
-
 test('Controle: atordoamentos seguidos perdem força (sem sequência inevitável)', () => {
   const { w, A, B } = setup('brasalisco', 'brotossauro', { gap: 40 });
   w.damage(B, 1, A, { stun: 0.5 });
@@ -338,11 +286,11 @@ test('Controle: atordoamentos seguidos perdem força (sem sequência inevitável
 });
 
 test('Erupção: quem levou a investida recebe só metade da explosão (sem dano dobrado)', () => {
-  const { w, A, B } = setup('brasalisco', 'hidrocasco', { gap: 70, evolved: true });
+  const { w, A, B } = setup('ouriflama', 'hidrocasco', { gap: 70, evolved: true });
   ready(A); B.hp = B.maxHp;
   let dash = 0, boom = 0;
-  cast(w, A, 'eruptionDash');
-  for (let k = 0; k < 1.5 / DT; k++) { w.step(DT); for (const e of w.drainEvents()) if (e.type === 'hit' && e.m === B && !e.dot) { if (e.tag === 'erupcao') boom += e.amount; else if (!e.tag) dash += e.amount; } }
+  cast(w, A, 'volcanoRush');
+  for (let k = 0; k < 1.5 / DT; k++) { w.step(DT); for (const e of w.drainEvents()) if (e.type === 'hit' && e.m === B && !e.dot) { if (e.tag === 'erupcao') boom += e.amount; else dash += e.amount; } }
   assert(dash > 0, 'investida não acertou');
   assert(boom <= 12 * 0.5 * 1.3 + 0.01, `explosão cheia em quem já levou a investida (${boom.toFixed(1)})`);
 });
@@ -383,20 +331,23 @@ test('Treinamento: bonecos, vida infinita, evolução e opções', () => {
 });
 
 // ───────────── Rede ─────────────
-test('Snapshot leva calor, ímpeto, marcas, camuflagem, cópias e sentinelas ao cliente', () => {
+test('Snapshot leva centelhas, brasas, ímpeto, marcas, camuflagem, cópias e sentinelas ao cliente', () => {
   const rosters = [['brasalisco', 'gotapus', 'brotossauro'], ['mantifolha', 'ouriflama', 'hidrocasco']];
   const w = World.match(3, rosters, null, 'quadra');
   const ctx = makeSyncCtx(w);
   const mirror = createMirror({ seed: 3, rosters, you: 0, arena: 'quadra', sides: [0, 1], players: [{ seat: 0 }, { seat: 1 }] });
   step(w, 1);
   const A = w.fieldOf(0), B = w.fieldOf(1);
-  A.heat = 77; A.status.overheat = 1.5; B.momentum = 50; A.marks = { n: 2, by: B.id, t: 3, last: 0 };
+  A.spark = 2; A.status.haste = 1; B.momentum = 50; A.marks = { n: 2, by: B.id, t: 3, last: 0 };
+  const coal = Forge.dropCoal(w, A, A.x + 40, A.y);
   const G = w.teamOf(0)[1];
   w.decoys.push({ id: 999, owner: A, team: A.team, x: 100, y: 100, px: 100, py: 100, vx: 10, vy: 0, life: 1, max: 2, facing: 0 });
   const o = w.addObstacle('sentry', 300, 200, 6); o.sentry = true; o.owner = A; o.team = A.team; o.life = 5;
   applySnapshot(mirror.world, JSON.parse(JSON.stringify(serialize(w, ctx))), mirror.ctx);
   const mA = mirror.world.roster[w.roster.indexOf(A)];
-  assert(Math.abs(mA.heat - 77) < 0.2 && mA.status.overheat > 1.4, 'calor/superaquecimento não sincronizou');
+  assert(mA.spark === 2 && mA.status.haste > 0.9, 'centelhas/disparada não sincronizaram');
+  const mc = mirror.world.zones.find((z) => z.kind === 'coal');
+  assert(coal && mc && mc.owner === mA && Math.abs(mc.x - coal.x) < 0.2, 'brasa (com o dono) não sincronizou');
   assert(mA.marks.n === 2 && mA.marks.by === mirror.world.roster[w.roster.indexOf(B)].id, 'marcas não sincronizaram');
   assert(mirror.world.decoys.length === 1 && mirror.world.decoys[0].owner === mA, 'cópias não sincronizaram');
   const mo = mirror.world.obstacles.find((x) => x.kind === 'sentry');
@@ -419,26 +370,26 @@ test('Saltos (Mantifolha/Silvamante) caem onde o mouse estava; o alcance é o m�
   }
 });
 
-test('Cargas: Meteoro tem 2 cargas, recarregam uma por vez e vão para o cliente online', () => {
-  const { w, A } = setup('brasalisco', 'brotossauro', { gap: 200 });
-  const ab = ABILITIES.meteor;
-  assert(A.ch.meteor === 2, 'não começou com 2 cargas');
-  const cast = () => A.cast(w, ab, { aim: 0, point: { x: 330, y: 200 }, aimPoint: { x: 330, y: 200 } });
-  assert(cast(), 'primeiro meteoro falhou');
+test('Cargas: Pulo do Gato tem 2 cargas, recarregam uma por vez e vão para o cliente online', () => {
+  const { w, A } = setup('raiolua', 'brotossauro', { gap: 200 });
+  const ab = ABILITIES.catLeap;
+  assert(A.ch.catLeap === 2, 'não começou com 2 cargas');
+  const leap = () => A.cast(w, ab, { aim: 0, dir: Math.PI / 2 });
+  assert(leap(), 'primeiro pulo falhou');
   until(w, () => !A.action, 2);
-  until(w, () => A.cd.meteor <= 0, 2);
-  assert(cast(), 'segundo meteoro seguido falhou (devia ter 2 cargas)');
+  until(w, () => A.cd.catLeap <= 0, 2);
+  assert(leap(), 'segundo pulo seguido falhou (devia ter 2 cargas)');
   until(w, () => !A.action, 2);
-  until(w, () => A.cd.meteor <= 0, 2);
-  assert(A.ch.meteor === 0 && !A.ready('meteor'), 'terceiro meteoro não devia estar disponível');
-  until(w, () => A.ch.meteor >= 1, ab.cooldown + 0.5);
-  assert(A.ch.meteor === 1, 'não recarregou uma carga');
+  until(w, () => A.cd.catLeap <= 0, 2);
+  assert(A.ch.catLeap === 0 && !A.ready('catLeap'), 'terceiro pulo não devia estar disponível');
+  until(w, () => A.ch.catLeap >= 1, ab.cooldown + 0.5);
+  assert(A.ch.catLeap === 1, 'não recarregou uma carga');
   // Snapshot leva as cargas ao espelho do cliente.
   const ctx = makeSyncCtx(w);
-  const mirror = createMirror({ seed: 5, rosters: [['brasalisco', 'hidrocasco', 'brotossauro'], ['brotossauro', 'brasalisco', 'hidrocasco']], you: 0, arena: 'quadra', sides: [0, 1], players: [{ seat: 0 }, { seat: 1 }] });
+  const mirror = createMirror({ seed: 5, rosters: [['raiolua', 'hidrocasco', 'brotossauro'], ['brotossauro', 'brasalisco', 'hidrocasco']], you: 0, arena: 'quadra', sides: [0, 1], players: [{ seat: 0 }, { seat: 1 }] });
   applySnapshot(mirror.world, JSON.parse(JSON.stringify(serialize(w, ctx))), mirror.ctx);
   const mA = mirror.world.roster[w.roster.indexOf(A)];
-  assert(mA.ch.meteor === A.ch.meteor && Math.abs(mA.rc.meteor - A.rc.meteor) < 0.02, 'cargas não sincronizaram');
+  assert(mA.ch.catLeap === A.ch.catLeap && Math.abs(mA.rc.catLeap - A.rc.catLeap) < 0.02, 'cargas não sincronizaram');
 });
 
 test('Cargas: Brotossauro planta as 2 sentinelas em sequência (até 2 em campo)', () => {
@@ -475,26 +426,21 @@ test('Combate de skills: nenhum golpe básico é tiro longo, e cada um acerta um
 });
 
 test('Ritmo: golpe básico que acerta adianta as recargas de Q/E/F (e não vale para skills)', () => {
-  const { w, A, B } = setup('brasalisco', 'brotossauro', { gap: 30 });
-  A.cd.flameWave = 5; A.cd.fireDash = 5;
-  A.ch.meteor = 1; A.rc.meteor = 5;
-  const q0 = A.cd.flameWave, f0 = A.cd.fireDash, e0 = A.rc.meteor;
-  assert(cast(w, A, 'emberLash', { aimPoint: { x: B.x, y: B.y } }), 'chicote não saiu');
+  const { w, A, B } = setup('brasalisco', 'brotossauro', { gap: 60 });
+  A.cd.emberRing = 5; A.cd.ignition = 5; A.cd.shyLeap = 5;
+  assert(cast(w, A, 'coalShot', { aimPoint: { x: B.x, y: B.y } }), 'pedra não saiu');
   until(w, () => B.hp < B.maxHp, 1);
-  // a recarga também anda com o tempo: o ganho do Ritmo é o que passa disso
-  const t = w.time;
   step(w, 0.02);
-  const elapsed = w.time - t + 0.4;
-  assert(A.cd.flameWave < q0 - COMBAT.rhythm + 0.05 && A.cd.fireDash < f0 - COMBAT.rhythm + 0.05, 'Ritmo não adiantou Q/F');
-  assert(A.rc.meteor < e0 - COMBAT.rhythm + 0.05, 'Ritmo não adiantou a recarga da carga do Meteoro');
-  void elapsed;
+  // a recarga também anda com o tempo (~0,4 s até acertar): o ganho do Ritmo é o que passa disso
+  const lim = 5 - COMBAT.rhythm + 0.05;
+  assert(A.cd.emberRing < lim && A.cd.ignition < lim && A.cd.shyLeap < lim, 'Ritmo não adiantou Q/E/F');
   // Skill acertando não gera Ritmo.
-  const { w: w2, A: A2, B: B2 } = setup('brasalisco', 'brotossauro', { gap: 40 });
-  A2.cd.fireDash = 5;
-  A2.cast(w2, ABILITIES.flameWave, { aim: 0, dir: 0 });
+  const { w: w2, A: A2, B: B2 } = setup('brasalisco', 'brotossauro', { gap: 60 });
+  A2.cd.shyLeap = 5;
+  A2.cast(w2, ABILITIES.emberRing, { aim: 0, dir: 0 });
   until(w2, () => B2.hp < B2.maxHp, 1.5);
-  assert(B2.hp < B2.maxHp, 'Sopro não acertou');
-  assert(A2.cd.fireDash > 5 - 1.6, 'skill não deveria gerar Ritmo');
+  assert(B2.hp < B2.maxHp, 'Bumerangue não acertou');
+  assert(A2.cd.shyLeap > 5 - 1.6, 'skill não deveria gerar Ritmo');
 });
 
 test('Lutapacho: Arremesso de Pedra arranca uma pedra e quem é atingido fica ATORDOADO', () => {
@@ -531,17 +477,6 @@ test('Pugilar: Contra-Golpe bloqueia e devolve um soco de terra (sem molhar)', (
   step(w, 0.05);
   assert(B.hp < hpB, 'não devolveu o golpe');
   assert(!(B.status.wet > 0), 'contra-golpe de terra não deveria molhar');
-});
-
-test('Brasalisco Ascendido: Bola Infernal viaja, cresce e explode em área', () => {
-  const { w, A, B } = setup('brasalisco', 'brotossauro', { gap: 150, evolved: true });
-  assert(A.def.controls.q === 'infernoOrb', 'Q do Ascendido não é a Bola Infernal');
-  const hp = B.hp;
-  assert(cast(w, A, 'infernoOrb', { aimPoint: { x: B.x, y: B.y } }), 'não lançou');
-  let maxR = 0, blast = false;
-  for (let k = 0; k < 2 / DT && !blast; k++) { w.step(DT); for (const p of w.projectiles) if (p.kind === 'inferno') maxR = Math.max(maxR, p.r); for (const e of w.drainEvents()) if (e.type === 'explosion') blast = true; }
-  assert(maxR > 10, 'bola não cresceu em voo');
-  assert(blast && B.hp < hp, 'bola não explodiu no alvo');
 });
 
 test('Redemoinho: o Hidrocasco anda MAIS rápido girando do que caminhando', () => {

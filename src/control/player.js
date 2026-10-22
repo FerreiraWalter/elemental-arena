@@ -28,11 +28,11 @@ export class PlayerController {
 
     for (const slot of inp.presses) {
       this.buffer.push({ slot, t: BUFFER });
-      // Avisa quando o botão não vai funcionar tão cedo (recarga longa ou exausto): o HUD pisca o botão.
+      // Avisa quando o botão não vai funcionar tão cedo (recarga longa ou preso): o HUD pisca o botão.
       const id = m.def.controls[slot];
       if (id && slot !== 'evolve') {
         const cd = m.cd[id] || 0;
-        const reason = m.status.exhaust > 0 && m.isSpecial(id) ? 'exhaust' : cd > BUFFER ? 'cooldown' : m.status.root > 0 && m.ability(id)?.dash ? 'root' : null;
+        const reason = cd > BUFFER ? 'cooldown' : m.status.root > 0 && m.ability(id)?.dash ? 'root' : null;
         if (reason) w.emit({ type: 'castDenied', m, slot, reason, cd });
       }
     }

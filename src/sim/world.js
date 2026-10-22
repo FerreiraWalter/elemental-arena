@@ -13,6 +13,8 @@ import * as Sig from './signature.js';
 import * as Elec from './electric.js';
 import * as Psy from './psychic.js';
 import * as Air from './air.js';
+import * as Forge from './forge.js';
+import { landShot as krakenLand, krakenDown } from './arenaevents.js';
 import * as Training from './training.js';
 
 const OBSTACLE_DEFS = {
@@ -20,6 +22,7 @@ const OBSTACLE_DEFS = {
   crate: { flammable: true, hp: 45, blocksLOS: true, burnTime: 7, burnDps: 7 },
   bush: { flammable: true, hp: 55, blocksLOS: true, burnTime: 9, burnDps: 7 },
   pillar: { flammable: false, hp: Infinity, blocksLOS: true },
+  kraken: { flammable: false, hp: 360, blocksLOS: false }, // chefe neutro da Atlântida (vida real por modo: arenaevents.KRAKEN)
   statue: { flammable: false, hp: Infinity, blocksLOS: true },
   root: { flammable: false, hp: Infinity, blocksLOS: true }, // raiz gigante (Jardim)
   lighthouse: { flammable: false, hp: Infinity, blocksLOS: true }, // marco do Abismo
@@ -68,7 +71,7 @@ export class World {
     this.monsters = []; // somente os que estão em campo (1 por time, mais corpos de derrotados sumindo)
     this.projectiles = [];
     this.decoys = []; // ilusões de tinta (Gotapus)
-    this.zones = []; // solo eletrificado (Raiolua/Trovogato): { x, y, r, life, dps, slow, team, owner }
+    this.zones = []; // solo eletrificado, espirais, vórtices e brasas (kind): { x, y, r, life, dps, slow, team, owner }
     this.steam = [];
     this.events = [];
     this.feed = [];
@@ -137,6 +140,10 @@ export class World {
 
   // Ponto de nascimento da vaga: o do lado, afastado quando há dois jogadores no mesmo lado (2v2).
   spawnFor(slot) {
+    const p = this.baseSpawn(slot);
+    return this.arenaDef.shiftSpawn ? this.arenaDef.shiftSpawn(this, p) : p;
+  }
+  baseSpawn(slot) {
     if (this.ffa) {
       const fr = FFA_FRAC[slot % 4], p = this.arenaDef.spawnsFFA?.[slot] ?? { x: fr[0] * WORLD_W, y: fr[1] * WORLD_H };
       return this.safeSpot(p.x, p.y, 13, slot, true);
@@ -380,8 +387,8 @@ export class World {
       if (m.onField || !m.alive) continue;
       m.tickCooldowns(dt);
       const st = m.status;
-      Sig.bench(m, dt);
-      st.overheat = 0; st.exhaust = 0; st.cloak = 0;
+      Sig.bench(m);
+      st.cloak = 0; st.haste = 0;
       if (st.burn > 0 && m.element !== 'fire') {
         const d = Math.min(m.hp, SWITCH.benchBurnDps * dt);
         m.hp -= d;
@@ -593,6 +600,7 @@ export class World {
     const wasBurning = o.burning > 0;
     o.burning = 0;
     this.emit({ type: 'obstacleBreak', o, x: o.x, y: o.y, kind: o.kind, burning: wasBurning });
+    if (o.kind === 'kraken') krakenDown(this, o);
     const name = OBSTACLE_NAME[o.kind];
     if (name) this.say(name.startsWith('Uma ') ? `${name} tombou` : `${name} foi destruído`, '#d9b38c');
     if (wasBurning) this.igniteArea(o.x, o.y, o.r + 6, 3, null);
@@ -623,7 +631,7 @@ export class World {
     }
     let mult = ELEMENT_MULT[o.element || src?.element]?.[t.element] ?? 1;
     const out = Sig.outgoing(this, src, t, o);
-    mult *= out.mult * Sig.incoming(t) * Air.airMult(src, t, o);
+    mult *= out.mult * Air.airMult(src, t, o);
     o = out.o;
     // Casco Reflexo: bloqueio ativo reduz o dano e anula empurrões, atordoamento e queimadura.
     const guarding = Sig.isGuarding(t);
@@ -965,6 +973,7 @@ export class World {
     for (const m of this.monsters) if (m.alive) this.constrainToTerrain(m);
     for (const h of this.hazards) h.update(this, dt);
     Elec.updateZones(this, dt);
+    Forge.update(this, dt);
     Air.updateWind(this, dt);
     this.updateProjectiles(dt);
     Sig.updateDecoys(this, dt);
@@ -1127,6 +1136,8 @@ export class World {
           else if (p.kind === 'tentacle') this.tentacleSlam(p);
           else if (p.kind === 'splashBubble' || p.kind === 'splashSeed') this.splashBurst(p);
           else if (p.kind === 'thunder') Elec.thunderStrike(this, p);
+          else if (p.kind === 'forgeBomb') Forge.bombLand(this, p);
+          else if (p.kind === 'krakenBall' || p.kind === 'krakenRock' || p.kind === 'krakenArm') krakenLand(this, p);
           else this.explodeMeteor(p);
         }
         continue;
@@ -1134,6 +1145,7 @@ export class World {
       // Psíquico: esferas em órbita (não andam em linha) e projéteis teleguiados.
       if (p.orbit && Psy.updateOrbit(this, p, dt)) continue;
       if (p.homing) Psy.steerHoming(this, p, dt);
+      if (p.kind === 'boomerang') { Forge.steer(this, p, dt); if (p.dead) continue; }
       const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
       let best = 2, hitM = null, hitO = null, hitWall = false, hitGuard = null, hitDecoy = null;
       for (const m of this.monsters) {
@@ -1215,7 +1227,7 @@ export class World {
       if (hitGuard) { Sig.reflect(this, p, hitGuard); continue; }
       if (hitDecoy) { p.dead = true; p.hitTarget = hitDecoy; Sig.popDecoy(this, hitDecoy); this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y }); continue; }
       if (hitM) { p.dead = true; p.hitTarget = hitM; this.projectileHitMonster(p, hitM); }
-      else if (hitO || hitWall || out) { p.dead = true; this.projectileHitSolid(p, hitO); }
+      else if (hitO || hitWall || out) { p.dead = true; if (hitO) hitO.lastHitBy = p.owner; this.projectileHitSolid(p, hitO); }
       else if (p.traveled >= p.range) { p.dead = true; this.projectileExpire(p); }
       if (p.dead && !p.hitTarget && p.closestM && p.closest < p.closestM.r + 18) {
         this.emit({ type: 'nearMiss', m: p.closestM, p, x: p.x, y: p.y });
@@ -1223,7 +1235,7 @@ export class World {
     }
     // Choque entre projéteis de elementos opostos: viram vapor (a onda apaga projéteis de fogo e segue).
     const live = this.projectiles.filter((p) => !p.dead && !p.lob);
-    const fireK = (p) => p.kind === 'ember' || p.kind === 'magma';
+    const fireK = (p) => p.kind === 'ember' || p.kind === 'magma' || p.kind === 'coalRock';
     for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
       const a = live[i], b = live[j];
       if (a.dead || b.dead || a.team === b.team) continue;
@@ -1249,6 +1261,8 @@ export class World {
       Psy.projectileHit(this, p, m);
     } else if (p.kind === 'tornado' || p.kind === 'feather') {
       Air.projectileHit(this, p, m);
+    } else if (Forge.KINDS.has(p.kind)) {
+      Forge.projectileHit(this, p, m);
     } else if (p.kind === 'ember') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'ember', burn: 1.5, kb: 70, stun: 0.1, element: 'fire' });
       this.igniteTile(this.terrain.at(p.x, p.y), 1, p.owner);
@@ -1278,6 +1292,7 @@ export class World {
   projectileHitSolid(p, o) {
     this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y, obstacle: o });
     if (p.kind === 'tornado' || p.kind === 'feather') { Air.projectileEnd(this, p, o); return; }
+    if (Forge.KINDS.has(p.kind)) { Forge.projectileEnd(this, p, o, true); return; }
     if (p.kind === 'ember') {
       if (o) { this.hurtObstacle(o, p.dmg); if (o.flammable && !o.destroyed) this.igniteObstacle(o, p.owner); }
       this.igniteArea(p.x, p.y, 4, 1.3, p.owner);
@@ -1314,6 +1329,7 @@ export class World {
     else if (p.kind === 'rock') this.emit({ type: 'rockHit', x: p.x, y: p.y });
     else if (p.kind === 'spark' || p.kind === 'voltOrb') Elec.projectileEnd(this, p);
     else if (p.kind === 'tornado' || p.kind === 'feather') Air.projectileEnd(this, p, null);
+    else if (Forge.KINDS.has(p.kind)) Forge.projectileEnd(this, p, null, false);
     else this.douseArea(p.x, p.y, 12, 6, p.owner);
   }
 

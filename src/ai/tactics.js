@@ -54,7 +54,6 @@ export const TACTICS = {
   },
   flameWave(c) {
     if (!c.vis || c.d > 64 || c.tWhirl || c.tGuarding) return null;
-    if (c.heatFull && c.d > 40) return null; // não superaquece à toa
     return { score: 0.72 + (c.tBusy ? 0.25 : 0) + (c.fuelNearTarget > 3 ? 0.15 : 0), target: c.t };
   },
   ember(c) {
@@ -173,7 +172,6 @@ export const TACTICS = {
   },
   infernoBreath(c) {
     if (!c.vis || c.d > 80 || c.tWhirl || c.tGuarding) return null;
-    if (c.heatFull && c.d > 50) return null;
     return { score: 0.8 + (c.tBusy ? 0.25 : 0), target: c.t };
   },
   eruptionDash(c) {
@@ -520,4 +518,59 @@ export const TACTICS = {
     if (!c.vis || c.d < 45 || c.d > 225 || c.tGuarding) return null;
     return { score: 0.7 + (c.tChanneling ? 0.3 : 0) + (c.tSpeed < 25 ? 0.1 : 0), target: c.t };
   },
+  // ───────────── Fogo de longe (Brasalinha → Fornalhonte): atira, espalha brasas e detona ─────────────
+  coalShot(c) { return coalShot(c, 170); },
+  forgeShot(c) { return coalShot(c, 170); },
+  smokeTail(c) { return tailPeel(c, 18); },
+  forgeStomp(c) { return tailPeel(c, 24); },
+  emberRing(c) {
+    if (!c.vis || c.d < 24 || c.d > 175 || c.tGuarding) return null;
+    return { score: 0.58 + coalsNear(c, c.t, 40) * 0.08 + (c.tSpeed < 25 ? 0.1 : 0), target: c.t };
+  },
+  chimneyVolley(c) {
+    if (c.d < 50 || c.d > 220 || c.sinceSeen > 1) return null;
+    return { score: 0.58 + (c.tSpeed < 25 || c.tChanneling ? 0.25 : 0) + (c.t.status.stun > 0 ? 0.2 : 0), target: c.t, lob: true };
+  },
+  // Ignição: vale quando há brasas em volta de um inimigo (ou ele está colado em você).
+  ignition(c) { return igniteWorth(c, 26, 30); },
+  forgeEruption(c) { return igniteWorth(c, 30, 36); },
+  // Recuo Arredio: mira NO inimigo e salta para trás, deixando brasas no caminho dele.
+  shyLeap(c) {
+    if (!c.vis || c.d > 60) return null;
+    return { score: 0.62 + (c.hpF < 0.5 ? 0.2 : 0) + (c.tBusy ? -0.2 : 0), target: c.t, purpose: 'escape' };
+  },
+  colossusRam(c) {
+    if (c.onWater && c.d < 120) return { score: 0.7, aimPoint: c.safeDryPoint || c.awayPoint, purpose: 'escape' };
+    if (c.vis && c.d > 40 && c.d < 150 && !c.tGuarding) return { score: 0.5 + (c.tBusy ? 0.25 : 0) + coalsNear(c, c.m, 120) * 0.04, target: c.t };
+    return null;
+  },
+  sparkHop() { return null; },
+  emberRoll() { return null; },
 };
+
+// Brasas minhas perto de alguém (até R de distância).
+function coalsNear(c, who, R) {
+  let n = 0;
+  for (const z of c.w.zones) if (z.kind === 'coal' && z.owner === c.m && z.life > 0 && Math.hypot(z.x - who.x, z.y - who.y) < R + who.r) n++;
+  return n;
+}
+function coalShot(c, range) {
+  if (c.tGuarding) return null;
+  if (c.vis && c.d > 20 && c.d < range + 5) return { score: 0.55 + (c.m.spark > 0 ? 0.1 : 0) + (c.d > 70 ? 0.08 : 0), target: c.t };
+  return null;
+}
+// Rabada/Pisão: afasta quem chegou perto demais.
+function tailPeel(c, reachPx) {
+  if (!c.vis || c.d > reach(c, reachPx) || c.tGuarding) return null;
+  return { score: 0.85 + (c.tBusy ? 0.1 : 0), target: c.t };
+}
+function igniteWorth(c, R, selfR) {
+  let best = 0;
+  for (const e of c.w.enemiesOf(c.m)) {
+    let n = coalsNear(c, e, R);
+    if (Math.hypot(e.x - c.m.x, e.y - c.m.y) < selfR + e.r) n += 1.5;
+    best = Math.max(best, n);
+  }
+  if (best < 1.5) return null;
+  return { score: 0.4 + best * 0.18, target: c.t };
+}

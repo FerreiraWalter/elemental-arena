@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node test/switching.mjs && node test/evolution.mjs && node test/monsters.mjs && node test/signatures.mjs && node test/support.mjs && node test/trovogato.mjs && node test/sapomental.mjs && node test/araralvo.mjs && node test/maps.mjs && node test/collision.mjs && node test/ffa.mjs && node test/acceptance.mjs 20 && node test/smooth.mjs && node test/net.mjs",
+    "test": "node test/switching.mjs && node test/evolution.mjs && node test/monsters.mjs && node test/signatures.mjs && node test/support.mjs && node test/trovogato.mjs && node test/brasalinha.mjs && node test/sapomental.mjs && node test/araralvo.mjs && node test/maps.mjs && node test/collision.mjs && node test/ffa.mjs && node test/acceptance.mjs 20 && node test/smooth.mjs && node test/net.mjs",
     "build": "node tools/build.mjs",
     "pairs": "node test/pairs.mjs 12",
     "arenas": "node test/arenas.mjs 6",

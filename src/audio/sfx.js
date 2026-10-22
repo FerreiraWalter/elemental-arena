@@ -138,7 +138,10 @@ export class Sfx {
       case 'impact': if (e.ground && this.ok('impact', 0.08)) this.hiss({ type: 'lowpass', f0: 900, f1: 200, dur: 0.08, vol: 0.06, x }); return;
       case 'rockHit': if (this.ok('rock', 0.08)) { this.tone({ type: 'triangle', f0: 160, f1: 60, dur: 0.18, vol: 0.22, x }); this.hiss({ type: 'lowpass', f0: 900, f1: 200, dur: 0.15, vol: 0.14, x }); } return;
       case 'quake': this.tone({ type: 'sine', f0: 90, f1: 35, dur: 0.5, vol: 0.32, x }); this.hiss({ type: 'lowpass', f0: 600, f1: 120, dur: 0.45, vol: 0.2, x }); return;
-      case 'explosion': case 'burrowEruption': case 'heatNova':
+      case 'tsunami': this.hiss({ type: 'lowpass', f0: 2400, f1: 300, dur: 1.6, vol: 0.32, x }); this.tone({ type: 'sine', f0: 70, f1: 40, dur: 1.4, vol: 0.25, x }); return;
+      case 'tsunamiWarn': this.tone({ type: 'triangle', f0: 220, f1: 220, dur: 0.5, vol: 0.12, x }); this.tone({ type: 'triangle', f0: 165, f1: 165, dur: 0.6, vol: 0.12, x }); return;
+      case 'krakenWake': case 'krakenDown': case 'krakenRage': this.tone({ type: 'sawtooth', f0: 70, f1: 45, dur: 1.2, vol: 0.22, x }); this.hiss({ type: 'lowpass', f0: 900, f1: 200, dur: 1, vol: 0.2, x }); return;
+      case 'explosion': case 'burrowEruption':
         if (!this.ok('boom', 0.08)) return;
         this.hiss({ type: 'lowpass', f0: 1200, f1: 120, dur: 0.6, vol: 0.4, x });
         this.tone({ type: 'sine', f0: 110, f1: 35, dur: 0.5, vol: 0.35, x });
@@ -161,8 +164,10 @@ export class Sfx {
       case 'rootsErupt': this.hiss({ type: 'lowpass', f0: 600, f1: 150, dur: 0.35, vol: 0.2, x }); this.tone({ type: 'triangle', f0: 120, f1: 70, dur: 0.3, vol: 0.15, x }); return;
       case 'rooted': if (this.ok('rooted', 0.2)) this.tone({ type: 'triangle', f0: 200, f1: 150, dur: 0.15, vol: 0.1, x }); return;
       // ───── mecânicas próprias ─────
-      case 'overheat': this.tone({ type: 'sawtooth', f0: 180, f1: 900, dur: 0.45, vol: 0.12, x }); this.hiss({ type: 'bandpass', f0: 800, f1: 2400, dur: 0.45, vol: 0.18, x }); return;
-      case 'exhaust': this.tone({ type: 'sine', f0: 420, f1: 90, dur: 0.6, vol: 0.14, x }); this.hiss({ type: 'highpass', f0: 2500, f1: 1200, dur: 0.6, vol: 0.08, x }); return;
+      case 'coalPick': this.tone({ type: 'triangle', f0: 520, f1: 1040, dur: 0.14, vol: 0.1, x }); this.hiss({ type: 'highpass', f0: 3000, f1: 4500, dur: 0.12, vol: 0.06, x }); return;
+      case 'sparkShot': this.tone({ type: 'sawtooth', f0: 300, f1: 140, dur: 0.18, vol: 0.1, x }); this.hiss({ type: 'bandpass', f0: 900, f1: 2200, dur: 0.2, vol: 0.12, x }); return;
+      case 'ignition': this.tone({ type: 'sawtooth', f0: 140, f1: 600, dur: 0.3, vol: 0.12, x }); this.hiss({ type: 'bandpass', f0: 600, f1: 2000, dur: 0.35, vol: 0.18, x }); return;
+      case 'coalOut': if (!e.quiet) this.hiss({ type: 'highpass', f0: 4000, f1: 2500, dur: 0.25, vol: 0.05, x }); return;
       case 'charged': [660, 880, 1320].forEach((f, k) => this.tone({ type: 'square', f0: f, dur: 0.07, vol: 0.07, at: k * 0.05, x })); return;
       case 'empowered': this.tone({ type: 'square', f0: 220, f1: 110, dur: 0.18, vol: 0.18, x }); this.hiss({ type: 'bandpass', f0: 2000, f1: 600, dur: 0.15, vol: 0.2, x }); return;
       case 'thorns': if (this.ok('thorns', 0.1)) this.tone({ type: 'square', f0: 1400, f1: 1000, dur: 0.05, vol: 0.06, x }); return;

@@ -28,15 +28,14 @@ export class Monster {
     this.ch = {};
     this.rc = {};
     for (const ab of def.abilities) this.initAbility(ab);
-    // overheat/exhaust: Fornalha (Brasalisco); cloak: camuflagem de tinta (Gotapus).
+    // haste: disparada ao recolher uma brasa (Brasalinha); cloak: camuflagem de tinta (Gotapus).
     // bubble: preso na Bolha Prisão do Gotapus (desenho; o efeito real é o enraizamento).
     // slow: lento (slowK = fração perdida); dr: casca (drK = redução de dano); regen: cura contínua (regenK por s).
-    this.status = { burn: 0, wet: 0, stun: 0, invuln: 0, root: 0, shield: 0, overheat: 0, exhaust: 0, cloak: 0, bubble: 0, slow: 0, dr: 0, regen: 0, charm: 0, charmImm: 0 };
+    this.status = { burn: 0, wet: 0, stun: 0, invuln: 0, root: 0, shield: 0, haste: 0, cloak: 0, bubble: 0, slow: 0, dr: 0, regen: 0, charm: 0, charmImm: 0 };
     this.slowK = 0; this.drK = 0; this.regenK = 0;
     this.volt = 0; this.voltT = 0; // cargas elétricas (Raiolua/Trovogato)
     this.trance = 0; this.tranceT = 0; this.charmBy = null; // transe e hipnose (Sapomental)
-    this.heat = 0; // Fornalha (0..100)
-    this.heatIdle = 0;
+    this.spark = 0; // centelhas guardadas (Brasalinha/Fornalhonte): próximo tiro incandescente
     this.momentum = 0; // Ímpeto do Ouriflama (0..100)
     this.charged = false; // em disparada: próximo golpe fortalecido
     this.marks = { n: 0, by: 0, t: 0, last: -9 }; // marcas de caça recebidas de uma Mantifolha
@@ -94,7 +93,6 @@ export class Monster {
     if (!this.alive || !this.onField || this.locked || this.action || this.status.stun > 0 || this.status.charm > 0 || !(this.cd[id] <= 0)) return false;
     if (this.ch[id] !== undefined && this.ch[id] <= 0) return false; // sem cargas
     if (this.status.root > 0 && this.ability(id)?.dash) return false; // enraizado não consegue investir/esquivar
-    if (this.status.exhaust > 0 && this.isSpecial(id)) return false; // exausto: sem poderes especiais
     return true;
   }
   isSpecial(id) { const c = this.def.controls; return id === c.q || id === c.e || id === c.f;
@@ -203,8 +201,7 @@ export class Monster {
       if (p.vegetation && this.element === 'plant') k *= 1.1;
     }
     if (this.status.wet > 0 && this.element === 'fire') k *= 0.9; // molhado, o fogo fica um pouco mais lento
-    if (this.status.overheat > 0) k *= SIG.heat.speed;
-    if (this.status.exhaust > 0) k *= SIG.heat.exhaustSpeed;
+    if (this.status.haste > 0) k *= 1.25;
     if (this.charged) k *= SIG.momentum.chargedSpeed;
     if (this.status.slow > 0) k *= 1 - Math.min(0.6, this.slowK || 0);
     if (this.def.sig?.kind === 'volt' && this.volt >= (this.def.sig.voltMax ?? 3)) k *= 1.1; // eletrizado

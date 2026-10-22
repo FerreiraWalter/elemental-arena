@@ -339,11 +339,8 @@ export class Brain {
       inEnemyArea: this.threats.some((th) => th.kind === 'zone' || th.kind === 'beam' || th.kind === 'cone'),
       embersIncoming: this.threats.filter((th) => th.kind === 'proj').length,
       tGuarding: t.action?.ab.kind === 'guard' && t.action.phase === 'active',
-      heatFull: m.heat > 70,
       mySentries: w.obstacles.filter((o) => o.sentry && o.owner === m && !o.destroyed).length,
     };
-    // Exausto (Fornalha) é janela de ataque: conta como ocupado.
-    if (t.status.exhaust > 0) c.tBusy = true;
     const away = Math.atan2(m.y - mem.y, m.x - mem.x);
     c.awayPoint = { x: m.x + Math.cos(away) * 80, y: m.y + Math.sin(away) * 80 };
     // Fogo perto de mim (para a água apagar) e vegetação perto do alvo (para o fogo incendiar).
@@ -412,6 +409,9 @@ export class Brain {
     // Relíquia de cura por perto e vida baixa: vai pegar (antes que o rival pegue).
     const relic = this.relicGoal(c);
     if (relic) { this.goalPt = relic; this.mode = 'goto'; if (!m.action) this.setState('relic'); return; }
+    // Brasalinha/Fornalhonte: recolhe uma brasa sua por perto (centelha) quando o inimigo não está em cima.
+    const coal = this.coalGoal(c);
+    if (coal) { this.goalPt = coal; this.mode = 'goto'; return; }
     if (this.state === 'retreat') {
       const done = c.hpF > this.p.retreatHp + 0.2 || this.stateT > 7 || (c.d < 30 && c.vis) || w.suddenDeath;
       if (done) { this.retreatCd = 12; this.setState('acquire'); }
@@ -469,10 +469,8 @@ export class Brain {
     const m = this.m;
     const ctl = m.def.controls;
     const k = m.def.sig?.kind;
-    // Fornalha: exausto, recua; inimigo superaquecido ou em disparada, dá espaço.
-    if (m.status.exhaust > 0) return [80, 150];
-    if (m.status.overheat > 0) return [0, m.r + c.t.r + 14]; // superaquecido: hora de pressionar de perto
-    if (m.element !== 'fire' && (c.t.status.overheat > 0 || c.t.charged) && c.hpF < 0.8) return [70, 140];
+    // Inimigo em disparada (Ímpeto): dá espaço.
+    if (m.element !== 'fire' && c.t.charged && c.hpF < 0.8) return [70, 140];
     if (c.tGuarding) return [50, 110];
     // Ímpeto: sem carga, circula de longe (correr enche a barra); carregado, entra para o golpe.
     if (k === 'momentum') {
@@ -513,7 +511,8 @@ export class Brain {
     if (p.water) c += this.p.waterCost;
     else if (tr.wet[i] > 0) c += this.p.wetCost;
     // Solo eletrificado inimigo (rastros e Julgamento do Trovão).
-    for (const z of this.w.zones) if (z.team !== this.m.team && Math.hypot(x - z.x, y - z.y) < z.r + 4) { c += 0.9; break; }
+    // Brasas inimigas: pequenas, só desvia delas no caminho (não foge como de um solo eletrificado).
+    for (const z of this.w.zones) if (z.team !== this.m.team && z.life > 0 && Math.hypot(x - z.x, y - z.y) < z.r + 4) { c += z.kind === 'coal' ? 0.2 : 0.9; break; }
     return c;
   }
 
@@ -548,6 +547,19 @@ export class Brain {
       if (c.hpF < 0.35 && de < dm * 0.7) continue; // o rival está em cima dela: arriscado demais
       const s = dm - 0.4 * de;
       if (s < bestS) { bestS = s; best = r; }
+    }
+    return best && { x: best.x, y: best.y };
+  }
+
+  coalGoal(c) {
+    const m = this.m;
+    if (m.def.sig?.kind !== 'forge' || (m.spark || 0) >= (m.def.sig.sparkMax ?? 2) || (c.vis && c.d < 55)) return null;
+    let best = null, bd = 70;
+    for (const z of this.w.zones) {
+      if (z.kind !== 'coal' || z.owner !== m || z.life < 1 || z.age < 0.4) continue;
+      const d = Math.hypot(z.x - m.x, z.y - m.y);
+      // Não vai buscar brasa colada no inimigo (é armadilha para ele, e o E aproveita).
+      if (d < bd && (!c.mem || Math.hypot(z.x - c.mem.x, z.y - c.mem.y) > 45)) { bd = d; best = z; }
     }
     return best && { x: best.x, y: best.y };
   }

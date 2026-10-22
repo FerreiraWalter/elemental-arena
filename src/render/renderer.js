@@ -7,6 +7,8 @@ import { ArtSprites } from './artsprites.js';
 import * as EF from './electricfx.js';
 import * as PF from './psyfx.js';
 import * as AF from './airfx.js';
+import * as FF from './forgefx.js';
+import * as ARF from './arenafx.js';
 import { holdK, AIR } from '../sim/air.js';
 import { paintTile, paintWalls, paletteFor } from './terrainpaint.js';
 import { pillarSprite, rootSprite, lighthouseSprite, statueSprite, hedgeSprite, thicketSprite, giantFlowerSprite, trunkSprite, canopySprite, logSprite, mushroomSprite, paintDecorBase, drawHazard, drawCurrents, drawWaterfall, ambient, sentrySprite } from './scenery.js';
@@ -14,7 +16,7 @@ import { Particles } from './particles.js';
 import { drawHud, statusIcon, statusList } from './hud.js';
 
 const SPRITE_FN = { brasalisco: drawBrasalisco, hidrocasco: drawHidrocasco, brotossauro: drawBrotossauro, dummy: drawDummy };
-export const ART_NAMES = ['fire_1', 'fire_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3', 'frog_1', 'frog_3', 'bird_1', 'bird_3'];
+export const ART_NAMES = ['forge_1', 'forge_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3', 'frog_1', 'frog_3', 'bird_1', 'bird_3'];
 const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890', electric: '#bff6ff', psychic: '#f0c8ff', air: '#e8fbff' };
 export const TEAM_COLOR = ['#ffd23a', '#ff4a5a', '#46b4ff', '#7ad84a'];
 // Controles fortes (o monstro perde o comando): etiqueta e cor mostradas sobre a cabeça e no anel do chão.
@@ -47,7 +49,7 @@ const ROOT = [rgba('#4a2e16'), rgba('#6e4624'), rgba('#94653a'), rgba('#5aa83c')
 const FLAME = ['#fff7c2', '#ffd84a', '#ff9a1f', '#f2541b', '#b3200f'].map((h) => rgba(h));
 const EMBER = [rgba('#7a1e0a', 200), rgba('#b3300f', 220), rgba('#e0561a', 230), rgba('#ff8a2a', 240)];
 // Cores das mecânicas próprias (usadas no mundo e no HUD).
-export const SIG_COLOR = { heat: '#ff9a3a', overheat: '#ffd84a', exhaust: '#9a8a7a', momentum: '#ffe066', guard: '#8fd8ff', sentry: '#9ae070', decoy: '#b8a0ff', marks: '#b4f08a', volt: '#8fe8ff' };
+export const SIG_COLOR = { forge: '#ffa040', momentum: '#ffe066', guard: '#8fd8ff', sentry: '#9ae070', decoy: '#b8a0ff', marks: '#b4f08a', volt: '#8fe8ff' };
 
 
 function glowSprite(color, size = 32) {
@@ -140,6 +142,7 @@ export class Renderer {
   obstacleSprite(o, char) {
     const c = (img, ay) => ({ img, ax: img.width / 2, ay: ay ?? img.height / 2 });
     switch (o.kind) {
+      case 'kraken': return null; // desenhado à parte (arenafx.drawKraken)
       case 'rock': { const img = rockSprite(o.r, o.id); return c(img, img.height / 2 + 1); }
       case 'crate': { const img = crateSprite(char); return c(img, img.height / 2 + 4); }
       case 'pillar': { const img = pillarSprite(o.r, o.id); return c(img, img.height - 5); }
@@ -172,6 +175,17 @@ export class Renderer {
     }
     tr.dirty.clear();
     this.base.ctx.putImageData(this.base.img, 0, 0, x0, y0, x1 - x0, y1 - y0);
+  }
+
+  // Paredes que surgem no meio da partida (Terra Rachada): quando terminam de subir, viram parte do chão pintado.
+  paintRisenWalls(world) {
+    for (const wl of world.walls) {
+      if (!wl.dyn || wl._painted === this.base || world.time < wl.at + wl.rise) continue;
+      wl._painted = this.base;
+      paintWalls(this.base, world, [wl]);
+      const y0 = Math.max(0, wl.y - wl.H - 2);
+      this.base.ctx.putImageData(this.base.img, 0, 0, wl.x - 2, y0, wl.w + 6, wl.y + wl.h - y0 + 5);
+    }
   }
 
   // Pinta o chão das linhas de tiles [r0, r1) (só no buffer; paintBaseExtras envia para a tela).
@@ -626,21 +640,11 @@ export class Renderer {
           if (e.kind === 'guard') { this.rings.push({ x: e.x, y: e.y - 6, r: 4, max: 16, t: 0, color: SIG_COLOR.guard, thick: true }); }
           break;
         // ───── mecânicas próprias ─────
-        case 'overheat':
-          this.addText({ x: e.x, y: e.y - 34, text: 'SUPERAQUECIDO!', t: 0, color: SIG_COLOR.overheat, big: true });
-          P.burst(e.x, e.y - 8, 30, { ramp: 'fire', speed: 90, life: 0.6, add: true, vz: 60, size: 2 });
-          this.rings.push({ x: e.x, y: e.y, r: 4, max: 26, t: 0, color: SIG_COLOR.overheat, thick: true });
-          this.shake = Math.max(this.shake, 3);
+        case 'wallRise': case 'tsunamiWarn': case 'tsunami': case 'krakenWake': case 'krakenWindup': case 'krakenDown': case 'krakenRage':
+          ARF.onEvent(this, e, P);
           break;
-        case 'heatNova':
-          P.burst(e.x, e.y, 40, { ramp: 'fire', speed: 150, life: 0.5, add: true, vz: 30, size: 2 });
-          this.rings.push({ x: e.x, y: e.y, r: 6, max: e.r, t: 0, color: '#ffffff', thick: true });
-          this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r - 6, t: 0, color: '#ff7a1a', thick: true });
-          this.shake = Math.max(this.shake, 6); this.flash = 0.08;
-          break;
-        case 'exhaust':
-          this.addText({ x: e.x, y: e.y - 30, text: 'EXAUSTO', t: 0, color: '#d8ccb8' });
-          P.burst(e.x, e.y - 10, 16, { ramp: 'smoke', speed: 30, life: 1.2, vz: 30, size: 2, grow: 3, alpha: 0.7 });
+        case 'coalDrop': case 'coalOut': case 'coalPick': case 'sparkShot': case 'ignition': case 'smokePuff': case 'boomerangEnd': case 'boomerangCatch':
+          FF.onEvent(this, e, P);
           break;
         case 'charged':
           this.addText({ x: e.x, y: e.y - 30, text: 'DISPARADA!', t: 0, color: SIG_COLOR.momentum });
@@ -769,6 +773,7 @@ export class Renderer {
     this.consume(world.drainEvents());
     this.elimFx(world);
     if (world.terrain.dirty.size) this.paintBase(false);
+    this.paintRisenWalls(world);
     this.particles.update(dt);
     this.shake *= Math.exp(-10 * dt);
     this.excite = Math.max(0.15, this.excite - dt * 0.25);
@@ -785,14 +790,14 @@ export class Renderer {
     this.fxG.clear();
     this.fxT.clear();
     this.drawTerrainFx(world, t);
-    for (const h of world.hazards) drawHazard(h, this.fxG, this.fxT, t, this.dotCircle.bind(this));
-    if (world.zones?.length) EF.drawTrails(this.fxG, world.zones.filter((z) => z.kind !== 'psy'), t);
+    for (const h of world.hazards) { if (ARF.ARENA_HAZARDS.has(h.kind)) ARF.drawHazard(this, h, world, t); else drawHazard(h, this.fxG, this.fxT, t, this.dotCircle.bind(this)); }
+    if (world.zones?.length) EF.drawTrails(this.fxG, world.zones.filter((z) => z.kind !== 'psy' && z.kind !== 'coal'), t);
     // Clarão do raio do céu no chão (por baixo dos monstros).
     if (this.impacts) {
       for (const f of this.impacts) { f.life -= dt; if (f.life > 0) EF.drawImpact(this.fxG, f); }
       this.impacts = this.impacts.filter((f) => f.life > 0);
     }
-    for (const z of world.zones || []) { if (z.kind === 'psy') PF.drawSpiral(this.fxG, z, t); else if (z.kind === 'wind') AF.drawVortex(this.fxG, z, t); else EF.drawZone(this.fxG, z, t); }
+    for (const z of world.zones || []) { if (z.kind === 'psy') PF.drawSpiral(this.fxG, z, t); else if (z.kind === 'wind') AF.drawVortex(this.fxG, z, t); else if (z.kind === 'coal') { if (z.life > 0) FF.drawCoal(this.fxG, z, t, this.particles); } else EF.drawZone(this.fxG, z, t); }
     this.toDrawn(world, alpha, true);
     this.drawTelegraphs(world, t);
     this.drawGroundAbilityFx(world, t, dt);
@@ -928,6 +933,9 @@ export class Renderer {
       const fill = Math.min(W / WORLD_W, availH / (WORLD_H * 0.8));
       S = Math.max(fit, Math.min(1.15 * dpr, Math.max(fill, 0.95 * dpr)));
     }
+    // Fase que anda (Atlântida): a câmera mostra ~640 px de largura e rola com a corrida, em qualquer configuração.
+    const scroll = !!world.arenaDef?.scroll && !world.over;
+    if (scroll) S = Math.max(fit, Math.min(W / 640, availH / (WORLD_H * 0.6)));
     // Pixels inteiros (todos do mesmo tamanho) quando o arredondamento muda pouco a escala.
     if (S >= 2) {
       const n = S > fit + 1e-6 ? Math.round(S) : Math.floor(S);
@@ -945,6 +953,13 @@ export class Renderer {
       // Câmera: segue o monstro controlado (ou o último que esteve em campo), suavizada, sem sair do mundo.
       const m = world.active;
       if (m) { const p = this.lerpPos(m, alpha); this.camTarget = { x: p.x, y: p.y - 10, world }; }
+      if (scroll) {
+        // Sem monstro controlado (espectador): o meio da luta. A borda esquerda nunca fica atrás da onda.
+        const on = world.monsters.filter((q) => q.alive && q.onField);
+        if (!m && on.length) this.camTarget = { x: on.reduce((s2, q) => s2 + q.x, 0) / on.length, y: on.reduce((s2, q) => s2 + q.y, 0) / on.length - 10, world };
+        const tsu = world.hazards.find((h) => h.kind === 'tsunami');
+        if (tsu && this.camTarget?.world === world) this.camTarget.x = Math.max(this.camTarget.x, tsu.frontAt(world.time) - 50 + W / S / 2);
+      }
       const tg = this.camTarget?.world === world ? this.camTarget : { x: WORLD_W / 2, y: WORLD_H / 2 };
       if (!this.cam || this.cam.world !== world || !Number.isFinite(this.cam.x + this.cam.y)) this.cam = { x: tg.x, y: tg.y, world };
       const k = clamp(1 - Math.exp(-7 * dt), 0, 1);
@@ -1219,6 +1234,7 @@ export class Renderer {
       if (p.kind === 'sentrySeed') continue;
       if (p.kind === 'roots') { this.drawRootRune(g, p.tx, p.ty, p.radius, k, t); continue; }
       if (p.kind === 'thunder') { EF.drawThunderMark(g, p, t, this.dotCircle.bind(this)); continue; }
+      if (p.kind === 'krakenBall' || p.kind === 'krakenRock' || p.kind === 'krakenArm') { ARF.drawKrakenMark(this, g, p, t); continue; }
       if (p.kind === 'bubble') {
         const c = rgba(Math.floor(t * 12) % 2 ? '#e8f8ff' : '#5ab4ff', 230);
         this.dotCircle(g, p.tx, p.ty, p.radius, c, t * 3, 3);
@@ -1261,8 +1277,9 @@ export class Renderer {
           const c = rgba(blink ? '#e8f8ff' : '#4fb0ff', 200);
           for (let s = 10; s < L; s += 4) g.set(m.x + Math.cos(a.aim) * s, m.y + Math.sin(a.aim) * s - 3, c);
         } else if (ab.kind === 'aoe') {
-          this.dotCircle(g, m.x, m.y, ab.radius, rgba('#7cd0ff', 200), t * 4, 4);
-          this.dotCircle(g, m.x, m.y, ab.radius * (1 - k), rgba('#e0f6ff', 220), -t * 6, 3);
+          const fire = m.element === 'fire';
+          this.dotCircle(g, m.x, m.y, ab.radius, rgba(fire ? '#ff7a2a' : '#7cd0ff', 200), t * 4, 4);
+          this.dotCircle(g, m.x, m.y, ab.radius * (1 - k), rgba(fire ? '#ffe066' : '#e0f6ff', 220), -t * 6, 3);
         } else if (ab.kind === 'dash') {
           const c = rgba(blink ? '#ffd84a' : '#ff6a2a', 220);
           const L = a.leapDist ?? ab.range ?? 110;
@@ -1382,9 +1399,7 @@ export class Renderer {
     }
     const tr = this.world.terrain;
     if (m.element === 'fire' && tr.fire[tr.at(m.x, m.y)] > 0) pose.power = Math.max(pose.power, 0.4);
-    if (m.status.overheat > 0) pose.power = Math.max(pose.power, 1);
     if (m.dummy) pose.wobble = st.wob;
-    if (m.status.exhaust > 0) pose.crouch = Math.max(pose.crouch, 0.5);
     if (a?.ab.kind === 'guard' && ph === 'active') pose.crouch = 1;
     return pose;
   }
@@ -1598,7 +1613,7 @@ export class Renderer {
   // Quadro do monstro: arte do usuário (se carregada) ou sprite procedural de reserva.
   monsterFrame(m, st, pose) {
     if (this.art.has(m.def.sprite)) {
-      pose.flames = m.element === 'fire' ? (m.status.exhaust > 0 ? 0 : (m.evolved ? 6 : 3) + (m.status.overheat > 0 ? 4 : 0)) : 0;
+      pose.flames = m.element === 'fire' ? (m.evolved ? 6 : 3) + (m.spark > 0 ? 2 : 0) + (m.status.haste > 0 ? 2 : 0) : 0;
       return this.art.render(m.id, m.def.sprite, pose);
     }
     const pb = st.pb;
@@ -1804,6 +1819,7 @@ export class Renderer {
 
   drawObstacle(o, t) {
     const l = this.l;
+    if (o.kind === 'kraken') { ARF.drawKraken(this, o, t); return; }
     if (o.destroyed) {
       if (o.kind === 'bush') l.drawImage(this.stump, Math.round(o.x - 6), Math.round(o.y - 5));
       else if (o.kind === 'tree') {
@@ -1921,6 +1937,14 @@ export class Renderer {
         if (Math.random() < 0.25) this.particles.add({ ramp: 'dust', x: x + (Math.random() - 0.5) * p.r, y, z: 1, vz: 20, vx: (Math.random() - 0.5) * 30, life: 0.4, alpha: 0.6 });
       } else if (p.kind === 'feather') {
         AF.drawFeather(g, p, x, y);
+      } else if (p.kind === 'coalRock') {
+        FF.drawCoalRock(g, p, x, y, t, this.particles);
+      } else if (p.kind === 'boomerang') {
+        FF.drawBoomerang(g, p, x, y, t, this.particles);
+      } else if (p.kind === 'forgeBomb') {
+        FF.drawForgeBomb(this, g, p, x, y, t);
+      } else if (p.kind === 'krakenBall' || p.kind === 'krakenRock' || p.kind === 'krakenArm') {
+        ARF.drawKrakenShot(this, g, p, x, y);
       } else if (p.kind === 'thorn') {
         const an = Math.atan2(p.vy, p.vx), ca = Math.cos(an), sa = Math.sin(an);
         const S = [rgba('#2a1a0a'), rgba('#5a3a1a'), rgba('#c8b890'), rgba('#7ad84a')];
@@ -2237,15 +2261,14 @@ export class Renderer {
       for (let k = 0; k < 4; k++) l.fillRect(x + 7 + k, by + k, 7 - k * 2, 1);
     }
 
-    // Barra da mecânica própria (para os dois lados lerem): calor laranja, ímpeto amarelo.
+    // Barra da mecânica própria (para os dois lados lerem): centelhas laranja, ímpeto amarelo.
     const kind = m.def.sig?.kind;
     let sy = y + (m.def.evolvesTo && !m.evolved ? 6 : 4);
-    if (kind === 'heat' && (m.heat > 0 || m.status.exhaust > 0)) {
-      l.fillStyle = '#140c0a'; l.fillRect(x - 1, sy, 22, 3);
-      const full = m.status.overheat > 0;
-      l.fillStyle = m.status.exhaust > 0 ? '#6a6058' : full ? (Math.floor(this.time * 10) % 2 ? '#ffffff' : SIG_COLOR.overheat) : SIG_COLOR.heat;
-      l.fillRect(x, sy + 1, Math.round((m.status.exhaust > 0 ? m.status.exhaust / (m.def.sig.exhaust ?? 2.2) : m.heat / 100) * 20), 1);
-      sy += 3;
+    if (kind === 'forge' && m.spark > 0) {
+      const max = m.def.sig.sparkMax ?? 2;
+      l.fillStyle = '#140c0a'; l.fillRect(x - 1, sy, max * 5 + 1, 4);
+      for (let k = 0; k < max; k++) { l.fillStyle = k < m.spark ? (Math.floor(this.time * 8 + k) % 2 ? '#fff0a0' : SIG_COLOR.forge) : '#3a2418'; l.fillRect(x + k * 5, sy + 1, 4, 2); }
+      sy += 4;
     } else if (kind === 'momentum' && m.momentum > 0) {
       l.fillStyle = '#140c0a'; l.fillRect(x - 1, sy, 22, 3);
       l.fillStyle = m.charged ? (Math.floor(this.time * 10) % 2 ? '#ffffff' : SIG_COLOR.momentum) : '#b89a30';

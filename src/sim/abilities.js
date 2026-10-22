@@ -5,12 +5,14 @@ import { thorns, spawnDecoy, SIG, isGuarding } from './signature.js';
 import * as Elec from './electric.js';
 import * as Psy from './psychic.js';
 import * as Air from './air.js';
+import * as Forge from './forge.js';
 
 // Cada habilidade tem fases reais: preparação (windup, telegrafada), ativa (hitbox/efeito) e recuperação.
 // move = multiplicador de deslocamento em cada fase; turn = rad/s de rastreio da mira em windup/ativa.
 
 // Golpe corpo a corpo: acerta quem estiver no arco (alcance/arco definidos na habilidade e usados também no desenho).
-function meleeTick(w, m, a, { reach, arc, dmg, kb, stun, extra }) {
+// radial: golpe em volta (giro, pisão) empurra cada alvo para longe do centro, não na direção da mira.
+function meleeTick(w, m, a, { reach, arc, dmg, kb, stun, extra, radial }) {
   for (const t of w.enemiesOf(m)) {
     if (a.hit.has(t.id)) continue;
     const d = Math.hypot(t.x - m.x, t.y - m.y);
@@ -19,7 +21,7 @@ function meleeTick(w, m, a, { reach, arc, dmg, kb, stun, extra }) {
     if (Math.abs(angleDiff(a.aim, angleTo(m, t))) > arc / 2 + slack) continue;
     if (!w.los(m.x, m.y, t.x, t.y, { noSteam: true })) continue;
     a.hit.add(t.id);
-    const dealt = w.damage(t, dmg, m, { kb, ang: a.aim, stun, element: m.element, ...extra });
+    const dealt = w.damage(t, dmg, m, { kb, ang: radial ? angleTo(m, t) : a.aim, stun, element: m.element, ...extra });
     if (dealt > 0 || t.status.invuln <= 0) thorns(w, t, m); // couraça de espinhos fere quem bate
   }
   for (const d of [...w.decoys]) {
@@ -37,6 +39,7 @@ function meleeTick(w, m, a, { reach, arc, dmg, kb, stun, extra }) {
     const slack = d > 0 ? Math.asin(Math.min(1, o.r / d)) : Math.PI;
     if (Math.abs(angleDiff(a.aim, Math.atan2(o.y - m.y, o.x - m.x))) > arc / 2 + slack) continue;
     a.hit.add('o' + o.id);
+    o.lastHitBy = m;
     w.hurtObstacle(o, dmg);
     if (m.element === 'fire' && o.flammable && !o.destroyed) w.igniteObstacle(o, m);
   }
@@ -1509,5 +1512,102 @@ Object.assign(ABILITIES, {
     cooldown: 2.4, windup: 0, active: 0.22, recovery: 0.08,
     move: [1, 1, 0.7], turn: [0, 0], dash: { speed: 350, invuln: true },
     desc: 'REVOADA VELOZ: desvio voando mais longo (invulnerável).',
+  },
+});
+
+// ───────────── Fogo de longe: Brasalinha → Fornalhonte ─────────────
+// Tiros que deixam BRASAS no chão; recolher brasas guarda CENTELHAS (tiro incandescente); o E explode todas.
+// Sem dano de perto relevante: a Rabada e o Pisão servem para afastar quem chega (ver forge.js).
+Object.assign(ABILITIES, {
+  // ───── Brasalinha (base, arredia) ─────
+  coalShot: {
+    id: 'coalShot', name: 'Pedra em Brasa', element: 'fire', kind: 'projectile', basic: true,
+    cooldown: 0.95, windup: 0.14, active: 0.02, recovery: 0.18,
+    move: [0.7, 0.7, 0.9], turn: [10, 0], range: 170, speed: 270,
+    shot: { dmg: 4.2, r: 3, speed: 270, range: 170, hot: { dmg: 7, r: 5, speed: 300, R: 22, splash: 4 } },
+    onActiveStart(w, m, a) { Forge.shoot(w, m, a, this.shot); },
+    desc: 'PEDRA EM BRASA: tiro de longe que queima e deixa uma BRASA no chão onde cai. Com CENTELHA, sai INCANDESCENTE e explode.',
+  },
+  smokeTail: {
+    id: 'smokeTail', name: 'Rabada Fumegante', element: 'fire', kind: 'melee', basic: true,
+    cooldown: 0.9, windup: 0.1, active: 0.1, recovery: 0.2,
+    move: [0.5, 0.8, 0.8], turn: [10, 0], range: 18,
+    ...melee({ reach: 18, arc: Math.PI * 2, dmg: 5, kb: 170, stun: 0.1, extra: { burn: 0.8 }, radial: true }),
+    desc: 'RABADA FUMEGANTE: giro com o rabo em brasa que EMPURRA para longe todo mundo em volta.',
+  },
+  emberRing: {
+    id: 'emberRing', name: 'Bumerangue de Brasa', element: 'fire', kind: 'projectile',
+    cooldown: 7, windup: 0.16, active: 0.02, recovery: 0.2,
+    move: [0.6, 0.6, 0.9], turn: [9, 0], range: 165, speed: 330,
+    onActiveStart(w, m, a) { Forge.boomerang(w, m, a, { speed: 330, out: 165, r: 6, dmg: 5 }); },
+    desc: 'BUMERANGUE DE BRASA: vai e VOLTA para você, fere na ida e na volta e DETONA as suas brasas por onde passa.',
+  },
+  ignition: {
+    id: 'ignition', name: 'Ignição', element: 'fire', kind: 'aoe', superArmor: true,
+    cooldown: 10, windup: 0.18, active: 0.05, recovery: 0.25,
+    move: [0.4, 0.2, 0.7], turn: [0, 0], range: 30, radius: 30,
+    onActiveStart(w, m) { Forge.ignite(w, m, { R: 26, dmg: 6, self: { r: 30, dmg: 4 } }); },
+    desc: 'IGNIÇÃO: TODAS as suas brasas explodem ao mesmo tempo, e uma explosão sai em volta de você.',
+  },
+  shyLeap: {
+    id: 'shyLeap', name: 'Recuo Arredio', element: 'fire', kind: 'dash',
+    cooldown: 11, windup: 0, active: 0.28, recovery: 0.14,
+    move: [1, 1, 0.7], turn: [0, 0], range: 100, dash: { speed: 360, invuln: true },
+    onActiveStart(w, m, a) { Forge.shyLeapStart(w, m, a, { gap: 9 }); },
+    desc: 'RECUO ARREDIO: salta PARA TRÁS (invulnerável), solta fumaça e deixa 2 BRASAS onde você estava.',
+  },
+  sparkHop: {
+    id: 'sparkHop', name: 'Faísca', element: 'fire', kind: 'dodge',
+    cooldown: 3, windup: 0, active: 0.17, recovery: 0.08,
+    move: [1, 1, 0.8], turn: [0, 0], dash: { speed: 340, invuln: true },
+    desc: 'FAÍSCA: pulinho rápido e invulnerável.',
+  },
+
+  // ───── Fornalhonte (evoluído, colosso) ─────
+  forgeShot: {
+    id: 'forgeShot', name: 'Bala de Forja', element: 'fire', kind: 'projectile', basic: true,
+    cooldown: 1.05, windup: 0.16, active: 0.02, recovery: 0.2,
+    move: [0.65, 0.65, 0.85], turn: [9, 0], range: 170, speed: 255,
+    shot: { dmg: 6.4, r: 4, speed: 255, range: 170, hot: { dmg: 10, r: 6, speed: 285, R: 30, splash: 6 } },
+    onActiveStart(w, m, a) { Forge.shoot(w, m, a, this.shot); },
+    desc: 'BALA DE FORJA: pedra de magma de longe; deixa uma BRASA DE FORJA onde cai. Com CENTELHA, explode numa área grande.',
+  },
+  forgeStomp: {
+    id: 'forgeStomp', name: 'Pisão da Forja', element: 'fire', kind: 'melee',
+    cooldown: 1.1, windup: 0.16, active: 0.1, recovery: 0.26,
+    move: [0.3, 0.6, 0.6], turn: [8, 0], range: 24,
+    onActiveStart(w, m) {
+      w.emit({ type: 'quake', x: m.x, y: m.y + 4, r: m.r + 24, src: m });
+      w.igniteArea(m.x, m.y, m.r + 10, 1.4, m);
+    },
+    ...melee({ reach: 24, arc: Math.PI * 2, dmg: 8, kb: 220, stun: 0.15, extra: { burn: 1 }, radial: true }),
+    desc: 'PISÃO DA FORJA: pisa o chão em brasa e ARREMESSA para longe todo mundo em volta.',
+  },
+  chimneyVolley: {
+    id: 'chimneyVolley', name: 'Salva das Chaminés', element: 'fire', kind: 'lob', superArmor: true,
+    cooldown: 9, windup: 0.32, active: 0.05, recovery: 0.3,
+    move: [0.3, 0.3, 0.7], turn: [8, 0], range: 215, radius: 20, flight: 0.6,
+    onActiveStart(w, m, a) { Forge.volley(w, m, a, this, { n: 3, spread: 24, r: 20, dmg: 7, flight: 0.6 }); },
+    desc: 'SALVA DAS CHAMINÉS: as chaminés disparam 3 BOMBAS DE MAGMA em arco na área marcada; cada uma explode e deixa uma brasa.',
+  },
+  forgeEruption: {
+    id: 'forgeEruption', name: 'Erupção da Forja', element: 'fire', kind: 'aoe', superArmor: true,
+    cooldown: 10, windup: 0.22, active: 0.05, recovery: 0.3,
+    move: [0.3, 0.2, 0.6], turn: [0, 0], range: 36, radius: 36,
+    onActiveStart(w, m) { Forge.ignite(w, m, { R: 30, dmg: 8, self: { r: 36, dmg: 6 } }); },
+    desc: 'ERUPÇÃO DA FORJA: TODAS as suas brasas explodem (maiores) e a forja estoura em volta de você.',
+  },
+  colossusRam: {
+    id: 'colossusRam', name: 'Tranco do Colosso', element: 'fire', kind: 'dash', superArmor: true,
+    cooldown: 8, windup: 0.24, active: 0.36, recovery: 0.36,
+    move: [0.1, 1, 0.3], turn: [8, 0], range: 140, dash: { speed: 390 },
+    onActiveTick(w, m, a) { Forge.ram(w, m, a, { dmg: 9, kb: 240, stun: 0.25 }); },
+    desc: 'TRANCO DO COLOSSO: atropela em linha (imparável), arremessa quem acerta e RECOLHE as suas brasas no caminho.',
+  },
+  emberRoll: {
+    id: 'emberRoll', name: 'Rolamento de Brasa', element: 'fire', kind: 'dodge',
+    cooldown: 3.6, windup: 0, active: 0.2, recovery: 0.12,
+    move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 300, invuln: true },
+    desc: 'ROLAMENTO DE BRASA: rola invulnerável.',
   },
 });

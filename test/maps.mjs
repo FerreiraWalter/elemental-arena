@@ -2,7 +2,7 @@
 // node test/maps.mjs
 import { World } from '../src/sim/world.js';
 import { DT, WORLD_W, WORLD_H, TILE, COLS, ROWS } from '../src/config.js';
-import { ARENA_ORDER } from '../src/arenas/index.js';
+import { ARENAS, ARENA_ORDER } from '../src/arenas/index.js';
 import { SPECIES } from '../src/sim/species.js';
 import { PathGrid } from '../src/ai/path.js';
 import { props, T } from '../src/sim/tiles.js';
@@ -38,7 +38,9 @@ for (const arena of ARENA_ORDER) {
   test(`${arena}: pontos de nascimento equilibrados (simetria rotacional, mesma distância ao centro)`, () => {
     const w = World.match(3, undefined, null, arena);
     const [a, b] = w.spawns;
-    assert(Math.abs(a.x + b.x - WORLD_W) < 1 && Math.abs(a.y + b.y - WORLD_H) < 1, `${arena}: spawns não são espelhados`);
+    // Corrida (Atlântida): os dois nascem na mesma distância da onda, espelhados em cima/embaixo.
+    if (ARENAS[arena].asymmetric) assert(Math.abs(a.x - b.x) < 1 && Math.abs(a.y + b.y - WORLD_H) < 1, `${arena}: spawns não são espelhados`);
+    else assert(Math.abs(a.x + b.x - WORLD_W) < 1 && Math.abs(a.y + b.y - WORLD_H) < 1, `${arena}: spawns não são espelhados`);
     const sym = (x, y) => w.terrain.type[w.terrain.at(WORLD_W - x, WORLD_H - y)];
     let bad = 0, n = 0;
     for (let r = 4; r < ROWS - 4; r += 2) for (let c = 4; c < COLS - 4; c += 2) {
@@ -46,9 +48,10 @@ for (const arena of ARENA_ORDER) {
       const i = r * COLS + c;
       if (props(w.terrain.type[i]).deep !== props(sym(c * TILE + 4, r * TILE + 4)).deep) bad++;
     }
-    assert(bad / n < 0.03, `${arena}: água funda assimétrica em ${(bad / n * 100).toFixed(1)}% da arena`);
+    // Atlântida é uma corrida de propósito (a onda vem de um lado, o coliseu fica do outro): só os nascimentos são simétricos.
+    if (!ARENAS[arena].asymmetric) assert(bad / n < 0.03, `${arena}: água funda assimétrica em ${(bad / n * 100).toFixed(1)}% da arena`);
     const obs = w.obstacles.filter((o) => !o.sentry);
-    for (const o of obs) {
+    if (!ARENAS[arena].asymmetric) for (const o of obs) {
       if (Math.hypot(o.x - WORLD_W / 2, o.y - WORLD_H / 2) < 2) continue; // objeto no centro é simétrico a si mesmo
       const mate = obs.find((p) => p !== o && p.kind === o.kind && Math.hypot(p.x - (WORLD_W - o.x), p.y - (WORLD_H - o.y)) < 2);
       assert(mate, `${arena}: ${o.kind} em ${o.x | 0},${o.y | 0} sem par simétrico`);
@@ -121,7 +124,7 @@ for (const arena of ARENA_ORDER) {
     }
     // Destrutíveis desaparecem do bloqueio quando destruídos; permanentes nunca (o desenho avisa com anéis diferentes).
     // Árvores que tombam (Jardim/Floresta) não queimam: quebram só com dano.
-    for (const o of w.obstacles) assert(o.hp === Infinity || o.kind === 'tree' ? !o.flammable : o.flammable || o.sentry || o.kind === 'thicket', `${arena}: ${o.kind} com regra de destruição incoerente`);
+    for (const o of w.obstacles) assert(o.hp === Infinity || o.kind === 'tree' || o.kind === 'kraken' ? !o.flammable : o.flammable || o.sentry || o.kind === 'thicket', `${arena}: ${o.kind} com regra de destruição incoerente`);
     if (arena === 'jardim' || arena === 'floresta') {
       const tree = w.obstacles.find((o) => o.kind === 'tree');
       assert(tree && tree.hp < Infinity, `${arena}: árvores deveriam tombar`);

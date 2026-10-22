@@ -7,12 +7,13 @@
 //   field – índices dos monstros presentes na arena (em campo ou corpos sumindo)
 //   teams – por vaga: monstro em campo, recarga de troca, troca pendente
 //   proj, obs, haz, steam – projéteis, obstáculos, perigos e nuvens
-//   zones – solo eletrificado (rastros e Julgamento do Trovão)
+//   zones – solo eletrificado, espirais, vórtices e brasas (com o dono)
 //   dec   – ilusões de tinta (cópias do Gotapus); obstáculos dinâmicos incluem sentinelas (lado e dono)
 //   terr  – deltas do terreno (fogo, umidade, raízes, tipo, fuligem), quantizados
 //   events, feed – eventos visuais/sonoros e mensagens novas desde o snapshot anterior
 
 import { SPECIES } from '../sim/species.js';
+import { COLS } from '../config.js';
 import { ABILITIES } from '../sim/abilities.js';
 import { Monster } from '../sim/monster.js';
 
@@ -21,6 +22,7 @@ const r1 = (v) => Math.round(v * 10) / 10;
 const r2 = (v) => Math.round(v * 100) / 100;
 const PH = ['idle', 'warn', 'active'];
 const SKIP_EVENTS = new Set(['state', 'steam', 'nearMiss']);
+const ZONE_KINDS = ['shock', 'psy', 'wind', 'coal'];
 
 export function makeSyncCtx(world) {
   return { seq: 0, prevTerr: null, lastFeed: world.feedSeq || 0, nInit: world.obstacles.length, prevField: new Set(), projMap: new Map() };
@@ -39,9 +41,11 @@ function monsterRec(m, idxOf) {
   const idxOfId = (id) => { for (const [mm, i] of idxOf) if (mm.id === id) return i; return -1; };
   const rec = {
     h: r1(m.hp), M: m.maxHp, a: +m.alive, f: +m.onField, d: m.def.key, e: r1(m.energy), ev: +m.evolved,
-    st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield), overheat: r2(m.status.overheat), exhaust: r2(m.status.exhaust), cloak: r2(m.status.cloak), bubble: r2(m.status.bubble), slow: r2(m.status.slow), dr: r2(m.status.dr), regen: r2(m.status.regen), charm: r2(m.status.charm), charmImm: r2(m.status.charmImm) },
+    st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield), haste: r2(m.status.haste), cloak: r2(m.status.cloak), bubble: r2(m.status.bubble), slow: r2(m.status.slow), dr: r2(m.status.dr), regen: r2(m.status.regen), charm: r2(m.status.charm), charmImm: r2(m.status.charmImm) },
     sk: r2(m.slowK || 0), dk: r2(m.drK || 0), vt: m.volt || 0, tr: m.trance || 0, cb: m.charmBy ? (idxOf.get(m.charmBy) ?? -1) : -1,
-    ht: r1(m.heat), mo: r1(m.momentum), cg: +m.charged, mk: m.marks.n ? [m.marks.n, idxOfId(m.marks.by)] : 0,
+    sp: m.spark || 0, mo: r1(m.momentum),
+    // Números do resultado (dano, esquivas, incêndios, apagados): antes não iam e o placar online mostrava tudo 0.
+    ss: [Math.round(m.stats.dmgDealt), m.stats.dodges, m.stats.ignites, m.stats.douses], cg: +m.charged, mk: m.marks.n ? [m.marks.n, idxOfId(m.marks.by)] : 0,
     cd: Object.fromEntries(Object.entries(m.cd).map(([k, v]) => [k, r2(v)])),
     ...(Object.keys(m.ch).length ? { chg: Object.fromEntries(Object.keys(m.ch).map((k) => [k, [m.ch[k], r2(m.rc[k])]])) } : {}),
     x: r1(m.x), y: r1(m.y), vx: r1(m.vx), vy: r1(m.vy), fc: r2(m.facing),
@@ -103,7 +107,7 @@ export function serialize(world, ctx) {
     haz: world.hazards.map((h) => [PH.indexOf(h.phase), r2(h.t)]),
     rel: world.relics.map((r) => (r.t === Infinity ? -1 : r2(r.t))),
     steam: world.steam.map((s) => [r1(s.x), r1(s.y), r1(s.r), r2(s.density), r2(s.life), +!!s.ink]),
-    zones: world.zones.map((z) => [z.id, r1(z.x), r1(z.y), r1(z.r), r2(z.life), r2(z.max), z.team, +!!z.big, z.kind === 'psy' ? 1 : z.kind === 'wind' ? 2 : 0, r2(z.lift || 0)]),
+    zones: world.zones.map((z) => [z.id, r1(z.x), r1(z.y), r1(z.r), r2(z.life), r2(z.max), z.team, +!!z.big, ZONE_KINDS.indexOf(z.kind) > 0 ? ZONE_KINDS.indexOf(z.kind) : 0, r2(z.lift || 0), z.owner ? idxOf.get(z.owner) ?? -1 : -1]),
     dec: world.decoys.map((d) => [d.id, idxOf.get(d.owner), r1(d.x), r1(d.y), r2(d.life), r2(d.max), r2(d.facing), r1(d.vx), r1(d.vy), r2(d.atk || 0)]),
     terr,
     feed: world.feed.filter((f) => f.seq > ctx.lastFeed).map((f) => [f.text, f.color]),
@@ -148,7 +152,8 @@ export function applySnapshot(world, s, ctx) {
     m.x = r.x; m.y = r.y; m.vx = r.vx; m.vy = r.vy; m.facing = r.fc; m.lookAt = r.fc;
     m.switchState = r.sw || null; m.switchT = r.swT; m.evolveT = r.evT; m.hitFlash = r.hf; m.deathT = r.dT;
     m.breakCd = r.bc || 0; m.shieldHp = r.sh; m.level = r.lv; m.lift = r.lf; m.liftMax = r.lfM || 1;
-    m.heat = r.ht || 0; m.momentum = r.mo || 0; m.charged = !!r.cg;
+    m.spark = r.sp || 0; m.momentum = r.mo || 0;
+    if (r.ss) [m.stats.dmgDealt, m.stats.dodges, m.stats.ignites, m.stats.douses] = r.ss; m.charged = !!r.cg;
     m.slowK = r.sk || 0; m.drK = r.dk || 0; m.volt = r.vt || 0; m.trance = r.tr || 0; m.charmBy = r.cb >= 0 ? world.roster[r.cb] : null;
     if (r.mk) { m.marks.n = r.mk[0]; m.marks.by = world.roster[r.mk[1]]?.id ?? 0; } else m.marks.n = 0;
     m.ai.state = r.ai; m.human = !!r.hum;
@@ -208,16 +213,18 @@ export function applySnapshot(world, s, ctx) {
   }
   ctx.decMap = decs;
   world.decoys = [...decs.values()];
-  s.haz.forEach((h, i) => { if (world.hazards[i]) { world.hazards[i].phase = PH[h[0]]; world.hazards[i].t = h[1]; } });
+  s.haz.forEach((h, i) => { if (world.hazards[i]) { world.hazards[i].phase = PH[h[0]]; world.hazards[i].t = h[1]; world.hazards[i].sync?.(world); } });
   (s.rel || []).forEach((t, i) => { if (world.relics[i]) world.relics[i].t = t < 0 ? Infinity : t; });
   world.steam = s.steam.map(([x, y, r, density, life, ink]) => ({ x, y, r, density, life, ink: !!ink }));
-  world.zones = (s.zones || []).map(([id, x, y, r, life, max, team, big, kind, lift]) => ({ id, kind: kind === 1 ? 'psy' : kind === 2 ? 'wind' : 'shock', x, y, r, life, max, team, big: !!big, lift: lift || 0 }));
+  world.zones = (s.zones || []).map(([id, x, y, r, life, max, team, big, kind, lift, own]) => ({ id, kind: ZONE_KINDS[kind] || 'shock', x, y, r, life, max, team, big: !!big, lift: lift || 0, owner: own >= 0 ? world.roster[own] : null }));
 
   // Terreno.
   for (let k = 0; k < s.terr.length; k += 2) {
     const i = s.terr[k], key = s.terr[k + 1];
     const type = key & 15, fq = (key >> 4) & 15, fm = (key >> 8) & 15, wet = (key >> 12) & 1, rq = (key >> 13) & 15, sq = (key >> 17) & 15;
     if (tr.type[i] !== type || (tr.wet[i] > 0) !== !!wet || Math.round(tr.soot[i] * 10) !== sq) tr.dirty.add(i);
+    // Tipo mudou (ex.: chão alagado pela tsunami): a borda dos vizinhos também muda (margem/espuma).
+    if (tr.type[i] !== type) for (const j of [i - 1, i + 1, i - COLS, i + COLS]) if (j >= 0 && j < tr.type.length) tr.dirty.add(j);
     tr.type[i] = type;
     tr.fire[i] = fq; tr.fireMax[i] = fm || 1;
     tr.wet[i] = wet ? 1 : 0;

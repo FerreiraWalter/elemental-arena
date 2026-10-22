@@ -331,12 +331,21 @@ const overlayActions = {
 const QUALITY = { auto: [3.2e6, 1.8e6, 1.1e6], alta: [8e6], leve: [1.1e6] };
 let qStep = 0, qChosen = null;
 const perf = { t: 0, n: 0, slow: 0, wait: 2 };
+// Tamanho real do canvas na página (CSS 100vw × 100dvh). No Safari do iPhone innerWidth/innerHeight chegam
+// atrasados ao girar e não acompanham a barra de endereço: o jogo ficava cortado/esticado até girar de novo.
+let cssW = 0, cssH = 0;
+function cssSize() {
+  const r = canvas.getBoundingClientRect();
+  return { w: Math.round(r.width) || window.innerWidth, h: Math.round(r.height) || window.innerHeight };
+}
 function resize() {
   const q = QUALITY[ui.settings.quality] ? ui.settings.quality : 'auto';
   const steps = QUALITY[q], budget = steps[Math.min(qStep, steps.length - 1)];
-  hud.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1, Math.sqrt(budget / (window.innerWidth * window.innerHeight))));
-  canvas.width = Math.floor(window.innerWidth * hud.dpr);
-  canvas.height = Math.floor(window.innerHeight * hud.dpr);
+  const { w, h } = cssSize();
+  cssW = w; cssH = h;
+  hud.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1, Math.sqrt(budget / (w * h))));
+  canvas.width = Math.floor(w * hud.dpr);
+  canvas.height = Math.floor(h * hud.dpr);
   renderer.lowFx = q === 'leve' || (q === 'auto' && qStep >= steps.length - 1);
   renderer.particles.max = renderer.lowFx ? 400 : 900;
 }
@@ -389,7 +398,8 @@ const KEY_SLOT = { KeyQ: 'q', KeyE: 'e', KeyF: 'f', Space: 'dodge', ShiftLeft: '
 
 window.addEventListener('resize', resize);
 // Tablet girando: alguns navegadores só atualizam o tamanho da janela um instante depois.
-window.addEventListener('orientationchange', () => setTimeout(resize, 250));
+window.addEventListener('orientationchange', () => { for (const ms of [100, 300, 700]) setTimeout(resize, ms); });
+window.addEventListener('pageshow', resize);
 window.visualViewport?.addEventListener('resize', resize);
 window.addEventListener('blur', () => { keys.clear(); if (world) world.input.held = {}; });
 window.addEventListener('paste', (e) => {
@@ -578,6 +588,8 @@ function drawNotice(c, dt) {
 function frame(now) {
   const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
   last = now;
+  // Rede de segurança: se o tamanho do canvas na página mudou sem evento (iOS), refaz a resolução.
+  if (canvas.clientWidth !== cssW || canvas.clientHeight !== cssH) { const s2 = cssSize(); if (s2.w !== cssW || s2.h !== cssH) resize(); }
   watchPerf(dt);
   touch.update(mode === 'battle' && !overlay && !!world && world.playerTeam !== null);
   hud.touch = touch.visible; // HUD sem a barra de teclas/mouse (os botões de toque mostram as recargas)

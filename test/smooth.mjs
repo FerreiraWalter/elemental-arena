@@ -117,9 +117,9 @@ test('Esquiva aparece na hora com ping 250 ms e termina no lugar do servidor', (
   const i0 = frames.findIndex((f) => f.t >= 0.6);
   const step = Math.hypot(frames[i0 + 2].x - frames[i0 + 1].x, frames[i0 + 2].y - frames[i0 + 1].y);
   assert(step > 4, `esquiva não respondeu na hora (passo de ${step.toFixed(1)} px por quadro)`);
-  assert(frames[i0 + 1].act === 'hop', 'pose da esquiva não apareceu na hora');
-  const hop = server.fieldOf(0).cd.hop;
-  assert(hop > 0 && hop < 3.4, 'o servidor não fez a esquiva');
+  assert(frames[i0 + 1].act === 'sparkHop', 'pose da esquiva não apareceu na hora');
+  const hop = server.fieldOf(0).cd.sparkHop;
+  assert(hop > 0 && hop < 3.01, 'o servidor não fez a esquiva');
   const last = frames[frames.length - 1];
   const err = Math.hypot(last.x - last.sx, last.y - last.sy);
   assert(err < 3, `erro final em relação ao servidor: ${err.toFixed(1)} px`);
@@ -153,9 +153,9 @@ test('Habilidade comum: recarga e som na hora, sem som repetido quando o servido
   const script = (t) => (t >= 0.5 && t < 0.52 ? { x: 0, y: 0, press: 'e', aim: { x: 400, y: 200 } } : { x: 0, y: 0, aim: { x: 400, y: 200 } });
   const { frames, casts, server } = run({ owd: 125, jitter: 30, script, seconds: 2 });
   const i0 = frames.findIndex((f) => f.t >= 0.5);
-  assert(frames[i0 + 1].cd.meteor > 0, 'recarga não começou na hora');
-  assert(server.fieldOf(0).ch.meteor === 1, 'servidor não lançou (a carga gasta não aparece)');
-  const mc = casts.filter((c) => c.ab === 'meteor');
+  assert(frames[i0 + 1].cd.ignition > 0, 'recarga não começou na hora');
+  assert(server.fieldOf(0).cd.ignition > 0, 'servidor não lançou (a recarga não aparece)');
+  const mc = casts.filter((c) => c.ab === 'ignition');
   assert(mc.length === 1 && mc[0].local, `esperava 1 som de lançamento local, veio ${JSON.stringify(mc)}`);
 });
 

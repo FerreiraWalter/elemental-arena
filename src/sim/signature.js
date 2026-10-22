@@ -1,8 +1,8 @@
 // Mecânicas próprias de cada linha de monstros ("assinaturas"). Ficam aqui, fora do World, para que cada
 // identidade seja fácil de ler e ajustar. Todas rodam no servidor/simulação e são sincronizadas por snapshot.
 //
-//   heat     Brasalisco  — Fornalha: ataques aquecem; em 100% SUPERAQUECE (mais dano e velocidade) e depois
-//                         fica EXAUSTO (lento, sem poderes, leva mais dano). A água esfria.
+//   forge    Brasalinha  — Centelha Ativa: tiros deixam BRASAS no chão; recolher uma guarda uma CENTELHA (tiro
+//                         incandescente). O E explode todas. Ver forge.js.
 //   guard    Hidrocasco  — Casco Reflexo: bloqueio com tempo certo; reflete projéteis e contra-ataca corpo a corpo.
 //   sentry   Brotossauro — Brotos Sentinela: planta torres vivas que atiram e curam quem está perto.
 //   momentum Ouriflama   — Ímpeto: correndo sem parar ganha DISPARADA; o próximo golpe sai muito mais forte.
@@ -16,8 +16,6 @@ import { T } from './tiles.js';
 import { addVolt, applySlow } from './electric.js';
 
 export const SIG = {
-  heat: { max: 100, decayDelay: 1.3, decay: 11, overheat: 3, exhaust: 2.2, exhaustEvolved: 1.5, dmg: 1.2, speed: 1.1, exhaustSpeed: 0.72, exhaustTaken: 1.15, waterCool: 12 },
-  nova: { r: 42, dmg: 9, kb: 230, burn: 1 },
   momentum: { gain: 60, loss: 75, keep: 0.3, chargedSpeed: 1.15, strike: 1.6, kb: 1.4 },
   guard: { block: 0, blockDot: 0, counterReach: 46, perfect: 0.16, perfectMult: 1.5 }, // guarda ativa = imune a QUALQUER ataque; nos primeiros 0,16 s é BLOQUEIO PERFEITO (contra e devolução mais fortes)
   decoy: { life: 2.2, speed: 0.95 },
@@ -27,54 +25,18 @@ export const SIG = {
 
 export const kindOf = (m) => m?.def?.sig?.kind;
 
-// ───────────── Fornalha (calor) ─────────────
+// ───────────── Ao usar uma habilidade ─────────────
 export function onCast(w, m, ab) {
   if (m.status.cloak > 0 && ab.kind !== 'dodge') { m.status.cloak = 0; w.emit({ type: 'uncloak', m, x: m.x, y: m.y }); }
   // Atacar denuncia a posição: quem estava enganado por uma cópia volta a enxergar o verdadeiro.
   if (ab.kind !== 'dodge' && ab.kind !== 'buff' && w.decoys.length) for (const e of w.enemiesOf(m)) if (e.ai?.fooled?.owner === m.id) e.ai.fooled = null;
-  if (kindOf(m) === 'heat' && ab.heat && m.status.overheat <= 0 && m.status.exhaust <= 0) {
-    m.heat = Math.min(SIG.heat.max, m.heat + ab.heat);
-    m.heatIdle = 0;
-    if (m.heat >= SIG.heat.max) overheat(w, m);
-  }
-}
-
-function overheat(w, m) {
-  m.status.overheat = SIG.heat.overheat;
-  m.heat = SIG.heat.max;
-  w.emit({ type: 'overheat', m, x: m.x, y: m.y });
-  w.say(`${m.name} SUPERAQUECEU!`, '#ffb040');
-  // Núcleo Vulcânico (forma evoluída): ao superaquecer, solta uma onda de calor que afasta quem está perto.
-  if (m.def.sig.nova) {
-    const N = SIG.nova;
-    w.emit({ type: 'heatNova', m, x: m.x, y: m.y, r: N.r });
-    for (const t of w.enemiesOf(m)) {
-      if (Math.hypot(t.x - m.x, t.y - m.y) > N.r + t.r) continue;
-      w.damage(t, N.dmg, m, { tag: 'nucleoVulcanico', kb: N.kb, ang: Math.atan2(t.y - m.y, t.x - m.x), stun: 0.2, burn: N.burn, element: 'fire', proj: true });
-    }
-    w.popDecoysIn(m.x, m.y, N.r, m.team);
-  }
 }
 
 // ───────────── Atualização por passo (monstro em campo) ─────────────
 export function update(w, m, dt) {
   const st = m.status;
   const k = kindOf(m);
-  if (k === 'heat') {
-    if (st.overheat > 0 && st.overheat - dt <= 0) {
-      st.overheat = 0;
-      st.exhaust = m.def.sig.exhaust ?? SIG.heat.exhaust;
-      m.heat = 0;
-      w.emit({ type: 'exhaust', m, x: m.x, y: m.y });
-      w.say(`${m.name} ficou EXAUSTO`, '#c8b8a0');
-    }
-    if (st.overheat <= 0 && st.exhaust <= 0) {
-      m.heatIdle = (m.heatIdle || 0) + dt;
-      if (m.heatIdle > SIG.heat.decayDelay) m.heat = Math.max(0, m.heat - SIG.heat.decay * dt);
-    }
-    const tr = w.terrain, i = tr.at(m.x, m.y);
-    if (i >= 0 && tr.isWater(i)) m.heat = Math.max(0, m.heat - 40 * dt);
-  } else if (k === 'momentum') {
+  if (k === 'momentum') {
     const M = SIG.momentum;
     const sp = Math.hypot(m.vx, m.vy), full = m.def.speed;
     const running = !m.action && st.stun <= 0 && st.root <= 0 && sp > full * 0.7;
@@ -96,10 +58,10 @@ export function update(w, m, dt) {
   if (m.rootGuard > 0) m.rootGuard = Math.max(0, m.rootGuard - dt);
 }
 
-// No banco: o calor esfria, o ímpeto se perde, marcas somem.
-export function bench(m, dt) {
-  if (m.heat > 0) m.heat = Math.max(0, m.heat - SIG.heat.decay * 2 * dt);
+// No banco: o ímpeto se perde, marcas, cargas e centelhas somem.
+export function bench(m) {
   m.momentum = 0; m.charged = false;
+  m.spark = 0;
   m.marks.n = 0;
   m.volt = 0;
 }
@@ -109,7 +71,6 @@ export function bench(m, dt) {
 export function outgoing(w, src, t, o) {
   let mult = 1;
   if (!src) return { mult, o };
-  if (src.status.overheat > 0 && (o.element || src.element) === 'fire') mult *= SIG.heat.dmg;
   if (src.charged && !o.dot && !o.proj && src.action && ['melee', 'dash', 'cone'].includes(src.action.ab.kind)) {
     mult *= SIG.momentum.strike;
     o = { ...o, kb: (o.kb || 0) * SIG.momentum.kb };
@@ -118,13 +79,11 @@ export function outgoing(w, src, t, o) {
   }
   return { mult, o };
 }
-export function incoming(t) { return t.status.exhaust > 0 ? SIG.heat.exhaustTaken : 1; }
 
-// Depois do dano aplicado: marcas, camuflagem, esfriar o calor, perder o ímpeto.
+// Depois do dano aplicado: marcas, camuflagem, perder o ímpeto, cargas elétricas.
 export function afterDamage(w, t, src, dmg, o) {
   if (dmg <= 0) return;
   if (t.status.cloak > 0 && !o.dot) { t.status.cloak = 0; w.emit({ type: 'uncloak', m: t, x: t.x, y: t.y }); }
-  if (kindOf(t) === 'heat' && (o.element || src?.element) === 'water') t.heat = Math.max(0, t.heat - SIG.heat.waterCool * (o.dot ? 0.1 : 1));
   if (kindOf(t) === 'momentum' && (o.stun || o.root) && t.momentum > 0) { t.momentum = 0; if (t.charged) { t.charged = false; w.emit({ type: 'momentumLost', m: t }); } }
   if (src && src !== t && kindOf(src) === 'marks' && !o.dot && !o.noMark && t.alive) mark(w, t, src, o);
   if (src && src !== t && kindOf(src) === 'volt' && !o.dot && !o.noVolt && (o.element || src.element) === 'electric') addVolt(w, src, 1);

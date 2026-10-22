@@ -3,6 +3,7 @@ import { hash2, valueNoise } from '../core/math.js';
 import { T, props } from '../sim/tiles.js';
 import { COURT, PADS } from '../arenas/quadra.js';
 import { rgba } from './pixel.js';
+import { drawBlock } from './arenafx.js';
 
 // Pintura pixel a pixel do chão de cada arena: tipo de tile + paleta da arena + alturas
 // (penhascos com face de rocha, sombras e bordas), pontes, escadas, umidade e fuligem.
@@ -160,7 +161,7 @@ export function paintTile(world, P, i, x, y) {
       if (lx === 0 || ly === 0) c = P.stone[0];
       else if (h > 0.96) c = P.stone[0];
       else if (lx === 1 || ly === 1) c = P.stone[Math.min(4, 2 + ((slab * 3) | 0))];
-      if (world.arenaId !== 'abismo' && valueNoise(x / 6, y / 6, seed + 7) > 0.74) c = P.grass[1];
+      if (world.arenaId !== 'abismo' && !style.noMoss && valueNoise(x / 6, y / 6, seed + 7) > 0.74) c = P.grass[1];
       break;
     }
     case T.BRIDGE: {
@@ -265,10 +266,17 @@ export function paintTile(world, P, i, x, y) {
 }
 
 // Muros: arquibancadas (quadra) e ruínas de pedra com musgo (jardim).
-export function paintWalls(base, world) {
+export function paintWalls(base, world, list = world.walls) {
   const wood = [rgba('#4a2a12'), rgba('#7a4a22'), rgba('#a5672e')];
-  for (const w of world.walls) {
-    if (w.kind === 'fence') {
+  for (const w of list) {
+    if (w.kind === 'earth') {
+      // Bloco de terra que subiu do chão (Terra Rachada): só pinta depois de terminar de subir (antes é animado).
+      if (w.dyn && world.time < w.at + w.rise) continue;
+      w._painted = base;
+      const sh = rgba('#2a1a10');
+      for (let y = w.y + 2; y < w.y + w.h + 3; y++) for (let x = w.x + 2; x < w.x + w.w + 3; x++) if (x >= w.x + w.w || y >= w.y + w.h) base.set(x, y, sh);
+      drawBlock(base, w.x, w.y, w.w, w.h, w.H);
+    } else if (w.kind === 'fence') {
       // Cerca da quadra: trilho escuro com postes claros (limite sempre visível, sem confundir com decoração).
       base.rect(w.x, w.y, w.w, w.h, rgba('#2a2a30'));
       base.rect(w.x + 2, w.y, w.w - 4, w.h, rgba('#4a4a54'));

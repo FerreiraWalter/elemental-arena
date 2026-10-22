@@ -9,12 +9,13 @@ import { hash2 } from '../core/math.js';
 const FLAME = [rgba('#fff7c2'), rgba('#ffd84a'), rgba('#ff9a1f'), rgba('#f2541b'), rgba('#b3200f')];
 const WHITE = rgba('#ffffff');
 // Suba quando trocar algum PNG de assets/monsters (força o navegador a baixar de novo).
-const ART_VERSION = 12;
+const ART_VERSION = 14;
 
 // Direção para onde a arte original olha (-1 esquerda, 0 frente, 1 direita). O renderer espelha a arte
 // para que o monstro sempre olhe para a mira; sprite que olha para a esquerda precisa de -1 aqui.
 const FACES = {
   fire_1: -1, fire_2: 0, fire_3: 0,
+  forge_1: 1, forge_3: 0, // Brasalinha (punho em brasa à direita) e Fornalhonte (dragão alado, de frente)
   water_1: 1, water_2: 0, water_3: 0,
   plant_1: 0, plant_2: 0, plant_3: 0, // plant_1: Brotossauro original (golem de pedra e musgo)
   hedgehog_1: 1, hedgehog_3: 1,

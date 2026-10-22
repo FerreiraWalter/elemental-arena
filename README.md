@@ -1,6 +1,6 @@
 # Elemental Arena (título provisório)
 
-Duelo de monstros elementais em tempo real, em pixel art. **6 monstros jogáveis**, cada um com forma evoluída, 4 arenas, partidas **contra a IA** ou **online (1v1 e 2v2)**. Em cada vaga o time tem 3 monstros, mas só um por jogador luta de cada vez.
+Duelo de monstros elementais em tempo real, em pixel art. **10 monstros jogáveis**, cada um com forma evoluída, 6 arenas, partidas **contra a IA** ou **online (1v1 e 2v2)**. Em cada vaga o time tem 3 monstros, mas só um por jogador luta de cada vez.
 
 ## Como rodar
 ```bash
@@ -62,7 +62,7 @@ Triângulo: **Fogo > Planta > Água > Fogo** (+10–12% de dano). Cada linha tem
 
 | Linha | Mecânica | Como joga | Ponto fraco |
 |---|---|---|---|
-| **Brasalisco** → Ascendido (fogo) | **Fornalha**: cada ataque esquenta; em 100% **SUPERAQUECE** (+20% de dano e velocidade por 3 s) e depois fica **EXAUSTO** (lento, sem poderes, leva +15%). A água esfria. Evoluído: superaquecer solta uma **onda de calor** e a exaustão é menor | rajadas de pressão; saber a hora de parar | a exaustão |
+| **Brasalinha** → Fornalhonte (fogo, de longe) | **Centelha Ativa / Forja Ardente**: cada Pedra em Brasa deixa uma **brasa** no chão (estoura em quem pisa); recolher uma brasa guarda uma **centelha** (próximo tiro incandescente, explode) e dá disparada (evoluído: couraça). **E** explode todas as brasas; **Q** bumerangue (base) ou salva das chaminés (evoluído); **F** recuo para trás (base) ou tranco que recolhe brasas (evoluído). Sem debuff próprio | espalhar brasas e escolher entre recolher ou detonar | frágil de perto; a água apaga as brasas |
 | **Hidrocasco** → Abissal (água) | **Casco Reflexo** (F): 0,55 s de bloqueio que corta 85% do dano, **devolve projéteis** e **contra-ataca** quem bate de perto. **Redemoinho móvel** (E): anda girando, arrasta quem estiver perto em volta e cospe todos no fim. Evoluído: bloquear dá uma bolha de 25 | tempo de reação e posição | áreas, raízes e quem espera o casco abrir |
 | **Brotossauro** → Ancestral (planta) | **Brotos Sentinela** (F): até 2 torres vivas (10 s) que atiram sozinhas e **curam** o dono por perto. **Raízes** (Q): círculo rúnico no chão e uma jaula de raízes que brota da borda. **Esquiva enterrada**: só uma flor vermelha anda na superfície (no Ancestral, uma arvorezinha, que ao brotar empurra quem estiver colado). Evoluído: guardiões maiores que atiram espinhos | controle de território | fogo (queima as torres) e mobilidade |
 | **Ouriflama** → Vulcânico (fogo) | **Ímpeto**: correndo sem parar entra **EM DISPARADA** (+15% de velocidade) e o próximo golpe de perto ou investida causa **+60%**. **Espinhos** ferem quem o ataca de perto. Evoluído: sair do Mergulho Vulcânico (que levanta o alvo) enche o ímpeto | bater e correr | atordoar ou prender zera o ímpeto |
@@ -94,7 +94,7 @@ O fogo pesava por **somar** efeitos: queimadura renovada a cada tiro, poças de 
 Evolução (`EVOLUTION` em `src/config.js`): **cada ataque que acerta enche ~7% da barra** (bônus fixo por acerto + parte do dano), e dano recebido, esquivas e interações com o terreno também contam; com a barra cheia (em mediana ~20 s de luta), aperte **G** (uma por monstro por partida; vida mantém a %; recargas preservadas; a batalha não pausa). A energia persiste no banco; derrotados não evoluem; a IA evolui sozinha.
 
 ## Arenas
-Jardim Selvagem (raízes que irrompem, espinheiros, sebes, ruínas), Abismo das Marés (ilhas, água funda, plataforma alta, correntezas, gêiseres), Floresta Ancestral (árvores, troncos, mata baixa, riacho) e Quadra Clássica. Definições data-driven em `src/arenas/`.
+Jardim Selvagem (raízes que irrompem, espinheiros, sebes, ruínas), Abismo das Marés (ilhas, água funda, plataforma alta, correntezas, gêiseres), Floresta Ancestral (árvores, troncos, mata baixa, riacho), Quadra Clássica, **Terra Rachada** (paredes de terra sobem do chão no meio da partida, com rachaduras de aviso) e **Atlântida** (fase que anda: a tsunami persegue da esquerda e alaga a arena até o coliseu, onde o **Kraken** neutro ataca todos; vida e ritmo do Kraken mudam com 1v1, 2v2 e 1v1v1v1). Definições data-driven em `src/arenas/`; eventos roteirizados por tempo em `src/sim/arenaevents.js`.
 
 ## Arte: final × provisório
 - **Final (do usuário):** os 12 sprites dos monstros (`assets/monsters/*.png`, extraídos por `tools/extract_sprites.py` e `tools/extract_sheet2.py`).
