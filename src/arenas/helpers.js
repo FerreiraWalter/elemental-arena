@@ -13,12 +13,10 @@ export function builder(world) {
     const c = valueNoise(x / scale, (WORLD_H - y) / scale, seed + off), d = valueNoise((WORLD_W - x) / scale, (WORLD_H - y) / scale, seed + off);
     return Math.max(0, Math.min(1, 0.5 + ((a + b + c + d) / 4 - 0.5) * 1.7));
   };
-  const cells = function* () {
-    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) yield [r * COLS + c, c * TILE + 4, r * TILE + 4, c, r];
-  };
   const B = {
     tr, seed, noise,
-    each(fn) { for (const [i, x, y, c, r] of cells()) fn(i, x, y, c, r); },
+    // Laço simples (antes um gerador que criava uma lista por tile: a montagem do mapa pesava no celular).
+    each(fn) { for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) fn(r * COLS + c, c * TILE + 4, r * TILE + 4, c, r); },
     set(i, type, h) { tr.setBase(i, type, h); },
     fill(type, h) { B.each((i) => tr.setBase(i, type, h)); },
     where(pred, type, h) { B.each((i, x, y) => { if (pred(x, y, i)) tr.setBase(i, type, h); }); },
@@ -26,8 +24,9 @@ export function builder(world) {
     // Elipse com borda orgânica (jitter em fração do raio).
     blob(cx, cy, rx, ry, type, height, jitter = 0.25, off = 11) {
       B.where((x, y) => {
-        const dx = (x - cx) / rx, dy = (y - cy) / ry;
-        return dx * dx + dy * dy + (noise(x, y, 14, off) - 0.5) * jitter * 2 <= 1;
+        const dx = (x - cx) / rx, dy = (y - cy) / ry, d2 = dx * dx + dy * dy;
+        if (d2 - Math.abs(jitter) > 1) return false; // longe demais: o ruído (±jitter) não traz para dentro
+        return d2 + (noise(x, y, 14, off) - 0.5) * jitter * 2 <= 1;
       }, type, height);
     },
     // Faixa ao longo de uma poligonal (caminhos, riachos).
@@ -40,6 +39,7 @@ export function builder(world) {
           const t = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / l2));
           best = Math.min(best, Math.hypot(x - x0 - dx * t, y - y0 - dy * t));
         }
+        if (best > width / 2 + Math.abs(width * jitter) / 2) return false; // longe demais: o ruído não alcança
         return best <= width / 2 + (noise(x, y, 10, 5) - 0.5) * width * jitter;
       }, type, height);
     },

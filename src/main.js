@@ -190,6 +190,9 @@ function sendInput(now, neutral = false) {
 }
 
 function applySettings(s) {
+  hud.camera = s.camera || 'auto';
+  if (s.quality !== qChosen) { qChosen = s.quality; qStep = 0; } // trocou a qualidade: recomeça do degrau mais alto
+  resize();
   sfx.setEnabled(s.sound !== false);
   sfx.setVolume(s.volume ?? 0.6);
   renderer.shakeEnabled = s.shake;
@@ -321,10 +324,32 @@ const overlayActions = {
   get firstTime() { return helpFirst; },
 };
 
+// Resolução do canvas. O jogo é pixel art em 1024×576 ampliada; resolução alta só deixa os textos e as barras
+// mais nítidos, e em tela retina de tablet/notebook (até 4 milhões de pixels por quadro) pesa. Teto de pixels por
+// qualidade; na automática, se a partida fica lenta (muitos quadros acima de 25 ms), desce um degrau por vez e,
+// no último, liga os efeitos leves (menos chamas e partículas).
+const QUALITY = { auto: [3.2e6, 1.8e6, 1.1e6], alta: [8e6], leve: [1.1e6] };
+let qStep = 0, qChosen = null;
+const perf = { t: 0, n: 0, slow: 0, wait: 2 };
 function resize() {
-  hud.dpr = Math.min(2, window.devicePixelRatio || 1);
+  const q = QUALITY[ui.settings.quality] ? ui.settings.quality : 'auto';
+  const steps = QUALITY[q], budget = steps[Math.min(qStep, steps.length - 1)];
+  hud.dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1, Math.sqrt(budget / (window.innerWidth * window.innerHeight))));
   canvas.width = Math.floor(window.innerWidth * hud.dpr);
   canvas.height = Math.floor(window.innerHeight * hud.dpr);
+  renderer.lowFx = q === 'leve' || (q === 'auto' && qStep >= steps.length - 1);
+  renderer.particles.max = renderer.lowFx ? 400 : 900;
+}
+
+// Mede a batalha (aba visível, sem pausa) a cada 3 s e baixa a qualidade automática se estiver engasgando.
+function watchPerf(dt) {
+  if (mode !== 'battle' || overlay || document.hidden || ui.settings.quality && ui.settings.quality !== 'auto') { perf.t = perf.n = perf.slow = 0; perf.wait = 2; return; }
+  if (perf.wait > 0) { perf.wait -= dt; return; } // início da partida (montagem do mapa) não conta
+  perf.t += dt; perf.n++;
+  if (dt > 0.025) perf.slow++;
+  if (perf.t < 3) return;
+  if (perf.slow / perf.n > 0.25 && qStep < QUALITY.auto.length - 1) { qStep++; resize(); }
+  perf.t = perf.n = perf.slow = 0;
 }
 
 function toWorld(clientX, clientY) {
@@ -433,7 +458,7 @@ const touch = createTouchControls({
   hold: (slot, v) => { if (world) world.input.held[slot] = v; },
   key: (code) => window.dispatchEvent(new KeyboardEvent('keydown', { code })),
   getWorld: () => world,
-  getLayout: () => ({ top: 66 * (renderer.hudScale || 1) }), // altura dos cartões do topo (px CSS)
+  getLayout: () => ({ top: 64 * (renderer.hudScale || 1) }), // altura dos cartões do topo (px CSS)
 });
 
 // Código da sala sem teclado físico (tablet): um campo invisível abre o teclado da tela; o que for digitado vai
@@ -453,7 +478,22 @@ codeInput.addEventListener('keydown', (e) => {
   e.stopPropagation(); // não duplica a letra pelo atalho global de teclado do menu
   if (e.key === 'Enter' && ui.mp.code.length === 4 && !ui.mp.busy) { codeInput.blur(); ui.hooks.mpJoin(ui.mp.code); }
 });
-function focusCodeInput() { codeInput.value = ui.mp.code; codeInput.focus({ preventScroll: true }); }
+// No Android o toque nos quadrados chega pelo pointerdown, que para o navegador NÃO é gesto do usuário (só o fim
+// do toque é): o campo era focado sem abrir o teclado e, em seguida, o mousedown de compatibilidade no canvas
+// tirava o foco dele. Agora o foco é repetido no touchend e o canvas não rouba o foco enquanto o campo está ativo.
+let codeFocusPending = false;
+function focusCodeInput() {
+  codeInput.value = ui.mp.code;
+  codeInput.focus({ preventScroll: true });
+  codeFocusPending = true;
+}
+canvas.addEventListener('touchend', () => {
+  if (!codeFocusPending) return;
+  codeFocusPending = false;
+  if (mode === 'menu' && ui.screen === 'mp') { codeInput.blur(); codeInput.focus({ preventScroll: true }); }
+});
+canvas.addEventListener('mousedown', (e) => { if (document.activeElement === codeInput) e.preventDefault(); });
+window.addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse') codeFocusPending = false; });
 
 // Prévia da mira manual do toque: linha tracejada do monstro até o alvo e o círculo da área, por cima do jogo.
 function drawTouchAim(c) {
@@ -526,8 +566,9 @@ function drawNotice(c, dt) {
 }
 
 function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000);
+  const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
   last = now;
+  watchPerf(dt);
   touch.update(mode === 'battle' && !overlay && !!world && world.playerTeam !== null);
   hud.touch = touch.visible; // HUD sem a barra de teclas/mouse (os botões de toque mostram as recargas)
   ui.touchMode = touch.active;

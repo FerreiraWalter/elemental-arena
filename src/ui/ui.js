@@ -1,7 +1,7 @@
 import { SPECIES, ROSTER, formsOf } from '../sim/species.js';
 
 import { ARENAS, ARENA_ORDER } from '../arenas/index.js';
-import { ELEMENT_MULT, EVOLUTION, SWITCH, WORLD_W, WORLD_H, FFA_COLORS } from '../config.js';
+import { ELEMENT_MULT, EVOLUTION, SWITCH, WORLD_W, WORLD_H, ROWS, FFA_COLORS } from '../config.js';
 import { World } from '../sim/world.js';
 import { Renderer, ELEMENT_COLOR, SIG_COLOR } from '../render/renderer.js';
 import { makeCanvas } from '../render/pixel.js';
@@ -31,7 +31,7 @@ const DIFFICULTY = { easy: 'Fácil', normal: 'Normal', hard: 'Difícil' };
 const SETTINGS_KEY = 'elemental-arena-opcoes';
 
 export function loadSettings() {
-  const def = { shake: true, numbers: true, difficulty: 'normal', speed: 1, debug: false, sound: true, volume: 0.6 };
+  const def = { shake: true, numbers: true, difficulty: 'normal', speed: 1, debug: false, sound: true, volume: 0.6, camera: 'auto', quality: 'auto' };
   try { return { ...def, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch { return def; }
 }
 function saveSettings(s) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* armazenamento indisponível */ } }
@@ -109,34 +109,61 @@ export class UI {
     this.screen = screen;
     this.fade = 1;
     this.focus = 0;
-    if (screen === 'arena') this.buildPreviews();
   }
 
-  // Fundo animado: uma luta IA × IA de verdade numa arena aleatória.
+  // Fundo animado: uma luta IA × IA de verdade numa arena aleatória. A próxima luta é montada aos poucos (alguns
+  // ms por quadro) enquanto a atual continua; antes a montagem parava o menu de uma vez (no iPhone, meio segundo).
   ensureDemo() {
     if (this.demo && !this.demo.world.over && this.demo.world.time < 90) return;
-    const arena = ARENA_ORDER[(Math.random() * 3) | 0];
-    const world = World.match((Math.random() * 1e6) | 0, undefined, null, arena);
-    if (!this.demo) this.demo = { renderer: new Renderer(makeCanvas(8, 8)) };
-    this.demo.renderer.art = this.art;
-    this.demo.renderer.shakeEnabled = false;
-    this.demo.renderer.reset(world);
-    this.demo.world = world;
+    this.demoJob ??= this.demoSteps();
+    const t0 = performance.now();
+    while (this.demoJob && performance.now() - t0 < 6) if (this.demoJob.next().done) this.demoJob = null;
   }
 
-  buildPreviews() {
-    for (const id of ARENA_ORDER) {
-      if (this.previews[id]) continue;
-      const world = World.match(7, undefined, null, id);
-      for (let k = 0; k < 30; k++) world.step(1 / 60);
-      const r = new Renderer(makeCanvas(8, 8));
-      r.art = this.art;
-      r.reset(world);
-      r.render(world, 1, 1 / 60, { dpr: 1, embedded: true, speed: 1 });
-      const img = makeCanvas(WORLD_W, WORLD_H);
-      img.getContext('2d').drawImage(r.low, 0, 0);
-      this.previews[id] = img;
-    }
+  *demoSteps() {
+    const arena = ARENA_ORDER[(Math.random() * 3) | 0];
+    const world = World.match((Math.random() * 1e6) | 0, undefined, null, arena);
+    yield;
+    const r = new Renderer(makeCanvas(8, 8));
+    r.art = this.art;
+    r.shakeEnabled = false;
+    r.reset(world, false);
+    yield;
+    for (let row = 0; row < ROWS; row += 4) { r.paintRows(row, Math.min(ROWS, row + 4)); yield; }
+    r.paintBaseExtras();
+    this.demo = { renderer: r, world };
+  }
+
+  // Prévias das arenas, montadas aos poucos (alguns ms por quadro) desde o menu: antes as 4 eram montadas de uma
+  // vez no clique de confirmar o time (~1 s parado no PC, vários segundos no iPhone). A tela de arenas mostra
+  // "carregando" no cartão que ainda não ficou pronto.
+  buildPreviews(budgetMs = 6) {
+    const t0 = performance.now();
+    do {
+      if (!this.previewJob) {
+        const id = ARENA_ORDER.find((a) => !this.previews[a]);
+        if (!id) { this.previewR = null; return; } // prontas: libera os buffers
+        this.previewJob = this.previewSteps(id);
+      }
+      if (this.previewJob.next().done) this.previewJob = null;
+    } while (performance.now() - t0 < budgetMs);
+  }
+
+  *previewSteps(id) {
+    const world = World.match(7, undefined, null, id);
+    yield;
+    for (let k = 0; k < 30; k++) world.step(1 / 60);
+    yield;
+    const r = this.previewR || (this.previewR = new Renderer(makeCanvas(8, 8)));
+    r.art = this.art;
+    r.reset(world, false);
+    yield;
+    for (let row = 0; row < ROWS; row += 4) { r.paintRows(row, Math.min(ROWS, row + 4)); yield; }
+    r.paintBaseExtras();
+    r.render(world, 1, 1 / 60, { dpr: 1, embedded: true, speed: 1 });
+    const img = makeCanvas(WORLD_W, WORLD_H);
+    img.getContext('2d').drawImage(r.low, 0, 0);
+    this.previews[id] = img;
   }
 
   // ───────────── Entrada ─────────────
@@ -226,12 +253,16 @@ export class UI {
     this.buttons = [];
     // Fundo: luta de demonstração escurecida.
     this.ensureDemo();
+    // Prévias das arenas: aos poucos desde o menu (na tela de arenas, com mais tempo por quadro).
+    if (this.time > 1.5 && this.fade <= 0) this.buildPreviews(this.screen === 'arena' ? 12 : 5);
     const d = this.demo;
-    if (dt > 0) for (let k = 0; k < Math.round(dt * 60); k++) d.world.step(1 / 60);
-    d.renderer.render(d.world, 1, dt, { dpr, embedded: true, speed: 1 });
-    c.imageSmoothingEnabled = false;
-    const S = Math.max(W / WORLD_W, H / WORLD_H);
-    c.drawImage(d.renderer.low, (W - WORLD_W * S) / 2, (H - WORLD_H * S) / 2, WORLD_W * S, WORLD_H * S);
+    if (d) {
+      if (dt > 0) for (let k = 0; k < Math.round(dt * 60); k++) d.world.step(1 / 60);
+      d.renderer.render(d.world, 1, dt, { dpr, embedded: true, speed: 1 });
+      c.imageSmoothingEnabled = false;
+      const S = Math.max(W / WORLD_W, H / WORLD_H);
+      c.drawImage(d.renderer.low, (W - WORLD_W * S) / 2, (H - WORLD_H * S) / 2, WORLD_W * S, WORLD_H * S);
+    } else { c.fillStyle = '#14100e'; c.fillRect(0, 0, W, H); } // primeira luta de fundo ainda montando
     const grd = c.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.9);
     grd.addColorStop(0, 'rgba(10,6,4,0.55)');
     grd.addColorStop(1, 'rgba(10,6,4,0.9)');
@@ -574,6 +605,10 @@ export class UI {
       const hover = this.mouse.x >= x && this.mouse.x <= x + cw && this.mouse.y >= y && this.mouse.y <= y + ch;
       panel(c, x, y, cw, ch, u, sel ? '#ffd23a' : hover ? '#c8b080' : '#5a4636');
       if (this.previews[id]) { c.imageSmoothingEnabled = false; c.drawImage(this.previews[id], x + (cw - pw) / 2, y + 6 * u, pw, ph); }
+      else {
+        c.fillStyle = 'rgba(10,8,6,0.7)'; c.fillRect(x + (cw - pw) / 2, y + 6 * u, pw, ph);
+        text(c, 'CARREGANDO' + '.'.repeat(1 + (Math.floor(this.time * 3) % 3)), x + cw / 2, y + 6 * u + ph / 2, 6, '#bba', 'center', u);
+      }
       const ty = y + ph + 20 * u;
       text(c, A.name.toUpperCase(), x + 8 * u, ty, fitSize(c, A.name.toUpperCase(), 7, cw - 16 * u, u), sel ? '#ffd23a' : '#f4ead0', 'left', u);
       text(c, A.subtitle, x + 8 * u, ty + 11 * u, fitSize(c, A.subtitle, 5, cw - 16 * u, u), '#bba', 'left', u);
@@ -668,9 +703,9 @@ export class UI {
     let y = 60 * u;
     const set = (k, v) => { S[k] = v; saveSettings(S); this.hooks.applySettings(S); };
     const row = (label, value, onClick) => {
-      text(c, label, x, y + 17 * u, 7, '#f4ead0', 'left', u);
-      this.button(x + pw - 170 * u, y, 170 * u, 26 * u, value, onClick, { size: 7, color: '#46b4ff' });
-      y += 34 * u;
+      text(c, label, x, y + 16 * u, 7, '#f4ead0', 'left', u);
+      this.button(x + pw - 170 * u, y, 170 * u, 24 * u, value, onClick, { size: 7, color: '#46b4ff' });
+      y += 30 * u;
     };
     row('Tremor de tela', S.shake ? 'LIGADO' : 'DESLIGADO', () => set('shake', !S.shake));
     row('Números de dano', S.numbers ? 'LIGADO' : 'DESLIGADO', () => set('numbers', !S.numbers));
@@ -678,6 +713,11 @@ export class UI {
     row('Dificuldade da IA', DIFFICULTY[S.difficulty].toUpperCase(), () => set('difficulty', diffs[(diffs.indexOf(S.difficulty) + 1) % diffs.length]));
     const speeds = [0.5, 1, 1.5];
     row('Velocidade do jogo', `${S.speed}x`, () => set('speed', speeds[(speeds.indexOf(S.speed) + 1) % speeds.length]));
+    // Câmera: automática aproxima e segue o seu monstro quando a arena inteira ficaria pequena (celular, notebook).
+    const cams = ['auto', 'arena', 'perto'], camName = { auto: 'AUTOMÁTICA', arena: 'ARENA INTEIRA', perto: 'APROXIMADA' };
+    row('Câmera', camName[S.camera] || camName.auto, () => set('camera', cams[(cams.indexOf(S.camera) + 1) % cams.length]));
+    const qs = ['auto', 'alta', 'leve'], qName = { auto: 'AUTOMÁTICA', alta: 'ALTA', leve: 'LEVE (mais FPS)' };
+    row('Qualidade gráfica', qName[S.quality] || qName.auto, () => set('quality', qs[(qs.indexOf(S.quality) + 1) % qs.length]));
     row('Visão da IA (depuração)', S.debug ? 'LIGADA' : 'DESLIGADA', () => set('debug', !S.debug));
     const vols = [0, 0.3, 0.6, 1];
     row('Som', !S.sound || S.volume <= 0 ? 'DESLIGADO' : `${Math.round(S.volume * 100)}%`, () => {

@@ -1,4 +1,4 @@
-import { WORLD_W, WORLD_H, TILE, COLS, SWITCH, EVOLUTION, FFA_COLORS } from '../config.js';
+import { WORLD_W, WORLD_H, TILE, COLS, ROWS, SWITCH, EVOLUTION, FFA_COLORS } from '../config.js';
 import { hash2, valueNoise, clamp } from '../core/math.js';
 import { props } from '../sim/tiles.js';
 import { PixelBuf, rgba, makeCanvas } from './pixel.js';
@@ -75,6 +75,7 @@ export class Renderer {
     this.gl = this.glow.getContext('2d');
     this.gl.setTransform(0.5, 0, 0, 0.5, 0, 0);
     this.glows = { fire: glowSprite('rgba(255,140,40,0.55)'), blue: glowSprite('rgba(90,180,255,0.5)'), white: glowSprite('rgba(255,250,220,0.8)') };
+    this.lowFx = false; // efeitos leves (qualidade "leve" ou aparelho engasgando): menos chamas e partículas
     this.particles = new Particles();
     this.debug = false;
     this.time = 0;
@@ -93,9 +94,10 @@ export class Renderer {
   // Carrega a arte dos monstros (assets/monsters). Se falhar, usa os sprites procedurais.
   loadArt() { return this.art.load(ART_NAMES); }
 
-  reset(world) {
+  // paint = false: não pinta o chão agora (as prévias das arenas pintam aos poucos com paintRows/paintBaseExtras).
+  reset(world, paint = true) {
     this.world = world;
-    this.particles = new Particles();
+    this.particles = new Particles(this.lowFx ? 400 : 900);
     this.nums = [];
     this.texts = [];
     this.rings = [];
@@ -131,7 +133,7 @@ export class Renderer {
       if (hash2(x, row, 3) < 0.25) continue;
       this.crowd.push({ x, y: w.y + 9 + row * 7, shirt: shirts[(hash2(x, row, 5) * shirts.length) | 0], skin: skins[(hash2(x, row, 6) * skins.length) | 0], ph: hash2(x, row, 7) * 6, team: x < WORLD_W / 2 ? 0 : 1 });
     }
-    this.paintBase(true);
+    if (paint) this.paintBase(true);
   }
 
   // Sprite de cada obstáculo e o ponto do sprite que fica sobre a posição do obstáculo (âncora).
@@ -156,20 +158,37 @@ export class Renderer {
 
   // ───────────── Terreno base (pixel a pixel, redesenhado só onde muda) ─────────────
   paintBase(all) {
+    if (all) { this.paintRows(0, ROWS); this.paintBaseExtras(); return; }
     const tr = this.world.terrain;
-    const list = all ? Array.from({ length: tr.type.length }, (_, i) => i) : [...tr.dirty];
-    if (!all && !list.length) return;
+    const list = [...tr.dirty];
+    if (!list.length) return;
     let x0 = WORLD_W, y0 = WORLD_H, x1 = 0, y1 = 0;
     const px = this.base.px;
     for (const i of list) {
-      if (props(tr.type[i]).solid && !all) continue;
+      if (props(tr.type[i]).solid) continue;
       const tx = (i % COLS) * TILE, ty = ((i / COLS) | 0) * TILE;
       for (let y = ty; y < ty + TILE; y++) for (let x = tx; x < tx + TILE; x++) px[y * WORLD_W + x] = paintTile(this.world, this.palette, i, x, y);
       x0 = Math.min(x0, tx); y0 = Math.min(y0, ty); x1 = Math.max(x1, tx + TILE); y1 = Math.max(y1, ty + TILE);
     }
     tr.dirty.clear();
-    if (all) { paintWalls(this.base, this.world); paintDecorBase(this.base, this.world); x0 = 0; y0 = 0; x1 = WORLD_W; y1 = WORLD_H; }
     this.base.ctx.putImageData(this.base.img, 0, 0, x0, y0, x1 - x0, y1 - y0);
+  }
+
+  // Pinta o chão das linhas de tiles [r0, r1) (só no buffer; paintBaseExtras envia para a tela).
+  paintRows(r0, r1) {
+    const px = this.base.px;
+    for (let i = r0 * COLS; i < r1 * COLS; i++) {
+      const tx = (i % COLS) * TILE, ty = ((i / COLS) | 0) * TILE;
+      for (let y = ty; y < ty + TILE; y++) for (let x = tx; x < tx + TILE; x++) px[y * WORLD_W + x] = paintTile(this.world, this.palette, i, x, y);
+    }
+  }
+
+  // Muros e decoração do chão por cima dos tiles; envia o chão inteiro.
+  paintBaseExtras() {
+    this.world.terrain.dirty.clear();
+    paintWalls(this.base, this.world);
+    paintDecorBase(this.base, this.world);
+    this.base.ctx.putImageData(this.base.img, 0, 0);
   }
 
   // ───────────── Eventos → efeitos visuais ─────────────
@@ -861,20 +880,18 @@ export class Renderer {
     this.drawReticle(world, t);
     if (this.flash > 0) { l.fillStyle = `rgba(255,240,200,${this.flash * 3})`; l.fillRect(0, 0, WORLD_W, WORLD_H); }
 
-    // Composição na tela com escala e tremor.
+    // Composição na tela com escala, câmera e tremor.
     const c = this.ctx, W = this.canvas.width, H = this.canvas.height;
     const dpr = ui.dpr;
-    // Escala da interface (cartões, barra de habilidades): cresce com a altura da janela para continuar legível.
-    const hs = this.hudScale = Math.max(1, Math.min(2, H / dpr / 500, W / dpr / 680));
-    // No toque não há barra de habilidades embaixo (os botões na tela mostram as recargas): a arena cresce.
-    const top = 66 * dpr * hs, bottom = (world.playerTeam !== null && !ui.touch ? 80 : 24) * dpr * hs;
-    let S = Math.min(W / WORLD_W, (H - top - bottom) / WORLD_H);
-    if (S >= 2) S = Math.floor(S);
-    // Toque com o aparelho em pé: arena logo abaixo do placar; a parte de baixo da tela fica para os controles.
-    const ox = Math.round((W - WORLD_W * S) / 2), oy = Math.round(ui.touch && H > W * 1.05 ? top + 10 * dpr * hs : top + (H - top - bottom - WORLD_H * S) / 2);
+    if (ui.embedded) {
+      const S = Math.min(W / WORLD_W, H / WORLD_H);
+      this.view = { ox: (W - WORLD_W * S) / 2, oy: (H - WORLD_H * S) / 2, S, dpr };
+      return;
+    }
+    this.layout(world, alpha, dt, ui);
+    const { ox, oy, S } = this.view;
     c.fillStyle = '#14100e';
     c.fillRect(0, 0, W, H);
-    if (ui.embedded) { this.view = { ox, oy, S, dpr }; return; }
     c.imageSmoothingEnabled = false;
     const sh = (this.shakeEnabled ? this.shake : 0) * S * 0.5;
     const sx = (Math.random() - 0.5) * sh, sy = (Math.random() - 0.5) * sh;
@@ -882,11 +899,90 @@ export class Renderer {
     c.strokeStyle = '#3a2a20';
     c.lineWidth = 2 * dpr;
     c.strokeRect(ox - dpr, oy - dpr, WORLD_W * S + 2 * dpr, WORLD_H * S + 2 * dpr);
-    this.view = { ox, oy, S, dpr };
     this.drawOverheadHi(world, alpha);
     this.drawFloaters(dt);
+    if (this.view.zoomed) this.drawOffscreen(world, alpha);
     if (this.debug) this.drawDebug(world);
     drawHud(c, this, world, ui);
+  }
+
+  // Onde a arena fica na tela. Faixas da interface: cartões no alto e barra de habilidades embaixo (no toque não
+  // há barra: os botões na tela mostram as recargas). Se a arena inteira ficaria pequena demais (celular, tablet em
+  // pé, notebook com a barra do navegador), a câmera aproxima e segue o seu monstro; as faixas da interface ficam
+  // por cima do mapa e a câmera para nas bordas do mundo. ui.camera: 'auto' | 'arena' (sempre inteira) | 'perto'.
+  // Resultado: this.view (ox, oy, S, dpr, zoomed) e this.frame (parte visível da arena, usada pela HUD).
+  layout(world, alpha, dt, ui) {
+    const W = this.canvas.width, H = this.canvas.height, dpr = ui.dpr;
+    // Escala da interface: cresce pouco com a janela (antes chegava a 2× e a HUD comia a arena no notebook).
+    const hs = this.hudScale = Math.max(1, Math.min(1.5, H / dpr / 640, W / dpr / 1100));
+    const playing = world.playerTeam !== null;
+    const top = 64 * dpr * hs, bottom = (playing && !ui.touch ? 62 : 22) * dpr * hs;
+    const availH = H - top - bottom;
+    const fit = Math.min(W / WORLD_W, availH / WORLD_H);
+    const cam = playing && !world.over ? ui.camera || 'auto' : 'arena';
+    let S = fit;
+    if (cam === 'perto') S = Math.max(fit, 1.5 * dpr);
+    else if (cam === 'auto') {
+      // Confortável: ~1,15 px de tela por px do mundo. Corta no máximo 20% da altura, a não ser que a arena fique
+      // ilegível (celular deitado), quando aproxima até ~0,95.
+      const fill = Math.min(W / WORLD_W, availH / (WORLD_H * 0.8));
+      S = Math.max(fit, Math.min(1.15 * dpr, Math.max(fill, 0.95 * dpr)));
+    }
+    // Pixels inteiros (todos do mesmo tamanho) quando o arredondamento muda pouco a escala.
+    if (S >= 2) {
+      const n = S > fit + 1e-6 ? Math.round(S) : Math.floor(S);
+      if (n >= Math.min(S, fit) - 1e-6 && Math.abs(n - S) / S < 0.1) S = n;
+    }
+    const aw = WORLD_W * S, ah = WORLD_H * S;
+    const portrait = ui.touch && H > W * 1.05;
+    let ox, oy;
+    if (aw <= W + 0.5 && ah <= availH + 0.5) {
+      this.cam = null;
+      ox = (W - aw) / 2;
+      // Toque: arena logo abaixo do placar; a sobra fica embaixo, onde ficam o analógico e os botões.
+      oy = ui.touch ? top + (portrait ? 10 : 4) * dpr * hs : top + (availH - ah) / 2;
+    } else {
+      // Câmera: segue o monstro controlado (ou o último que esteve em campo), suavizada, sem sair do mundo.
+      const m = world.active;
+      if (m) { const p = this.lerpPos(m, alpha); this.camTarget = { x: p.x, y: p.y - 10, world }; }
+      const tg = this.camTarget?.world === world ? this.camTarget : { x: WORLD_W / 2, y: WORLD_H / 2 };
+      if (!this.cam || this.cam.world !== world || !Number.isFinite(this.cam.x + this.cam.y)) this.cam = { x: tg.x, y: tg.y, world };
+      const k = clamp(1 - Math.exp(-7 * dt), 0, 1);
+      this.cam.x += (tg.x - this.cam.x) * k;
+      this.cam.y += (tg.y - this.cam.y) * k;
+      ox = aw <= W ? (W - aw) / 2 : clamp(W / 2 - this.cam.x * S, W - aw, 0);
+      oy = ah <= availH ? (portrait ? top + 10 * dpr * hs : top + (availH - ah) / 2) : clamp(top + availH / 2 - this.cam.y * S, top + availH - ah, top);
+    }
+    ox = Math.round(ox); oy = Math.round(oy);
+    this.view = { ox, oy, S, dpr, zoomed: aw > W + 0.5 || ah > availH + 0.5 };
+    const fx0 = Math.max(0, ox), fx1 = Math.min(W, ox + aw), fy0 = Math.max(top, oy), fy1 = Math.min(H - bottom, oy + ah);
+    this.frame = { ox: fx0, oy: fy0, aw: fx1 - fx0, ah: fy1 - fy0 };
+  }
+
+  // Câmera aproximada: setas na borda da área visível apontando para quem está fora da tela (cor da relação).
+  drawOffscreen(world, alpha) {
+    const c = this.ctx, { ox, oy, S, dpr } = this.view, f = this.frame;
+    const k = Math.min(1.2, this.hudScale || 1) * dpr, pad = 16 * k;
+    for (const m of world.monsters) {
+      if (!m.alive || !m.onField || m === world.active) continue;
+      if (m.status.cloak > 0 && this.isFoe(m)) continue;
+      const p = this.lerpPos(m, alpha);
+      const sx = ox + p.x * S, sy = oy + (p.y - 10) * S;
+      if (sx > f.ox + 4 * k && sx < f.ox + f.aw - 4 * k && sy > f.oy + 4 * k && sy < f.oy + f.ah - 4 * k) continue;
+      const cx = f.ox + f.aw / 2, cy = f.oy + f.ah / 2, dx = sx - cx, dy = sy - cy;
+      const t = Math.min((f.aw / 2 - pad) / Math.max(1e-3, Math.abs(dx)), (f.ah / 2 - pad) / Math.max(1e-3, Math.abs(dy)));
+      const x = cx + dx * t, y = cy + dy * t, a = Math.atan2(dy, dx);
+      const rel = relation(world, m), col = rel ? REL_COLOR[rel] : TEAM_COLOR[m.team];
+      c.save();
+      c.translate(x, y); c.rotate(a);
+      c.beginPath(); c.moveTo(10 * k, 0); c.lineTo(-4 * k, -7 * k); c.lineTo(-4 * k, 7 * k); c.closePath();
+      c.lineWidth = 3 * dpr; c.strokeStyle = '#140c0a'; c.stroke();
+      c.fillStyle = col; c.fill();
+      c.restore();
+      // Vida de quem está fora da tela: filete embaixo da seta.
+      c.fillStyle = '#140c0a'; c.fillRect(x - 9 * k, y + 9 * k, 18 * k, 4 * k);
+      c.fillStyle = col; c.fillRect(x - 8 * k, y + 10 * k, 16 * k * Math.max(0, m.hp / m.maxHp), 2 * k);
+    }
   }
 
   updateObstacleSprites(world) {
@@ -993,23 +1089,18 @@ export class Renderer {
     const tr = world.terrain, fx = this.fxG;
     // Água animada.
     const ft = Math.floor(t * 8);
-    // Água animada: o ruído por pixel só é recalculado 10×/s; nos outros quadros repetimos os pixels guardados.
-    const wf = Math.floor(t * 10);
-    if (this._waterF !== wf || this._waterW !== world) {
-      this._waterF = wf; this._waterW = world;
-      const tw = wf / 10, hi = [], lo = [];
-      for (const i of world.waterTiles) {
-        const tx = (i % COLS) * TILE, ty = ((i / COLS) | 0) * TILE;
-        for (let y = ty; y < ty + TILE; y++) for (let x = tx; x < tx + TILE; x++) {
-          const v = valueNoise(x / 7 + tw * 0.7, y / 3.5 - tw * 0.25, 77);
-          if (v > 0.74) hi.push(x, y); else if (v > 0.68) lo.push(x, y);
-        }
-      }
-      this._waterHi = hi; this._waterLo = lo;
-    }
-    { const H = rgba('#a8e0f8', 200), L = rgba('#5aa6dc', 150), hi = this._waterHi, lo = this._waterLo;
-      for (let k = 0; k < hi.length; k += 2) fx.set(hi[k], hi[k + 1], H);
-      for (let k = 0; k < lo.length; k += 2) fx.set(lo[k], lo[k + 1], L); }
+    // Água animada: o ruído por pixel é caro, então os pixels de brilho ficam guardados e só UM sexto da água é
+    // recalculado por quadro (cada trecho ~10×/s). Antes a água toda era refeita a cada 6 quadros: no Abismo isso
+    // dava um pico de vários ms 10 vezes por segundo (no celular, engasgos visíveis).
+    const WG = 6, wt = world.waterTiles;
+    if (this._waterW !== world) {
+      this._waterW = world; this._waterG = 0;
+      this._waterHi = Array.from({ length: WG }, () => []); this._waterLo = Array.from({ length: WG }, () => []);
+      for (let g = 0; g < WG; g++) this.waterChunk(wt, g, WG, t);
+    } else this.waterChunk(wt, this._waterG = (this._waterG + 1) % WG, WG, t);
+    { const H = rgba('#a8e0f8', 200), L = rgba('#5aa6dc', 150);
+      for (const hi of this._waterHi) for (let k = 0; k < hi.length; k += 2) fx.set(hi[k], hi[k + 1], H);
+      for (const lo of this._waterLo) for (let k = 0; k < lo.length; k += 2) fx.set(lo[k], lo[k + 1], L); }
     for (const i of this.deepTiles) {
       const hh = hash2(i, Math.floor(t * 3 + (i % 7)), 6);
       if (hh > 0.7) fx.set((i % COLS) * TILE + ((hh * 61) % 8 | 0), ((i / COLS) | 0) * TILE + ((hh * 37) % 8 | 0), rgba(hh > 0.9 ? '#7fc0e0' : '#2e5e90', 200));
@@ -1034,30 +1125,39 @@ export class Renderer {
         else if (h > 0.965 && dens > 0.5) fx.set(x, y - Math.round(Math.sin(t * 3 + x) * 0.6), ROOT[h > 0.985 ? 4 : 3]);
       }
     }
-    // Fogo: chão incandescente + línguas de chama.
-    const burning = [...tr.burning].sort((a, b) => a - b);
-    if (this._ember && this._ember.size > burning.length * 2 + 64) for (const k of this._ember.keys()) if (!tr.burning.has(k)) this._ember.delete(k);
+    // Fogo: chão incandescente + línguas de chama. Incêndio grande (centenas de tiles) era o que derrubava o FPS:
+    // as brasas vão direto para o buffer (sem set pixel a pixel) e as chamas diminuem com o tamanho do incêndio
+    // (de longe, um campo em chamas continua lendo como fogo). No modo leve, menos chamas desde cedo.
+    const burning = Int32Array.from(tr.burning).sort();
+    const nb = burning.length, lite = this.lowFx ? 2 : 1;
+    const lod = nb * lite > 1400 ? 2 : nb * lite > 500 ? 1 : 0;
+    const fpx = fx.px, FW = fx.w, SOOT = rgba('#3a120a', 120);
+    if (this._ember && this._ember.size > nb * 2 + 64) for (const k of this._ember.keys()) if (!tr.burning.has(k)) this._ember.delete(k);
     for (const i of burning) {
       const tx = (i % COLS) * TILE, ty = ((i / COLS) | 0) * TILE;
       const fuelFire = !!props(tr.type[i]).fuel;
       const k = fuelFire ? 0.65 + 0.35 * Math.sin(Math.PI * clamp(1 - tr.fire[i] / tr.fireMax[i], 0, 1)) : clamp(tr.fire[i] / 1.5, 0.25, 0.8);
-      // Brasas do tile: o padrão só muda 4×/s; guardado por tile e repetido nos quadros seguintes.
+      // Brasas do tile: o padrão só muda 4×/s; guardado por tile e repetido nos quadros seguintes. Cada tile troca
+      // num instante diferente (8 turmas): antes todos trocavam no mesmo quadro e o incêndio grande engasgava.
       const ec = this._ember || (this._ember = new Map());
-      const kq = Math.round(k * 8);
+      const kq = Math.round(k * 8), fq = Math.floor(t * 4 + (i % 8) / 8);
       let e = ec.get(i);
-      if (!e || e.f !== (ft >> 1) || e.k !== kq) {
+      if (!e || e.f !== fq || e.k !== kq) {
         const px = [];
         for (let y = ty; y < ty + TILE; y++) for (let x = tx; x < tx + TILE; x++) {
-          const h = hash2(x, y + (ft >> 1), 3);
-          if (h < 0.22 * k) px.push(x, y, (h * 13) % 3 | 0);
-          else if (h < 0.5 * k) px.push(x, y, -1);
+          const h = hash2(x, y + fq, 3);
+          if (h < 0.22 * k) px.push(y * FW + x, (h * 13) % 3 | 0);
+          else if (h < 0.5 * k) px.push(y * FW + x, -1);
         }
-        e = { f: ft >> 1, k: kq, px };
+        e = { f: fq, k: kq, px: Int32Array.from(px) };
         ec.set(i, e);
       }
-      const SOOT = rgba('#3a120a', 120);
-      for (let q = 0; q < e.px.length; q += 3) fx.set(e.px[q], e.px[q + 1], e.px[q + 2] < 0 ? SOOT : EMBER[e.px[q + 2]]);
-      const tongues = fuelFire ? 2 : 1;
+      const ep = e.px;
+      for (let q = 0; q < ep.length; q += 2) fpx[ep[q]] = ep[q + 1] < 0 ? SOOT : EMBER[ep[q + 1]];
+      fx.mark(tx, ty, tx + TILE - 1, ty + TILE - 1);
+      // Incêndio grande: uma língua por tile e, nos maiores, só em metade dos tiles (xadrez).
+      if (lod === 2 && ((tx + ty) >> 3) & 1) continue;
+      const tongues = fuelFire && !lod ? 2 : 1;
       for (let j = 0; j < tongues; j++) {
         const cx = tx + 2 + j * 4 + ((hash2(i, j, 1) * 3) | 0) - (tongues === 1 ? -1 : 0);
         const by = ty + 7 - ((hash2(i, j + 5, 1) * 2) | 0);
@@ -1071,6 +1171,20 @@ export class Renderer {
     // Vegetação aquecendo (prestes a pegar fogo): fumacinha de aviso.
     for (const i of tr.heated) {
       if (tr.heat[i] > 0.5 && Math.random() < 0.02) this.particles.add({ ramp: 'smoke', x: tr.cx(i), y: tr.cy(i), vz: 10, life: 1, size: 1, grow: 1.5, alpha: 0.45, drag: 0.5 });
+    }
+  }
+
+  // Recalcula os brilhos de um trecho contínuo (g de n) da água.
+  waterChunk(tiles, g, n, t) {
+    const hi = this._waterHi[g], lo = this._waterLo[g];
+    hi.length = 0; lo.length = 0;
+    const a = Math.floor((tiles.length * g) / n), b = Math.floor((tiles.length * (g + 1)) / n);
+    for (let q = a; q < b; q++) {
+      const i = tiles[q], tx = (i % COLS) * TILE, ty = ((i / COLS) | 0) * TILE;
+      for (let y = ty; y < ty + TILE; y++) for (let x = tx; x < tx + TILE; x++) {
+        const v = valueNoise(x / 7 + t * 0.7, y / 3.5 - t * 0.25, 77);
+        if (v > 0.74) hi.push(x, y); else if (v > 0.68) lo.push(x, y);
+      }
     }
   }
 
@@ -2167,7 +2281,9 @@ export class Renderer {
   // Barra de vida em alta resolução centrada em (gx, gy) do mundo; devolve a caixa em pixels da tela.
   hpBarHi(m, gx, gy, st, k) {
     const c = this.ctx, { ox, oy, S, dpr } = this.view;
-    const W = Math.round(Math.max(24 * S, 34 * k)), H = Math.round(Math.max(5 * k, 2.4 * S));
+    // Proporcional ao monstro na tela (~22 px do mundo), com um mínimo legível; antes crescia com a escala da HUD
+    // e ficava mais larga que o monstro no tablet/notebook.
+    const W = Math.round(Math.max(22 * S, 26 * k)), H = Math.round(Math.max(4 * k, 2 * S));
     const shake = st.barShake ? Math.round(Math.sin(this.time * 70) * st.barShake * 2 * dpr) : 0;
     const bx = Math.round(ox + gx * S - W / 2) + shake, by = Math.round(oy + gy * S + 2 * S - H);
     const frac = Math.max(0, Math.min(1, (st.shownHp ?? m.hp) / m.maxHp)), lag = Math.max(frac, Math.min(1, st.lagHp / m.maxHp));
@@ -2209,8 +2325,8 @@ export class Renderer {
   // (HIPNOTIZADO / ATORDOADO / PRESO / TRANSE) com o tempo que falta; ao lado, os status leves em ícones.
   drawOverheadHi(world, alpha) {
     const c = this.ctx, { ox, oy, S, dpr } = this.view;
-    const k = Math.max(1, (this.hudScale || 1)) * dpr;
-    const fs = Math.round(Math.max(6 * k, Math.min(8 * k, S * 2)));
+    const k = Math.min(1.15, this.hudScale || 1) * dpr;
+    const fs = Math.round(Math.max(5.5 * k, Math.min(7 * k, S * 1.8)));
     const placed = []; // etiquetas já desenhadas (as próximas sobem para não ficar uma por cima da outra)
     c.save();
     c.textBaseline = 'middle';
@@ -2641,7 +2757,7 @@ export class Renderer {
       const k = n.t / 0.9;
       const sx = ox + n.x * S, sy = oy + (n.y - n.t * 22) * S;
       c.globalAlpha = Math.max(0, 1 - k * k);
-      c.font = `${(n.small ? 9 : n.big ? 15 : 12) * dpr * (this.hudScale || 1) * 0.9}px "Press Start 2P", monospace`;
+      c.font = `${(n.small ? 9 : n.big ? 15 : 12) * dpr * Math.min(1.15, this.hudScale || 1) * 0.8}px "Press Start 2P", monospace`;
       c.lineWidth = 3 * dpr;
       c.strokeStyle = '#140c0a';
       const s = Math.max(1, Math.round(n.v)).toString();
@@ -2653,7 +2769,7 @@ export class Renderer {
       n.t += dt;
       const sx = ox + n.x * S, sy = oy + (n.y - n.t * 14) * S;
       c.globalAlpha = Math.max(0, 1 - n.t / 1.1);
-      c.font = `${(n.big ? 11 : 8) * dpr * (this.hudScale || 1) * 0.9}px "Press Start 2P", monospace`;
+      c.font = `${(n.big ? 11 : 8) * dpr * Math.min(1.15, this.hudScale || 1) * 0.8}px "Press Start 2P", monospace`;
       c.lineWidth = 3 * dpr;
       c.strokeStyle = '#140c0a';
       c.strokeText(n.text, sx, sy);

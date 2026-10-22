@@ -59,6 +59,14 @@ export class PixelBuf {
       if (y > this.y1) this.y1 = y;
     }
   }
+  // Marca uma região como desenhada (para quem escreveu direto em `px`, sem passar por set pixel a pixel).
+  mark(x0, y0, x1, y1) {
+    if (!this.track) return;
+    if (x0 < this.x0) this.x0 = Math.max(0, x0);
+    if (y0 < this.y0) this.y0 = Math.max(0, y0);
+    if (x1 > this.x1) this.x1 = Math.min(this.w - 1, x1);
+    if (y1 > this.y1) this.y1 = Math.min(this.h - 1, y1);
+  }
   get(x, y) { return x < 0 || y < 0 || x >= this.w || y >= this.h ? 0 : this.px[y * this.w + x]; }
   rect(x, y, w, h, c) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.set(x + i, y + j, c); }
 

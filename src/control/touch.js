@@ -16,9 +16,9 @@ const START_ON = FORCE || mq('(pointer: coarse)');
 
 const CSS = `
 #touch{position:fixed;inset:0;pointer-events:none;z-index:5;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;font-family:"Press Start 2P",monospace}
-#touch .stick{position:absolute;border-radius:50%;background:rgba(20,14,12,.35);border:2px solid rgba(255,233,176,.35);pointer-events:auto;touch-action:none}
+#touch .stick{position:absolute;border-radius:50%;background:rgba(20,14,12,.22);border:2px solid rgba(255,233,176,.3);pointer-events:auto;touch-action:none}
 #touch .knob{position:absolute;left:50%;top:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:rgba(255,233,176,.55);border:2px solid #ffe9b0}
-#touch .btn{position:absolute;pointer-events:auto;touch-action:none;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:50%;color:#ffe9b0;background:rgba(20,14,12,.62);border:3px solid #ffe066;font-size:calc(9px*var(--k));text-shadow:0 0 3px #100a08;overflow:hidden}
+#touch .btn{position:absolute;pointer-events:auto;touch-action:none;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:50%;color:#ffe9b0;background:rgba(20,14,12,.4);border:3px solid rgba(255,224,102,.85);font-size:calc(9px*var(--k));text-shadow:0 0 3px #100a08;overflow:hidden}
 #touch .btn small{font-size:calc(6px*var(--k));color:#d8c8a0;margin-top:3px;max-width:90%;white-space:nowrap;overflow:hidden}
 #touch .btn.cd{border-color:#5a4a3a;color:#887}
 #touch .btn.on{background:rgba(255,224,102,.55)}
@@ -27,10 +27,10 @@ const CSS = `
 #touch .btn i{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6)}
 #touch .btn.brk{border-color:#ff9a3a;color:#fff;background:rgba(150,60,10,.75);animation:tb .4s infinite alternate}
 @keyframes tb{to{transform:scale(1.12)}}
-#touch .sw{position:absolute;border-radius:6px;pointer-events:auto;touch-action:none;color:#ffe9b0;background:rgba(20,14,12,.62);border:2px solid #6a5a3a;font-size:calc(8px*var(--k));display:flex;align-items:center;justify-content:center}
+#touch .sw{position:absolute;border-radius:6px;pointer-events:auto;touch-action:none;color:#ffe9b0;background:rgba(20,14,12,.5);border:2px solid #6a5a3a;font-size:calc(8px*var(--k));display:flex;align-items:center;justify-content:center}
 #touch .sw.cur{border-color:#ffe066;background:rgba(90,74,26,.8)}
 #touch .sw.off{opacity:.35}
-#touch .top{position:absolute;border-radius:8px;pointer-events:auto;touch-action:none;background:rgba(20,14,12,.55);border:2px solid #6a5a3a;color:#ffe9b0;font-size:calc(12px*var(--k));display:flex;align-items:center;justify-content:center}
+#touch .top{position:absolute;border-radius:8px;pointer-events:auto;touch-action:none;background:rgba(20,14,12,.45);border:2px solid #6a5a3a;color:#ffe9b0;font-size:calc(12px*var(--k));display:flex;align-items:center;justify-content:center}
 `;
 
 // Botões: posição relativa ao canto inferior direito (px, antes da escala), tamanho, a vaga que acionam e como.
@@ -140,10 +140,11 @@ export function createTouchControls({ press, hold, key, getWorld, getLayout }) {
   });
   if (canFull) root.appendChild(full);
 
-  // Tamanho e posição: crescem um pouco em telas grandes (tablet) e respeitam a área segura (entalhe, barra do iPad).
+  // Tamanho e posição: o polegar é do mesmo tamanho no celular e no tablet, então os botões quase não crescem com a
+  // tela (antes chegavam a 1,4× no iPad e cobriam o campo); respeitam a área segura (entalhe, barra do iPad).
   let lastKey = '';
   const layout = () => {
-    const k = Math.max(1, Math.min(1.4, Math.min(innerWidth, innerHeight) / 560));
+    const k = Math.max(0.9, Math.min(1.1, Math.min(innerWidth, innerHeight) / 480));
     const top = (getLayout?.().top || 60) + 6;
     const key2 = `${k}|${top}|${innerWidth}x${innerHeight}`;
     if (key2 === lastKey) return;
@@ -154,7 +155,13 @@ export function createTouchControls({ press, hold, key, getWorld, getLayout }) {
     for (const { el, b } of Object.values(els)) {
       el.style.cssText = `right:calc(env(safe-area-inset-right) + ${b.x * k}px);bottom:calc(env(safe-area-inset-bottom) + ${b.y * k}px);width:${b.s * k}px;height:${b.s * k}px`;
     }
-    sws.forEach((el, i) => { el.style.cssText = `left:calc(env(safe-area-inset-left) + ${(18 + i * 50) * k}px);bottom:calc(env(safe-area-inset-bottom) + ${168 * k}px);width:${46 * k}px;height:${34 * k}px`; });
+    // Troca de monstro: acima do analógico; em tela baixa (celular deitado) isso cairia no meio do campo, então
+    // sobe para logo abaixo dos cartões, como a pausa do outro lado.
+    const low = innerHeight < 560;
+    sws.forEach((el, i) => {
+      const y = low ? `top:${top}px` : `bottom:calc(env(safe-area-inset-bottom) + ${168 * k}px)`;
+      el.style.cssText = `left:calc(env(safe-area-inset-left) + ${(18 + i * 50) * k}px);${y};width:${46 * k}px;height:${34 * k}px`;
+    });
     // Pausa e tela cheia logo abaixo dos cartões do topo (não cobrem o placar).
     pause.style.cssText = `right:calc(env(safe-area-inset-right) + ${10 * k}px);top:${top}px;width:${40 * k}px;height:${40 * k}px`;
     full.style.cssText = `right:calc(env(safe-area-inset-right) + ${56 * k}px);top:${top}px;width:${40 * k}px;height:${40 * k}px`;

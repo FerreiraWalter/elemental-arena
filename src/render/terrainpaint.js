@@ -7,7 +7,13 @@ import { rgba } from './pixel.js';
 // Pintura pixel a pixel do chão de cada arena: tipo de tile + paleta da arena + alturas
 // (penhascos com face de rocha, sombras e bordas), pontes, escadas, umidade e fuligem.
 
-const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+// Memorizada: é chamada pixel a pixel na pintura do chão (as cores devolvidas são só lidas, nunca alteradas).
+const RGB_CACHE = new Map();
+const rgb = (h) => {
+  let v = RGB_CACHE.get(h);
+  if (!v) { const n = parseInt(h.slice(1), 16); v = [n >> 16, (n >> 8) & 255, n & 255]; RGB_CACHE.set(h, v); }
+  return v;
+};
 const pal = (...h) => h.map(rgb);
 export const pack = (r, g, b, a = 255) => ((a << 24) | (Math.max(0, Math.min(255, b | 0)) << 16) | (Math.max(0, Math.min(255, g | 0)) << 8) | Math.max(0, Math.min(255, r | 0))) >>> 0;
 
@@ -44,12 +50,16 @@ function courtLine(x, y) {
   const inY = y >= C.y && y <= C.y + C.h, inX = x >= C.x && x <= C.x + C.w;
   if (inY && (Math.abs(x - C.x) < 1.2 || Math.abs(x - C.x - C.w) < 1.2 || Math.abs(x - C.cx) < 1)) return true;
   if (inX && Math.abs(y - C.cy) < 0.8 && Math.abs(x - C.cx) > C.circleR) return true; // linha central horizontal: marca os 4 quadrantes
-  for (const p of PADS) if (Math.abs(Math.hypot(x - p.x, y - p.y) - 20) < 0.9) return true; // círculos de nascimento
+  // Círculos só são testados perto deles (isto roda para cada pixel de areia da quadra).
+  for (const p of PADS) { const dx = x - p.x, dy = y - p.y; if (dx > -22 && dx < 22 && dy > -22 && dy < 22 && Math.abs(Math.hypot(dx, dy) - 20) < 0.9) return true; } // círculos de nascimento
   if (inX && (Math.abs(y - C.y) < 1.2 || Math.abs(y - C.y - C.h) < 1.2)) return true;
-  const d = Math.hypot(x - C.cx, y - C.cy);
-  if (Math.abs(d - C.circleR) < 1 || Math.abs(d - C.dotR) < 0.9) return true;
-  const dl = Math.hypot(x - C.x, y - C.cy), dr = Math.hypot(x - C.x - C.w, y - C.cy);
-  return (x < C.x && Math.abs(dl - C.semiR) < 1) || (x > C.x + C.w && Math.abs(dr - C.semiR) < 1);
+  if (Math.abs(x - C.cx) < C.circleR + 2 && Math.abs(y - C.cy) < C.circleR + 2) {
+    const d = Math.hypot(x - C.cx, y - C.cy);
+    if (Math.abs(d - C.circleR) < 1 || Math.abs(d - C.dotR) < 0.9) return true;
+  }
+  if (Math.abs(y - C.cy) > C.semiR + 2) return false;
+  if (x < C.x) return Math.abs(Math.hypot(x - C.x, y - C.cy) - C.semiR) < 1;
+  return x > C.x + C.w && Math.abs(Math.hypot(x - C.x - C.w, y - C.cy) - C.semiR) < 1;
 }
 
 function wetPixel(tr, i, x, y, h) {
@@ -70,6 +80,7 @@ function shoreDist(tr, i, x, y, isSame) {
 }
 
 // Tipos "macios" (vegetação e chão) se misturam nas bordas com pontilhado, sem degraus de 8×8.
+const BRIDGE_MEMO = { i: -1, tr: null, horiz: true, edgeA: false, edgeB: false };
 const BLENDS = new Set([T.SAND, T.GRASS, T.WEEDS, T.MOSS, T.DIRT, T.LEAVES, T.UNDERGROWTH, T.FLOWERS, T.THORNS, T.SCORCHED]);
 
 export function paintTile(world, P, i, x, y) {
@@ -79,10 +90,14 @@ export function paintTile(world, P, i, x, y) {
   let ty = tr.type[i];
   if (BLENDS.has(ty)) {
     const lx = x % TILE, ly = y % TILE, c0 = i % COLS, r0 = (i / COLS) | 0;
-    const near = [[lx, -1, 0], [7 - lx, 1, 0], [ly, 0, -1], [7 - ly, 0, 1]].sort((a, b) => a[0] - b[0])[0];
-    if (near[0] < 3) {
-      const j = tr.idx(c0 + near[1], r0 + near[2]);
-      if (j >= 0 && tr.type[j] !== ty && BLENDS.has(tr.type[j]) && hash2(x, y, seed + 99) < (3 - near[0]) / 6.5) ty = tr.type[j];
+    // Borda mais próxima do tile (sem criar listas: isto roda para cada pixel do mapa).
+    let nd = lx, ndx = -1, ndy = 0;
+    if (7 - lx < nd) { nd = 7 - lx; ndx = 1; ndy = 0; }
+    if (ly < nd) { nd = ly; ndx = 0; ndy = -1; }
+    if (7 - ly < nd) { nd = 7 - ly; ndx = 0; ndy = 1; }
+    if (nd < 3) {
+      const j = tr.idx(c0 + ndx, r0 + ndy);
+      if (j >= 0 && tr.type[j] !== ty && BLENDS.has(tr.type[j]) && hash2(x, y, seed + 99) < (3 - nd) / 6.5) ty = tr.type[j];
     }
   }
   const style = world.arenaDef?.style || {};
@@ -151,15 +166,18 @@ export function paintTile(world, P, i, x, y) {
     case T.BRIDGE: {
       // Tábuas ATRAVESSADAS em relação ao sentido da ponte (frestas escuras, veios, pregos) e corrimão com postes nas
       // bordas que dão para a água. O sentido sai do comprimento da faixa de ponte na horizontal × vertical.
-      const tc = i % COLS, tr0 = (i / COLS) | 0;
-      const isB = (cc, rr) => tr.type[tr.idx(cc, rr)] === T.BRIDGE;
-      let hr = 0, vr = 0;
-      for (let k = 1; k <= 6; k++) { if (isB(tc + k, tr0)) hr++; if (isB(tc - k, tr0)) hr++; if (isB(tc, tr0 + k)) vr++; if (isB(tc, tr0 - k)) vr++; }
-      const horiz = hr >= vr; // ponte corre na horizontal → tábuas verticais
+      // Sentido e bordas valem para o tile inteiro: calculados no primeiro pixel e reaproveitados nos outros 63.
+      if (BRIDGE_MEMO.i !== i || BRIDGE_MEMO.tr !== tr) {
+        const tc = i % COLS, tr0 = (i / COLS) | 0;
+        const isB = (cc, rr) => tr.type[tr.idx(cc, rr)] === T.BRIDGE;
+        let hr = 0, vr = 0;
+        for (let k = 1; k <= 6; k++) { if (isB(tc + k, tr0)) hr++; if (isB(tc - k, tr0)) hr++; if (isB(tc, tr0 + k)) vr++; if (isB(tc, tr0 - k)) vr++; }
+        const hz = hr >= vr; // ponte corre na horizontal → tábuas verticais
+        Object.assign(BRIDGE_MEMO, { i, tr, horiz: hz, edgeA: hz ? !isB(tc, tr0 - 1) : !isB(tc - 1, tr0), edgeB: hz ? !isB(tc, tr0 + 1) : !isB(tc + 1, tr0) });
+      }
+      const { horiz, edgeA, edgeB } = BRIDGE_MEMO;
       const along = horiz ? x : y, across = horiz ? y : x;
       const sub = horiz ? y % TILE : x % TILE;
-      const edgeA = horiz ? !isB(tc, tr0 - 1) : !isB(tc - 1, tr0);
-      const edgeB = horiz ? !isB(tc, tr0 + 1) : !isB(tc + 1, tr0);
       const pi = Math.floor(along / 5), pk = hash2(pi, horiz ? 1 : 2, seed + 41);
       const grain = hash2(pi, across >> 1, seed + 43);
       c = P.wood[1 + ((pk * 2.6) | 0)];
@@ -208,7 +226,8 @@ export function paintTile(world, P, i, x, y) {
   if (world.arena.heights) {
     const hh = tr.height[i];
     let face = false;
-    for (let d = 1; d <= 16; d++) {
+    // A altura só muda de tile em tile: basta olhar o primeiro pixel de cada um dos tiles de cima (até 16 px).
+    for (let d = (y % TILE) + 1; d <= 16; d += TILE) {
       const up = tr.heightAt(x, y - d);
       if (up > hh + 0.25) {
         if (d <= Math.round((up - hh) * 8)) {
@@ -225,8 +244,9 @@ export function paintTile(world, P, i, x, y) {
       const sh = tr.heightAt(x - 5, y - 5) - hh;
       if (sh > 0.25) { const k = sh > 1 ? 0.6 : 0.75; r *= k; g *= k; b *= k * 1.05; } // sombra projetada
       const lower = (dx, dy) => tr.heightAt(x + dx, y + dy) < hh - 0.25;
-      if (lower(0, 1) || lower(-1, 0) || lower(1, 0) || lower(0, -1)) { r = r * 0.5 + 20; g = g * 0.5 + 18; b = b * 0.5 + 18; } // contorno da borda
-      else if (lower(0, 2) || lower(-2, 0) || lower(2, 0) || lower(0, -2)) { r = r * 0.7 + 70; g = g * 0.7 + 68; b = b * 0.7 + 60; } // luz na quina
+      const lx = x % TILE, ly = y % TILE, rim = lx < 2 || lx > TILE - 3 || ly < 2 || ly > TILE - 3; // no miolo do tile os vizinhos a 2 px são o próprio tile
+      if (rim && (lower(0, 1) || lower(-1, 0) || lower(1, 0) || lower(0, -1))) { r = r * 0.5 + 20; g = g * 0.5 + 18; b = b * 0.5 + 18; } // contorno da borda
+      else if (rim && (lower(0, 2) || lower(-2, 0) || lower(2, 0) || lower(0, -2))) { r = r * 0.7 + 70; g = g * 0.7 + 68; b = b * 0.7 + 60; } // luz na quina
       if ((hh === 1.5 || hh === 2) && ty === T.STONE && y % 3 === 0) { r *= 0.6; g *= 0.6; b *= 0.6; } // degraus
       if (hh >= 2.5) { r = r * 1.05 + 30; g = g * 1.05 + 24; b = b * 1.02 + 12; } // topo da plataforma, mais claro e quente
     }

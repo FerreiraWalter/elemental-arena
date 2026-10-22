@@ -1,6 +1,6 @@
 import { STATE_LABEL } from '../ai/brain.js';
 import { TEAM_COLOR, ELEMENT_COLOR, SIG_COLOR, REL_COLOR, relation } from './renderer.js';
-import { EVOLUTION, WORLD_W, WORLD_H, COMBO_BREAK } from '../config.js';
+import { EVOLUTION, COMBO_BREAK } from '../config.js';
 import { SIG } from '../sim/signature.js';
 import { meter } from '../sim/training.js';
 
@@ -291,16 +291,17 @@ function sigGauge(world, m) {
 function abilityBar(c, world, ox, aw, y, dpr, r) {
   const m = world.active;
   if (!m) {
-    if (!world.over) text(c, 'Próximo monstro entrando...', ox + aw / 2, y + 24 * dpr, 7, '#ffe066', 'center', dpr);
+    if (!world.over) text(c, 'Próximo monstro entrando...', ox + aw / 2, y + 20 * dpr, 7, '#ffe066', 'center', dpr);
     return;
   }
   const slots = SLOTS.filter(([k]) => m.def.controls[k]);
   const evoSlot = !!m.def.evolvesTo && !m.evolved;
   const nSlots = slots.length + (evoSlot ? 1 : 0);
-  // Bloco da esquerda: retrato grande + nome, vida, medidor da mecânica e status.
-  const pS = 46 * dpr, lw = 118 * dpr, left = pS + 6 * dpr + lw + 10 * dpr;
-  const bh = 46 * dpr, gap = 4 * dpr;
-  const bw = Math.max(40 * dpr, Math.min(66 * dpr, (aw - left - 16 * dpr) / nSlots - gap));
+  // Bloco da esquerda: retrato + nome, vida, medidor da mecânica e status. Compacta (36 de altura): a arena
+  // fica com o espaço que sobra.
+  const pS = 36 * dpr, lw = 104 * dpr, left = pS + 6 * dpr + lw + 10 * dpr;
+  const bh = 36 * dpr, gap = 4 * dpr;
+  const bw = Math.max(40 * dpr, Math.min(60 * dpr, (aw - left - 16 * dpr) / nSlots - gap));
   const total = nSlots * bw + (nSlots - 1) * gap;
   const x0 = Math.max(ox, ox + aw / 2 - (left + total) / 2);
   panel(c, x0 - 5 * dpr, y - 5 * dpr, left + total + 10 * dpr, bh + 10 * dpr, GOLD, dpr, 6);
@@ -308,32 +309,32 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
   const px = x0 + pS + 6 * dpr;
   let x = x0 + left;
   elementGlyph(c, m.element, px, y + 1 * dpr, 7 * dpr);
-  text(c, m.name.toUpperCase(), px + 10 * dpr, y + 9 * dpr, fit(c, m.name.toUpperCase(), 7, lw - 56 * dpr, dpr), '#ffd86a', 'left', dpr);
-  bar(c, px, y + 13 * dpr, lw, 7 * dpr, m.hp / m.maxHp, m.hp / m.maxHp, hpColor(m, world), dpr);
-  if (m.status.shield > 0 && m.shieldHp > 0) { c.fillStyle = '#8fd8ff'; c.fillRect(px, y + 13 * dpr, lw * Math.min(1, m.shieldHp / m.maxHp), 3 * dpr); }
-  text(c, `${Math.ceil(m.hp)}${m.status.shield > 0 && m.shieldHp > 0 ? `+${Math.ceil(m.shieldHp)}` : `/${m.maxHp}`}`, px + lw, y + 9 * dpr, 5, m.status.shield > 0 && m.shieldHp > 0 ? '#8fd8ff' : '#fff', 'right', dpr);
+  text(c, m.name.toUpperCase(), px + 10 * dpr, y + 8 * dpr, fit(c, m.name.toUpperCase(), 6.5, lw - 52 * dpr, dpr), '#ffd86a', 'left', dpr);
+  bar(c, px, y + 11 * dpr, lw, 6 * dpr, m.hp / m.maxHp, m.hp / m.maxHp, hpColor(m, world), dpr);
+  if (m.status.shield > 0 && m.shieldHp > 0) { c.fillStyle = '#8fd8ff'; c.fillRect(px, y + 11 * dpr, lw * Math.min(1, m.shieldHp / m.maxHp), 3 * dpr); }
+  text(c, `${Math.ceil(m.hp)}${m.status.shield > 0 && m.shieldHp > 0 ? `+${Math.ceil(m.shieldHp)}` : `/${m.maxHp}`}`, px + lw, y + 8 * dpr, 5, m.status.shield > 0 && m.shieldHp > 0 ? '#8fd8ff' : '#fff', 'right', dpr);
   // Medidor da mecânica própria (Fornalha, Ímpeto, Casco, Sentinelas, Cópias, Marcas).
   const gge = sigGauge(world, m);
   if (gge) {
     const blink = gge.blink && Math.floor(performance.now() / 160) % 2;
-    text(c, gge.label, px, y + 30 * dpr, fit(c, gge.label, 5.5, lw * 0.56, dpr), blink ? '#ffffff' : gge.color, 'left', dpr);
-    c.fillStyle = '#100a08'; c.fillRect(px - dpr, y + 33 * dpr, lw + 2 * dpr, 6 * dpr);
-    c.fillStyle = '#2a201a'; c.fillRect(px, y + 34 * dpr, lw, 4 * dpr);
-    c.fillStyle = blink ? '#ffffff' : gge.color; c.fillRect(px, y + 34 * dpr, lw * Math.max(0, Math.min(1, gge.k)), 4 * dpr);
+    text(c, gge.label, px, y + 24 * dpr, fit(c, gge.label, 5, lw * 0.56, dpr), blink ? '#ffffff' : gge.color, 'left', dpr);
+    c.fillStyle = '#100a08'; c.fillRect(px - dpr, y + 26 * dpr, lw + 2 * dpr, 4 * dpr);
+    c.fillStyle = '#2a201a'; c.fillRect(px, y + 27 * dpr, lw, 2 * dpr);
+    c.fillStyle = blink ? '#ffffff' : gge.color; c.fillRect(px, y + 27 * dpr, lw * Math.max(0, Math.min(1, gge.k)), 2 * dpr);
   }
   // Quebra de combo: pronta (energia + recarga) ou quanto falta.
   {
     const ok = m.breakCd <= 0 && m.energy >= COMBO_BREAK.cost;
     const s = m.breakCd > 0 ? `COMBO ${Math.ceil(m.breakCd)}s` : ok ? 'COMBO PRONTO' : 'SEM COMBO';
-    text(c, s, px + lw, y + 30 * dpr, fit(c, s, 4.5, lw * 0.4, dpr), ok ? '#ffb04a' : '#6a7488', 'right', dpr);
+    text(c, s, px + lw, y + 24 * dpr, fit(c, s, 4.5, lw * 0.4, dpr), ok ? '#ffb04a' : '#6a7488', 'right', dpr);
   }
   // Status atuais do seu monstro, com nome (fácil de ler).
   const sts = statusList(m);
   let sx = px;
   for (const k of sts.slice(0, 3)) {
-    statusIcon(c, k, sx, y + 42 * dpr, 7 * dpr);
-    text(c, STATUS_NAME[k], sx + 9 * dpr, y + 48 * dpr, 4.5, '#e8dcc0', 'left', dpr);
-    sx += 42 * dpr;
+    statusIcon(c, k, sx, y + 30 * dpr, 6 * dpr);
+    text(c, STATUS_NAME[k], sx + 8 * dpr, y + 35.5 * dpr, 4, '#e8dcc0', 'left', dpr);
+    sx += 36 * dpr;
   }
   const deny = r.denySlot;
   for (const [slot, key] of slots) {
@@ -357,11 +358,11 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     const words = ab.name.split(' ');
     const l1 = words.length > 1 ? words.slice(0, Math.ceil(words.length / 2)).join(' ') : ab.name;
     const l2 = words.length > 1 ? words.slice(Math.ceil(words.length / 2)).join(' ') : '';
-    const nsz = Math.min(fit(c, l1, 6.5, bw - 6 * dpr, dpr), fit(c, l2 || l1, 6.5, bw - 6 * dpr, dpr));
-    text(c, l1, x + bw / 2, y + 24 * dpr, nsz, off ? '#8a94a8' : '#f2ecdc', 'center', dpr);
-    if (l2) text(c, l2, x + bw / 2, y + 33 * dpr, nsz, off ? '#8a94a8' : '#f2ecdc', 'center', dpr);
-    // Recarga total da habilidade, embaixo (como no esboço).
-    if (!(cd > 0)) text(c, `${+ab.cooldown.toFixed(1)}s`, x + bw / 2, y + bh - 4 * dpr, 4.5, '#8fa0c0', 'center', dpr);
+    const nsz = Math.min(fit(c, l1, 6, bw - 6 * dpr, dpr), fit(c, l2 || l1, 6, bw - 6 * dpr, dpr));
+    text(c, l1, x + bw / 2, y + (l2 ? 22 : 26) * dpr, nsz, off ? '#8a94a8' : '#f2ecdc', 'center', dpr);
+    if (l2) text(c, l2, x + bw / 2, y + 31 * dpr, nsz, off ? '#8a94a8' : '#f2ecdc', 'center', dpr);
+    // Recarga total da habilidade, no canto de cima (onde não há pontinhos de carga).
+    if (!(cd > 0) && !ab.charges && x + 6 * dpr + kw < x + bw - 22 * dpr) text(c, `${+ab.cooldown.toFixed(1)}s`, x + bw - 3 * dpr, y + 10 * dpr, 4, '#8fa0c0', 'right', dpr);
     if (ab.charges) {
       // Pontinhos de carga no canto e a barrinha da próxima carga recarregando.
       for (let k = 0; k < ab.charges; k++) {
@@ -400,8 +401,8 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     c.font = `${5 * dpr}px ${FONT}`; c.fillStyle = '#141a2a'; c.textAlign = 'left'; c.fillText('G', x + 6 * dpr, y + 10.5 * dpr);
     // Virada: rival já evoluído em campo e você ainda não — a barra enche 60% mais rápido.
     const underdog = !ready && !m.evolved && m.def.evolvesTo && world.monsters.some((e) => e.alive && e.onField && e.team !== m.team && e.def.stage >= 2);
-    text(c, underdog ? 'VIRADA x1.6' : 'EVOLUIR', x + bw / 2, y + 26 * dpr, Math.min(underdog ? 5 : 6, bw / dpr / (underdog ? 12 : 9)), underdog ? '#ffd23a' : '#fff', 'center', dpr);
-    text(c, ready ? 'PRONTO!' : `${Math.floor(k * 100)}%`, x + bw / 2, y + bh - 5 * dpr, 5.5, ready ? '#e8b8ff' : '#c8bce0', 'center', dpr);
+    text(c, underdog ? 'VIRADA x1.6' : 'EVOLUIR', x + bw / 2, y + 22 * dpr, Math.min(underdog ? 5 : 6, bw / dpr / (underdog ? 12 : 9)), underdog ? '#ffd23a' : '#fff', 'center', dpr);
+    text(c, ready ? 'PRONTO!' : `${Math.floor(k * 100)}%`, x + bw / 2, y + bh - 4 * dpr, 5, ready ? '#e8b8ff' : '#c8bce0', 'center', dpr);
   }
 }
 
@@ -492,8 +493,7 @@ function ffaEnd(c, world, mid, oy, aw, ah, dpr) {
 export function drawHud(c, r, world, ui) {
   const dpr = ui.dpr * (r.hudScale || 1); // unidade de interface = pixels do dispositivo × escala da janela
   const H = c.canvas.height;
-  const { ox, oy, S } = r.view;
-  const aw = WORLD_W * S, ah = WORLD_H * S;
+  const { ox, oy, aw, ah } = r.frame; // parte visível da arena (com a câmera aproximada: a tela entre as faixas)
   const myTeam = world.playerTeam ?? 0;
   const mySide = world.teams[myTeam].side;
   const slots = world.teams.map((_, i) => i);
@@ -611,6 +611,8 @@ export function drawHud(c, r, world, ui) {
     ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 trocar · G evoluir · H ajuda · P pausar · preso? Espaço quebra o combo'
     : 'MODO ESPECTADOR · P pausar · I visão da IA';
   const hsz = fit(c, help, 5, aw, dpr);
+  // Câmera aproximada: o mapa passa por baixo do rodapé; faixa escura para a linha de ajuda continuar legível.
+  if (!ui.touch && r.view.zoomed) { c.fillStyle = 'rgba(16,10,8,0.8)'; c.fillRect(0, H - 13 * dpr, c.canvas.width, 13 * dpr); }
   if (!ui.touch) text(c, help, mid, H - 6 * dpr, hsz, '#887', 'center', dpr);
   else if (ui.net?.room || ui.net?.rtt) {
     // Toque: sala e ping numa linha embaixo, no meio (entre o analógico e os botões).
