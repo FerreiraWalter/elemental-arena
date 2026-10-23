@@ -1,4 +1,4 @@
-// Zefirinho → Zefirão (Vento, Maestro dos 4 Braços): E/F zeram o Q e carregam a Brisa; Turbulência (E) vira crítico
+// Arutchin → Anemokahn (Vento, Maestro dos 4 Braços): E/F zeram o Q e carregam a Brisa; Turbulência (E) vira crítico
 // com ricochete no Q, micro-vácuo no E e Jaula de Vento no F; Q com 2 cargas dá escudo + disparada (duas lâminas na
 // evolução); a Palma de Ar adianta o E; sincronização online da marca e das cargas.
 // node test/zefirinho.mjs
@@ -37,7 +37,7 @@ const cast = (w, m, id, p) => m.cast(w, m.ability(id), { aim: Math.atan2(p.y - m
 const idle = (w, m) => until(w, () => !m.action, 2);
 const watch = (w) => { const seen = []; const emit = w.emit.bind(w); w.emit = (e) => { seen.push(e); emit(e); }; return seen; };
 
-test('Zefirinho está no elenco, é de Vento, flutua e evolui para o Zefirão', () => {
+test('Arutchin está no elenco, é de Vento, flutua e evolui para o Anemokahn', () => {
   assert(ROSTER.includes('zefirinho'), 'fora do elenco');
   const b = SPECIES.zefirinho, e = SPECIES.zefirao;
   assert(b.element === 'air' && e.element === 'air' && b.hover && b.evolvesTo === 'zefirao', 'elemento/voo/evolução');

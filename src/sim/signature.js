@@ -11,7 +11,7 @@
 //   volt     Raiolua     — Cargas: golpes elétricos acumulam cargas; cheio fica ELETRIZADO; o E consome tudo.
 //   shadow   Pantrinja   — Rastro Invisível / Emboscada da Noite: sombra que imita golpes e para onde a pantera vai;
 //                         crítico saindo da camuflagem e pelas costas. Ver shadow.js.
-//   maestro  Zefirinho   — Maestro dos 4 Braços: E/F zeram o Q e carregam a Brisa; a Turbulência muda cada botão.
+//   maestro  Arutchin   — Maestro dos 4 Braços: E/F zeram o Q e carregam a Brisa; a Turbulência muda cada botão.
 //                         Ver maestro.js.
 //   marks    Mantifolha  — Marca do Louva-a-deus: acertos marcam a presa; com 3 marcas, um golpe de perto
 //                         ou o pouso do salto EXECUTA (dano extra, prende e recarrega o salto).

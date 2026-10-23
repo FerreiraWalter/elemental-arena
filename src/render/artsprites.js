@@ -25,7 +25,7 @@ const FACES = {
   cat_1: 1, cat_3: 0, // Raiolua (de lado) e Trovogato (de frente)
   frog_1: 0, frog_3: 0, // Sapomental e Sapofilósofo (meditando, de frente)
   bird_1: 1, bird_3: -1, // Araralvo olha para a direita; Araravento vira a cabeça para a esquerda
-  djinn_1: 0, djinn_3: 0, // Zefirinho e Zefirão (gênios de frente)
+  djinn_1: 0, djinn_3: 0, // Arutchin e Anemokahn (gênios de frente)
   panther_1: 1, panther_3: -1, // Pantrinja agachada olhando para a direita; Kagepantera avança com a cabeça à esquerda
 };
 

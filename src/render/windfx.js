@@ -1,4 +1,4 @@
-// Efeitos visuais do gênio do vento (Zefirinho/Zefirão): palma de ar, lâmina de vácuo em meia-lua, a marca de
+// Efeitos visuais do gênio do vento (Arutchin/Anemokahn): palma de ar, lâmina de vácuo em meia-lua, a marca de
 // Turbulência girando em volta do alvo e as cargas de Brisa sobre a cabeça do gênio.
 import { rgba } from './pixel.js';
 

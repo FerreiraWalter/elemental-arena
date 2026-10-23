@@ -1,4 +1,4 @@
-"""Extrai os sprites do Zefirinho (base) e do Zefirão (evolução) da arte do usuário (assets/source/genio.webp).
+"""Extrai os sprites do Arutchin (base) e do Anemokahn (evolução) da arte do usuário (assets/source/genio.webp).
 
 A arte veio com o xadrez de "transparência" pintado no fundo (cinza neutro 128/180). O gênio e o redemoinho dele são
 levemente azulados, então o fundo é o que é cinza NEUTRO perto desses dois tons; o resto (corpo, cabelo, ouro, vento)

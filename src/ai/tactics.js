@@ -569,7 +569,7 @@ export const TACTICS = {
   shadowStep() { return null; },
   nightStep() { return null; },
 
-  // ───────────── Vento (Zefirinho → Zefirão): tece combos — marca com E, crítico com Q, jaula com F ─────────────
+  // ───────────── Vento (Arutchin → Anemokahn): tece combos — marca com E, crítico com Q, jaula com F ─────────────
   airPalm(c) { return palmShot(c, 140); },
   stormPalm(c) { return palmShot(c, 150); },
   gustSlap(c) { return gustPeel(c, 18); },

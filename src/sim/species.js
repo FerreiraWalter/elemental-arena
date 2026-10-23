@@ -431,11 +431,11 @@ export const SPECIES = {
     },
   },
   // ───────────── VENTO: gênio de quatro braços ─────────────
-  // Zefirinho → Zefirão: "Maestro dos 4 Braços". E e F zeram o Q e carregam a Brisa; a Turbulência (E) é o que
+  // Arutchin → Anemokahn (chaves internas zefirinho/zefirao, nomes antigos): "Maestro dos 4 Braços". E e F zeram o Q e carregam a Brisa; a Turbulência (E) é o que
   // transforma cada botão (Q crítico com ricochete, micro-vácuo, Jaula de Vento). Ver maestro.js.
   zefirinho: {
     key: 'zefirinho', line: 'zefirinho', stage: 1, evolvesTo: 'zefirao',
-    name: 'Zefirinho', title: 'Forma base', element: 'air', sprite: 'djinn_1', hover: true,
+    name: 'Arutchin', title: 'Forma base', element: 'air', sprite: 'djinn_1', hover: true,
     hp: 106, speed: 70, radius: 9, mass: 0.9, evoRate: 0.9,
     abilities: [A.gustSlap, A.airPalm, A.vacuumBlade, A.turbulencePulse, A.cyclonePressure, A.windDrift],
     dodge: A.windDrift,
@@ -453,7 +453,7 @@ export const SPECIES = {
   },
   zefirao: {
     key: 'zefirao', line: 'zefirinho', stage: 2,
-    name: 'Zefirão', title: 'Regente dos Ventos', element: 'air', sprite: 'djinn_3', hover: true,
+    name: 'Anemokahn', title: 'Regente dos Ventos', element: 'air', sprite: 'djinn_3', hover: true,
     hp: 176, speed: 68, radius: 12, mass: 1.4,
     abilities: [A.galeClap, A.stormPalm, A.greaterVacuum, A.turbulenceBurst, A.cycloneCage, A.stormDrift],
     dodge: A.stormDrift,

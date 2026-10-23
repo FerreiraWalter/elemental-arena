@@ -1,4 +1,4 @@
-// Maestro dos 4 Braços (Zefirinho → Zefirão): o gênio do vento que tece combos em vez de esperar recargas.
+// Maestro dos 4 Braços (Arutchin → Anemokahn): o gênio do vento que tece combos em vez de esperar recargas.
 //
 //  · Fluxo: usar o E ou o F ZERA a recarga do Q na hora. Os dois braços de cima guardam uma CARGA DE BRISA a cada E/F
 //    (máx. 2). O Q disparado com as 2 cargas as consome: ESCUDO DE VENTO + DISPARADA por 1,5 s (na evolução, os

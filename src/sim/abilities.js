@@ -1720,7 +1720,7 @@ Object.assign(ABILITIES, {
   },
 });
 
-// ───────────── Vento: Zefirinho → Zefirão (Maestro dos 4 Braços) ─────────────
+// ───────────── Vento: Arutchin → Anemokahn (Maestro dos 4 Braços) ─────────────
 // Gênio de quatro braços: E e F zeram o Q e carregam a Brisa; a marca de Turbulência (E) vira crítico e ricochete no
 // Q, micro-vácuo no E e Jaula de Vento no F. Ver maestro.js. (Recargas de Q/E/F abaixo são multiplicadas por
 // COMBAT.skillCdMult ao carregar as espécies: 4,3 → 3 s, 3,6 → 2,5 s, 11,4 → 8 s.)
@@ -1767,7 +1767,7 @@ Object.assign(ABILITIES, {
     desc: 'DERIVA: o redemoinho leva o gênio de lado, invulnerável.',
   },
 
-  // ───── Zefirão (evoluído) ─────
+  // ───── Anemokahn (evoluído) ─────
   stormPalm: {
     id: 'stormPalm', name: 'Palma da Tempestade', element: 'air', kind: 'projectile', basic: true,
     cooldown: 0.85, windup: 0.07, active: 0.02, recovery: 0.12,
