@@ -78,7 +78,7 @@ export function updateZones(w, dt) {
     z.tick -= dt;
     if (z.tick > 0) continue;
     z.tick = 0.25;
-    if (z.kind === 'coal') continue; // brasas: ver forge.update
+    if (z.kind === 'coal' || z.kind === 'night') continue; // brasas: ver forge.update; noite eterna: ver shadow.update
     if (z.kind === 'psy') { psyZoneTick(w, z, dt); continue; }
     if (z.kind === 'wind') { windZoneTick(w, z, dt); continue; }
     for (const t of w.monsters) {

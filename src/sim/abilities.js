@@ -6,6 +6,8 @@ import * as Elec from './electric.js';
 import * as Psy from './psychic.js';
 import * as Air from './air.js';
 import * as Forge from './forge.js';
+import * as Shadow from './shadow.js';
+import * as Maestro from './maestro.js';
 
 // Cada habilidade tem fases reais: preparação (windup, telegrafada), ativa (hitbox/efeito) e recuperação.
 // move = multiplicador de deslocamento em cada fase; turn = rad/s de rastreio da mira em windup/ativa.
@@ -1609,5 +1611,202 @@ Object.assign(ABILITIES, {
     cooldown: 3.6, windup: 0, active: 0.2, recovery: 0.12,
     move: [1, 1, 0.6], turn: [0, 0], dash: { speed: 300, invuln: true },
     desc: 'ROLAMENTO DE BRASA: rola invulnerável.',
+  },
+});
+
+// ───────────── Sombra: Pantrinja → Kagepantera ─────────────
+// Pantera ninja: shurikens de longe (o Q é uma shuriken bumerangue), garras com crítico PELAS COSTAS, fumaça que camufla e a SOMBRA VIVA (F): a
+// sombra voa até o ponto, imita o leque e, com F de novo, a pantera vai até ela. Ver shadow.js.
+const shadowClaw = (o) => ({ ...melee(o), onActiveStart(w, m, a) { m.kx += Math.cos(a.aim) * o.lunge; m.ky += Math.sin(a.aim) * o.lunge; } });
+Object.assign(ABILITIES, {
+  shuriken: {
+    id: 'shuriken', name: 'Shuriken', element: 'dark', kind: 'projectile', basic: true,
+    cooldown: 0.8, windup: 0.1, active: 0.02, recovery: 0.14,
+    move: [0.8, 0.8, 0.95], turn: [10, 0], range: 165, speed: 340,
+    onActiveStart(w, m, a) { Shadow.fan(w, m, a, { n: 1, spread: 0, dmg: 4.2, speed: 340, range: 165, tag: this.id }); },
+    desc: 'SHURIKEN: estrelinha de arremesso rápida, de longe (não volta).',
+  },
+  furtiveClaw: {
+    id: 'furtiveClaw', name: 'Garra Furtiva', element: 'dark', kind: 'melee',
+    cooldown: 0.75, windup: 0.08, active: 0.12, recovery: 0.16,
+    move: [0.6, 1, 0.9], turn: [12, 2], range: 20,
+    ...shadowClaw({ reach: 20, arc: 2.1, dmg: 8.5, kb: 45, stun: 0.08, lunge: 150, extra: {} }),
+    desc: 'GARRA FURTIVA: bote rápido com as garras. PELAS COSTAS do alvo é CRÍTICO.',
+  },
+  shadowFan: {
+    id: 'shadowFan', name: 'Shuriken Bumerangue', element: 'dark', kind: 'projectile',
+    cooldown: 8, windup: 0.16, active: 0.02, recovery: 0.2,
+    move: [0.6, 0.6, 0.9], turn: [9, 0], range: 150, speed: 290,
+    onActiveStart(w, m, a) { Shadow.boomerang(w, m, a, { dmg: 6.5, speed: 290, range: 150, r: 5, tag: this.id }); },
+    desc: 'SHURIKEN BUMERANGUE: shuriken grande que atravessa, VAI E VOLTA para a mão e acerta de novo na volta. Se a SOMBRA estiver no chão, ela lança outra.',
+  },
+  smokeBomb: {
+    id: 'smokeBomb', name: 'Bomba de Fumaça', element: 'dark', kind: 'buff',
+    cooldown: 14, windup: 0.08, active: 0.05, recovery: 0.12,
+    move: [0.8, 0.8, 1], turn: [0, 0],
+    onActiveStart(w, m) { Shadow.smoke(w, m, { r: 30, cloak: 1.6, haste: 1.6, slow: 0.35, slowT: 1.2 }); },
+    desc: 'BOMBA DE FUMAÇA: fumaça que tapa a visão; a Pantrinja fica CAMUFLADA e rápida, e quem estava perto fica lento. O próximo ataque é EMBOSCADA.',
+  },
+  livingShadow: {
+    id: 'livingShadow', name: 'Sombra Viva', element: 'dark', kind: 'buff',
+    cooldown: 17, windup: 0.08, active: 0.05, recovery: 0.1,
+    move: [0.8, 0.8, 1], turn: [0, 0], range: 150,
+    onActiveStart(w, m, a) { Shadow.castShadow(w, m, a, this); },
+    desc: 'SOMBRA VIVA: lança a sua SOMBRA até o ponto mirado (fica 4,5 s). Aperte F DE NOVO para ir até ela. A sombra imita a Shuriken Bumerangue.',
+  },
+  shadowStep: {
+    id: 'shadowStep', name: 'Passo Sombrio', element: 'dark', kind: 'dodge',
+    cooldown: 3.2, windup: 0, active: 0.15, recovery: 0.08,
+    move: [1, 1, 0.8], turn: [0, 0], dash: { speed: 380, invuln: true },
+    onEnd(w, m) { Shadow.trail(w, m); },
+    desc: 'PASSO SOMBRIO: passo invulnerável que deixa a Pantrinja CAMUFLADA por um instante.',
+  },
+
+  // ───── Kagepantera (evoluída) ─────
+  kunai: {
+    id: 'kunai', name: 'Shuriken Afiada', element: 'dark', kind: 'projectile', basic: true,
+    cooldown: 0.85, windup: 0.1, active: 0.02, recovery: 0.15,
+    move: [0.8, 0.8, 0.95], turn: [10, 0], range: 170, speed: 360,
+    onActiveStart(w, m, a) { Shadow.fan(w, m, a, { n: 1, spread: 0, dmg: 5.4, speed: 360, range: 170, tag: this.id, pierce: true }); },
+    desc: 'SHURIKEN AFIADA: estrelinha rápida que ATRAVESSA os inimigos (não volta).',
+  },
+  twinFangs: {
+    id: 'twinFangs', name: 'Lâminas Gêmeas', element: 'dark', kind: 'melee',
+    cooldown: 0.9, windup: 0.08, active: 0.28, recovery: 0.18,
+    move: [0.6, 1, 0.9], turn: [12, 4], range: 24, reach: 24, arc: 2.3,
+    onActiveStart(w, m, a) {
+      m.kx += Math.cos(a.aim) * 150; m.ky += Math.sin(a.aim) * 150;
+      Shadow.mirrorClaw(w, m, a, { reach: 22, arc: 2.3, dmg: 5 });
+    },
+    onActiveTick(w, m, a) {
+      const hit = { reach: 24, arc: 2.3, dmg: 5.5, kb: 40, stun: 0.08, extra: {} };
+      if (!a.data.s1) { a.data.s1 = true; meleeTick(w, m, a, hit); return; }
+      if (a.t >= 0.13 && !a.data.s2) {
+        a.data.s2 = true;
+        m.kx += Math.cos(a.aim) * 80; m.ky += Math.sin(a.aim) * 80;
+        a.hit = new Set();
+        meleeTick(w, m, a, { ...hit, dmg: 6.5, kb: 70 });
+      }
+    },
+    desc: 'LÂMINAS GÊMEAS: dois cortes seguidos. PELAS COSTAS é CRÍTICO; a SOMBRA corta junto quem estiver perto dela.',
+  },
+  fuumaShadow: {
+    id: 'fuumaShadow', name: 'Fuuma Sombria', element: 'dark', kind: 'projectile',
+    cooldown: 8, windup: 0.16, active: 0.02, recovery: 0.2,
+    move: [0.6, 0.6, 0.9], turn: [9, 0], range: 170, speed: 300,
+    onActiveStart(w, m, a) { Shadow.boomerang(w, m, a, { dmg: 7.5, speed: 300, range: 170, r: 7, tag: this.id }); },
+    desc: 'FUUMA SOMBRIA: shuriken gigante que atravessa, VAI E VOLTA e acerta de novo na volta. A SOMBRA lança outra do lugar dela.',
+  },
+  eternalNight: {
+    id: 'eternalNight', name: 'Noite Eterna', element: 'dark', kind: 'buff',
+    cooldown: 16, windup: 0.18, active: 0.05, recovery: 0.15,
+    move: [0.6, 0.6, 1], turn: [0, 0], range: 110,
+    onActiveStart(w, m, a) { Shadow.night(w, m, a, { range: 110, r: 54, life: 3.5 }); },
+    desc: 'NOITE ETERNA: escuridão no ponto mirado por 3,5 s. Lá dentro a Kagepantera volta a se CAMUFLAR sozinha (todo ataque é EMBOSCADA) e os inimigos ficam lentos.',
+  },
+  assassinShadow: {
+    id: 'assassinShadow', name: 'Sombra Assassina', element: 'dark', kind: 'buff',
+    cooldown: 17, windup: 0.08, active: 0.05, recovery: 0.1,
+    move: [0.8, 0.8, 1], turn: [0, 0], range: 160, arrival: { r: 30, dmg: 8 },
+    onActiveStart(w, m, a) { Shadow.castShadow(w, m, a, this); },
+    desc: 'SOMBRA ASSASSINA: lança a SOMBRA (4,5 s); F DE NOVO vai até ela e CORTA quem estiver em volta. A sombra imita a Fuuma e as Lâminas.',
+  },
+  nightStep: {
+    id: 'nightStep', name: 'Passo da Noite', element: 'dark', kind: 'dodge',
+    charges: 2, chargeGap: 0.35, cooldown: 3.4, windup: 0, active: 0.15, recovery: 0.08,
+    move: [1, 1, 0.8], turn: [0, 0], dash: { speed: 390, invuln: true },
+    onEnd(w, m) { Shadow.trail(w, m); },
+    desc: 'PASSO DA NOITE: passo invulnerável (2 cargas) que deixa a Kagepantera CAMUFLADA por um instante.',
+  },
+});
+
+// ───────────── Vento: Zefirinho → Zefirão (Maestro dos 4 Braços) ─────────────
+// Gênio de quatro braços: E e F zeram o Q e carregam a Brisa; a marca de Turbulência (E) vira crítico e ricochete no
+// Q, micro-vácuo no E e Jaula de Vento no F. Ver maestro.js. (Recargas de Q/E/F abaixo são multiplicadas por
+// COMBAT.skillCdMult ao carregar as espécies: 4,3 → 3 s, 3,6 → 2,5 s, 11,4 → 8 s.)
+Object.assign(ABILITIES, {
+  airPalm: {
+    id: 'airPalm', name: 'Palma de Ar', element: 'air', kind: 'projectile', basic: true,
+    cooldown: 0.85, windup: 0.07, active: 0.02, recovery: 0.12,
+    move: [0.8, 0.8, 0.95], turn: [10, 0], range: 145, speed: 300,
+    onActiveStart(w, m, a) { Maestro.palm(w, m, a, { dmg: 2.6, speed: 300, range: 145, cdr: 0.5, tag: this.id }); },
+    desc: 'PALMA DE AR: golpes de ar alternando as mãos, a meia distância. Cada acerto adianta 0,5 s da recarga do E.',
+  },
+  gustSlap: {
+    id: 'gustSlap', name: 'Tapa de Rajada', element: 'air', kind: 'melee',
+    cooldown: 0.9, windup: 0.1, active: 0.1, recovery: 0.18,
+    move: [0.6, 1, 0.9], turn: [12, 2], range: 18,
+    ...melee({ reach: 18, arc: 2.4, dmg: 6, kb: 130, stun: 0.08, extra: {} }),
+    desc: 'TAPA DE RAJADA: tapa com as quatro mãos que EMPURRA para longe quem chegou perto.',
+  },
+  vacuumBlade: {
+    id: 'vacuumBlade', name: 'Lâmina de Vácuo', element: 'air', kind: 'projectile',
+    cooldown: 4.3, windup: 0.1, active: 0.02, recovery: 0.14,
+    move: [0.7, 0.7, 0.95], turn: [10, 0], range: 160, speed: 360,
+    onActiveStart(w, m, a) { Maestro.blade(w, m, a, { dmg: 4, speed: 360, range: 160, tag: this.id }); },
+    desc: 'LÂMINA DE VÁCUO: rajada cortante rápida. Em alvo com TURBULÊNCIA consome a marca, é CRÍTICO e RICOCHETEIA nos outros marcados. Com 2 cargas de Brisa: ESCUDO + DISPARADA.',
+  },
+  turbulencePulse: {
+    id: 'turbulencePulse', name: 'Pulso de Turbulência', element: 'air', kind: 'aoe',
+    cooldown: 3.6, windup: 0.12, active: 0.05, recovery: 0.12,
+    move: [0.7, 0.7, 0.95], turn: [0, 0], range: 130, radius: 18,
+    onActiveStart(w, m, a) { Maestro.pulse(w, m, a, { range: 130, r: 18, dmg: 2 }); },
+    desc: 'PULSO DE TURBULÊNCIA: estalo que comprime o ar no ponto: dano leve e marca TURBULÊNCIA (4 s). Em alvo já marcado vira MICRO-VÁCUO: espalha a marca em volta e puxa todos. Zera o Q.',
+  },
+  cyclonePressure: {
+    id: 'cyclonePressure', name: 'Pressão Ciclônica', element: 'air', kind: 'aoe',
+    cooldown: 11.4, windup: 0.15, active: 0.05, recovery: 0.15,
+    move: [0.6, 0.6, 0.95], turn: [0, 0], range: 140, radius: 26,
+    onActiveStart(w, m, a) { Maestro.pressure(w, m, a, { range: 140, r: 26, dmg: 4, cage: 1 }); },
+    desc: 'PRESSÃO CICLÔNICA: prende o ar no ponto (lento 40%) e sopra os projéteis inimigos para longe. Em alvo com TURBULÊNCIA vira JAULA DE VENTO: prende e levanta por 1 s. Zera o Q.',
+  },
+  windDrift: {
+    id: 'windDrift', name: 'Deriva', element: 'air', kind: 'dodge', air: true,
+    cooldown: 3, windup: 0, active: 0.2, recovery: 0.08,
+    move: [1, 1, 0.8], turn: [0, 0], dash: { speed: 330, invuln: true },
+    desc: 'DERIVA: o redemoinho leva o gênio de lado, invulnerável.',
+  },
+
+  // ───── Zefirão (evoluído) ─────
+  stormPalm: {
+    id: 'stormPalm', name: 'Palma da Tempestade', element: 'air', kind: 'projectile', basic: true,
+    cooldown: 0.85, windup: 0.07, active: 0.02, recovery: 0.12,
+    move: [0.8, 0.8, 0.95], turn: [10, 0], range: 155, speed: 320,
+    onActiveStart(w, m, a) { Maestro.palm(w, m, a, { dmg: 3.2, speed: 320, range: 155, cdr: 0.5, tag: this.id }); },
+    desc: 'PALMA DA TEMPESTADE: golpes de ar das quatro mãos. Cada acerto adianta 0,5 s da recarga do E.',
+  },
+  galeClap: {
+    id: 'galeClap', name: 'Palmas do Vendaval', element: 'air', kind: 'melee',
+    cooldown: 1, windup: 0.12, active: 0.12, recovery: 0.2,
+    move: [0.5, 1, 0.9], turn: [12, 2], range: 22,
+    ...melee({ reach: 22, arc: 3.2, dmg: 8, kb: 160, stun: 0.1, radial: true, extra: {} }),
+    desc: 'PALMAS DO VENDAVAL: as quatro mãos batem juntas e EMPURRAM todo mundo em volta.',
+  },
+  greaterVacuum: {
+    id: 'greaterVacuum', name: 'Grande Lâmina de Vácuo', element: 'air', kind: 'projectile',
+    cooldown: 4.3, windup: 0.1, active: 0.02, recovery: 0.14,
+    move: [0.7, 0.7, 0.95], turn: [10, 0], range: 170, speed: 380,
+    onActiveStart(w, m, a) { Maestro.blade(w, m, a, { dmg: 5.2, speed: 380, range: 170, tag: this.id }); },
+    desc: 'GRANDE LÂMINA DE VÁCUO: crítico e ricochete (até 4) nos alvos com TURBULÊNCIA. Com 2 cargas, os braços de cima soltam uma SEGUNDA lâmina, mais ESCUDO e DISPARADA.',
+  },
+  turbulenceBurst: {
+    id: 'turbulenceBurst', name: 'Estouro de Turbulência', element: 'air', kind: 'aoe',
+    cooldown: 3.6, windup: 0.12, active: 0.05, recovery: 0.12,
+    move: [0.7, 0.7, 0.95], turn: [0, 0], range: 140, radius: 22,
+    onActiveStart(w, m, a) { Maestro.pulse(w, m, a, { range: 140, r: 22, dmg: 2.5, vacuumR: 76, pull: 210 }); },
+    desc: 'ESTOURO DE TURBULÊNCIA: marca TURBULÊNCIA numa área maior; em alvo marcado, MICRO-VÁCUO maior que puxa com mais força. Zera o Q.',
+  },
+  cycloneCage: {
+    id: 'cycloneCage', name: 'Jaula do Ciclone', element: 'air', kind: 'aoe',
+    cooldown: 10.6, windup: 0.15, active: 0.05, recovery: 0.15,
+    move: [0.6, 0.6, 0.95], turn: [0, 0], range: 150, radius: 32,
+    onActiveStart(w, m, a) { Maestro.pressure(w, m, a, { range: 150, r: 32, dmg: 5, cage: 1.2 }); },
+    desc: 'JAULA DO CICLONE: lento e repulsa de projéteis numa área maior; em alvo com TURBULÊNCIA, JAULA de 1,2 s. Zera o Q.',
+  },
+  stormDrift: {
+    id: 'stormDrift', name: 'Deriva da Tempestade', element: 'air', kind: 'dodge', air: true,
+    charges: 2, chargeGap: 0.35, cooldown: 3.4, windup: 0, active: 0.2, recovery: 0.08,
+    move: [1, 1, 0.8], turn: [0, 0], dash: { speed: 340, invuln: true },
+    desc: 'DERIVA DA TEMPESTADE: deslize invulnerável no redemoinho (2 cargas).',
   },
 });

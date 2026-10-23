@@ -50,14 +50,16 @@ export const ELEMENT_MULT = {
   // Valores ajustados por simulação (tools/balance.mjs). O fogo ainda tem a vantagem ambiental (queimadura,
   // grama inflamável) contra a planta, por isso o bônus dele é um pouco menor que o dos outros.
   water: { fire: 1.12, plant: 0.95 },
-  fire: { plant: 1.1, water: 0.9 },
+  fire: { plant: 1.1, water: 0.9, dark: 1.08 },
   plant: { water: 1.06, fire: 0.9 },
   // Elétrico (Raiolua): forte contra água, fraco contra planta; a terra aterra o choque.
   electric: { water: 0.94, plant: 0.96, earth: 0.92, psychic: 1.12, air: 1.12 },
   earth: { electric: 1.1, air: 0.92 },
-  psychic: { earth: 1.08, electric: 0.9 },
+  psychic: { earth: 1.08, electric: 0.9, dark: 0.9 },
   // Voador (araras): forte contra planta e terra (ataca de cima), fraco contra o elétrico (raio no ar).
   air: { plant: 1.1, earth: 1.08, electric: 0.9 },
+  // Sombra (pantera ninja): a mente não lê quem vive no escuro (forte contra psíquico); a luz do fogo revela e queima.
+  dark: { psychic: 1.12, fire: 0.92 },
 };
 
 // Fogo: queimadura (status) e chão em chamas. Valores revistos para que o fogo pressione sem prender o

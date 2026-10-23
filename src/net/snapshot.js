@@ -8,6 +8,7 @@
 //   teams – por vaga: monstro em campo, recarga de troca, troca pendente
 //   proj, obs, haz, steam – projéteis, obstáculos, perigos e nuvens
 //   zones – solo eletrificado, espirais, vórtices e brasas (com o dono)
+//   shd   – sombras da pantera (Sombra Viva): dono, posição, destino, vida, voando
 //   dec   – ilusões de tinta (cópias do Gotapus); obstáculos dinâmicos incluem sentinelas (lado e dono)
 //   terr  – deltas do terreno (fogo, umidade, raízes, tipo, fuligem), quantizados
 //   events, feed – eventos visuais/sonoros e mensagens novas desde o snapshot anterior
@@ -22,7 +23,7 @@ const r1 = (v) => Math.round(v * 10) / 10;
 const r2 = (v) => Math.round(v * 100) / 100;
 const PH = ['idle', 'warn', 'active'];
 const SKIP_EVENTS = new Set(['state', 'steam', 'nearMiss']);
-const ZONE_KINDS = ['shock', 'psy', 'wind', 'coal'];
+const ZONE_KINDS = ['shock', 'psy', 'wind', 'coal', 'night'];
 
 export function makeSyncCtx(world) {
   return { seq: 0, prevTerr: null, lastFeed: world.feedSeq || 0, nInit: world.obstacles.length, prevField: new Set(), projMap: new Map() };
@@ -43,7 +44,7 @@ function monsterRec(m, idxOf) {
     h: r1(m.hp), M: m.maxHp, a: +m.alive, f: +m.onField, d: m.def.key, e: r1(m.energy), ev: +m.evolved,
     st: { burn: r2(m.status.burn), wet: r2(m.status.wet), stun: r2(m.status.stun), invuln: r2(m.status.invuln), root: r2(m.status.root), shield: r2(m.status.shield), haste: r2(m.status.haste), cloak: r2(m.status.cloak), bubble: r2(m.status.bubble), slow: r2(m.status.slow), dr: r2(m.status.dr), regen: r2(m.status.regen), charm: r2(m.status.charm), charmImm: r2(m.status.charmImm) },
     sk: r2(m.slowK || 0), dk: r2(m.drK || 0), vt: m.volt || 0, tr: m.trance || 0, cb: m.charmBy ? (idxOf.get(m.charmBy) ?? -1) : -1,
-    sp: m.spark || 0, mo: r1(m.momentum),
+    sp: m.spark || 0, mo: r1(m.momentum), bz: m.brisa || 0, tb: m.turb > 0 ? [r2(m.turb), idxOfId(m.turbBy)] : 0,
     // Números do resultado (dano, esquivas, incêndios, apagados): antes não iam e o placar online mostrava tudo 0.
     ss: [Math.round(m.stats.dmgDealt), m.stats.dodges, m.stats.ignites, m.stats.douses], cg: +m.charged, mk: m.marks.n ? [m.marks.n, idxOfId(m.marks.by)] : 0,
     cd: Object.fromEntries(Object.entries(m.cd).map(([k, v]) => [k, r2(v)])),
@@ -108,6 +109,7 @@ export function serialize(world, ctx) {
     rel: world.relics.map((r) => (r.t === Infinity ? -1 : r2(r.t))),
     steam: world.steam.map((s) => [r1(s.x), r1(s.y), r1(s.r), r2(s.density), r2(s.life), +!!s.ink]),
     zones: world.zones.map((z) => [z.id, r1(z.x), r1(z.y), r1(z.r), r2(z.life), r2(z.max), z.team, +!!z.big, ZONE_KINDS.indexOf(z.kind) > 0 ? ZONE_KINDS.indexOf(z.kind) : 0, r2(z.lift || 0), z.owner ? idxOf.get(z.owner) ?? -1 : -1]),
+    shd: (world.shadows || []).map((q) => [q.id, idxOf.get(q.owner), r1(q.x), r1(q.y), r1(q.tx), r1(q.ty), r2(q.life), r2(q.max), r2(q.facing), +q.moving, r2(q.atk || 0)]),
     dec: world.decoys.map((d) => [d.id, idxOf.get(d.owner), r1(d.x), r1(d.y), r2(d.life), r2(d.max), r2(d.facing), r1(d.vx), r1(d.vy), r2(d.atk || 0)]),
     terr,
     feed: world.feed.filter((f) => f.seq > ctx.lastFeed).map((f) => [f.text, f.color]),
@@ -152,7 +154,8 @@ export function applySnapshot(world, s, ctx) {
     m.x = r.x; m.y = r.y; m.vx = r.vx; m.vy = r.vy; m.facing = r.fc; m.lookAt = r.fc;
     m.switchState = r.sw || null; m.switchT = r.swT; m.evolveT = r.evT; m.hitFlash = r.hf; m.deathT = r.dT;
     m.breakCd = r.bc || 0; m.shieldHp = r.sh; m.level = r.lv; m.lift = r.lf; m.liftMax = r.lfM || 1;
-    m.spark = r.sp || 0; m.momentum = r.mo || 0;
+    m.spark = r.sp || 0; m.momentum = r.mo || 0; m.brisa = r.bz || 0;
+    if (r.tb) { m.turb = r.tb[0]; m.turbBy = world.roster[r.tb[1]]?.id ?? 0; } else { m.turb = 0; m.turbBy = 0; }
     if (r.ss) [m.stats.dmgDealt, m.stats.dodges, m.stats.ignites, m.stats.douses] = r.ss; m.charged = !!r.cg;
     m.slowK = r.sk || 0; m.drK = r.dk || 0; m.volt = r.vt || 0; m.trance = r.tr || 0; m.charmBy = r.cb >= 0 ? world.roster[r.cb] : null;
     if (r.mk) { m.marks.n = r.mk[0]; m.marks.by = world.roster[r.mk[1]]?.id ?? 0; } else m.marks.n = 0;
@@ -213,6 +216,7 @@ export function applySnapshot(world, s, ctx) {
   }
   ctx.decMap = decs;
   world.decoys = [...decs.values()];
+  world.shadows = (s.shd || []).map(([id, oi, x, y, tx, ty, life, max, facing, moving, atk]) => ({ id, owner: world.roster[oi], team: world.roster[oi]?.team, x, y, tx, ty, life, max, facing, moving: !!moving, atk }));
   s.haz.forEach((h, i) => { if (world.hazards[i]) { world.hazards[i].phase = PH[h[0]]; world.hazards[i].t = h[1]; world.hazards[i].sync?.(world); } });
   (s.rel || []).forEach((t, i) => { if (world.relics[i]) world.relics[i].t = t < 0 ? Infinity : t; });
   world.steam = s.steam.map(([x, y, r, density, life, ink]) => ({ x, y, r, density, life, ink: !!ink }));

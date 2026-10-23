@@ -1,3 +1,5 @@
+import * as Shadow from '../sim/shadow.js';
+
 // Controle direto do jogador sobre o monstro ativo. Lê world.input (preenchido pelo main a cada quadro)
 // e usa exatamente o mesmo sistema de habilidades da IA: preparação, hitbox, recarga e colisões reais.
 // Entradas ficam num buffer curto para que um clique durante outra ação não se perca.
@@ -30,7 +32,7 @@ export class PlayerController {
       this.buffer.push({ slot, t: BUFFER });
       // Avisa quando o botão não vai funcionar tão cedo (recarga longa ou preso): o HUD pisca o botão.
       const id = m.def.controls[slot];
-      if (id && slot !== 'evolve') {
+      if (id && slot !== 'evolve' && !(slot === 'f' && Shadow.shadowOf(w, m))) {
         const cd = m.cd[id] || 0;
         const reason = cd > BUFFER ? 'cooldown' : m.status.root > 0 && m.ability(id)?.dash ? 'root' : null;
         if (reason) w.emit({ type: 'castDenied', m, slot, reason, cd });
@@ -62,6 +64,8 @@ export class PlayerController {
 
   tryCast(slot) {
     const m = this.m, w = this.w, inp = this.input;
+    // Sombra Viva: com a sombra no chão, o F leva a pantera até ela (é a segunda parte da habilidade, sem recarga).
+    if (slot === 'f' && Shadow.shadowOf(w, m)) return Shadow.canSwap(w, m) && Shadow.swap(w, m);
     const id = m.def.controls[slot];
     if (!id || !m.ready(id)) return false;
     const ab = m.ability(id);

@@ -2,10 +2,12 @@ import { WORLD_W, WORLD_H, TILE, COLS, ROWS, SWITCH, EVOLUTION, FFA_COLORS } fro
 import { hash2, valueNoise, clamp } from '../core/math.js';
 import { props } from '../sim/tiles.js';
 import { PixelBuf, rgba, makeCanvas } from './pixel.js';
-import { drawBrasalisco, drawHidrocasco, drawBrotossauro, drawDummy, rockSprite, crateSprite, bushSprite, stumpSprite } from './sprites.js';
+import { drawBrasalisco, drawHidrocasco, drawBrotossauro, drawDummy, drawProfessor, rockSprite, crateSprite, bushSprite, stumpSprite } from './sprites.js';
 import { ArtSprites } from './artsprites.js';
 import * as EF from './electricfx.js';
 import * as PF from './psyfx.js';
+import * as SF from './shadowfx.js';
+import * as WF from './windfx.js';
 import * as AF from './airfx.js';
 import * as FF from './forgefx.js';
 import * as ARF from './arenafx.js';
@@ -16,8 +18,8 @@ import { Particles } from './particles.js';
 import { drawHud, statusIcon, statusList } from './hud.js';
 
 const SPRITE_FN = { brasalisco: drawBrasalisco, hidrocasco: drawHidrocasco, brotossauro: drawBrotossauro, dummy: drawDummy };
-export const ART_NAMES = ['forge_1', 'forge_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3', 'frog_1', 'frog_3', 'bird_1', 'bird_3'];
-const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890', electric: '#bff6ff', psychic: '#f0c8ff', air: '#e8fbff' };
+export const ART_NAMES = ['forge_1', 'forge_3', 'water_1', 'water_3', 'plant_1', 'plant_3', 'hedgehog_1', 'hedgehog_3', 'octo_1', 'octo_3', 'mantis_1', 'mantis_3', 'brawler_1', 'brawler_3', 'cat_1', 'cat_3', 'frog_1', 'frog_3', 'bird_1', 'bird_3', 'panther_1', 'panther_3', 'djinn_1', 'djinn_3'];
+const EVO_COLOR = { fire: '#ffb040', water: '#7ad8ff', plant: '#a8f070', earth: '#e8c890', electric: '#bff6ff', psychic: '#f0c8ff', air: '#e8fbff', dark: '#d8c8ff' };
 export const TEAM_COLOR = ['#ffd23a', '#ff4a5a', '#46b4ff', '#7ad84a'];
 // Controles fortes (o monstro perde o comando): etiqueta e cor mostradas sobre a cabeça e no anel do chão.
 const CC_INFO = { charm: { label: 'HIPNOTIZADO', color: '#ff9ae6' }, stun: { label: 'ATORDOADO', color: '#ffe066' }, root: { label: 'PRESO', color: '#7ad84a' } };
@@ -39,7 +41,7 @@ export function relation(world, m) {
   return m.slot === world.playerTeam ? 'self' : 'ally';
 }
 const PUNCH_HAND = { jab: 'L', armoredJab: 'L', cross: 'R', clawRip: 'R' };
-export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', psychic: '#d07aff', air: '#9ad8ec', neutral: '#d8c08a' };
+export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', psychic: '#d07aff', air: '#9ad8ec', dark: '#8a6aff', neutral: '#d8c08a' };
 // Escurece uma cor #rrggbb (k < 1).
 function shade(hex, k) {
   const n = parseInt(hex.slice(1), 16);
@@ -49,7 +51,7 @@ const ROOT = [rgba('#4a2e16'), rgba('#6e4624'), rgba('#94653a'), rgba('#5aa83c')
 const FLAME = ['#fff7c2', '#ffd84a', '#ff9a1f', '#f2541b', '#b3200f'].map((h) => rgba(h));
 const EMBER = [rgba('#7a1e0a', 200), rgba('#b3300f', 220), rgba('#e0561a', 230), rgba('#ff8a2a', 240)];
 // Cores das mecânicas próprias (usadas no mundo e no HUD).
-export const SIG_COLOR = { forge: '#ffa040', momentum: '#ffe066', guard: '#8fd8ff', sentry: '#9ae070', decoy: '#b8a0ff', marks: '#b4f08a', volt: '#8fe8ff' };
+export const SIG_COLOR = { forge: '#ffa040', momentum: '#ffe066', guard: '#8fd8ff', sentry: '#9ae070', decoy: '#b8a0ff', marks: '#b4f08a', volt: '#8fe8ff', shadow: '#a88aff', maestro: '#9ae8ff' };
 
 
 function glowSprite(color, size = 32) {
@@ -217,6 +219,7 @@ export class Renderer {
           else if (e.kind === 'magma') P.burst(e.x, e.y, 10, { ramp: 'fire', speed: 50, life: 0.4, add: true, vz: 20 });
           else if (e.kind === 'wave') { P.burst(e.x, e.y, 18, { ramp: 'water', speed: 70, life: 0.5, vz: 50, g: 200 }); this.shake = Math.max(this.shake, 2); }
           else if (e.kind === 'roots') break;
+          else if (e.kind === 'shuriken' || e.kind === 'kunai' || e.kind === 'fuuma') P.burst(e.x, e.y, e.kind === 'fuuma' ? 8 : 4, { ramp: 'shadow', speed: 35, life: 0.25 });
           else if (e.kind === 'waterBolt') P.burst(e.x, e.y, 6, { ramp: 'water', speed: 45, life: 0.3 });
           else P.burst(e.x, e.y, 14, { ramp: 'fire', speed: 40, life: 0.5, add: true, vz: 40 });
           break;
@@ -228,7 +231,7 @@ export class Renderer {
             // Quem apanha encolhe e treme; faíscas saem na direção do golpe; golpe forte ganha estrela de impacto.
             const ka = e.src && e.m ? Math.atan2(e.m.y - e.src.y, e.m.x - e.src.x) : Math.random() * 6.28;
             if (e.m) { const vs = this.ms(e.m); vs.hurt = e.big ? 1 : 0.7; vs.hurtAng = ka; if (vs.an) vs.an.vsq -= e.big ? 5 : 3.5; }
-            const ramp = fire ? 'spark' : e.element === 'plant' ? 'leaf' : e.element === 'electric' ? 'volt' : e.element === 'psychic' ? 'psy' : e.element === 'earth' ? 'dust' : e.element === 'air' ? 'wind' : 'water';
+            const ramp = fire ? 'spark' : e.element === 'plant' ? 'leaf' : e.element === 'electric' ? 'volt' : e.element === 'psychic' ? 'psy' : e.element === 'earth' ? 'dust' : e.element === 'air' ? 'wind' : e.element === 'dark' ? 'shadow' : 'water';
             for (let k = 0; k < (e.big ? 10 : 5); k++) {
               const a2 = ka + (Math.random() - 0.5) * 1.1, sp = 70 + Math.random() * (e.big ? 110 : 60);
               P.add({ ramp, x: e.x, y: e.y - 6, vx: Math.cos(a2) * sp, vy: Math.sin(a2) * sp * 0.7, vz: 20 + Math.random() * 40, g: 160, life: 0.3 + Math.random() * 0.15, add: fire || e.element === 'electric' });
@@ -433,6 +436,27 @@ export class Renderer {
         case 'voltFull':
           this.addText({ x: e.x, y: e.y - 34, text: 'ELETRIZADO!', t: 0, color: '#ffe24a' });
           P.burst(e.x, e.y - 8, 16, { ramp: 'volt', speed: 70, life: 0.4, add: true });
+          break;
+        // Tutorial: confete no objetivo cumprido, nuvem quando o professor aparece, círculo alcançado, avisos.
+        case 'tutorialCheer': {
+          const ramps = ['petal', 'pollen', 'volt', 'heal', 'spark'];
+          for (let k = 0; k < (e.big ? 90 : 40); k++) {
+            const a = Math.random() * Math.PI * 2, sp = 30 + Math.random() * (e.big ? 110 : 70);
+            P.add({ ramp: ramps[k % ramps.length], x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6, vz: 60 + Math.random() * 90, g: 120, drag: 1.2, life: 1.2 + Math.random() * 0.8, size: 1 + (k % 3 === 0) });
+          }
+          this.rings.push({ x: e.x, y: e.y - 4, r: 4, max: e.big ? 40 : 22, t: 0, color: '#ffe066' });
+          break;
+        }
+        case 'tutorialPoof':
+          P.burst(e.x, e.y - 10, 16, { ramp: 'smoke', speed: 35, life: 0.6, size: 3, grow: 4, alpha: 0.7, vz: 10 });
+          P.burst(e.x, e.y - 10, 8, { ramp: 'pollen', speed: 50, life: 0.5, vz: 30, add: true });
+          break;
+        case 'tutorialMark':
+          P.burst(e.x, e.y, 24, { ramp: 'pollen', speed: 60, life: 0.6, vz: 60, g: 80, add: true });
+          this.rings.push({ x: e.x, y: e.y, r: 6, max: 26, t: 0, color: '#ffe066' });
+          break;
+        case 'tutorialText':
+          this.addText({ text: e.text, x: e.x, y: e.y, color: e.color || '#ffe9b0', t: 0, big: true });
           break;
         case 'wither':
           P.burst(e.x, e.y, 10, { ramp: 'leafFall', speed: 30, life: 0.8, vz: 20, g: 60 });
@@ -694,7 +718,91 @@ export class Renderer {
           P.burst(e.x, e.y - 6, 8, { ramp: 'ink', speed: 20, life: 0.6, size: 2, grow: 2, alpha: 0.5 });
           break;
         case 'cloak': case 'uncloak':
-          P.burst(e.x, e.y - 8, 10, { ramp: 'ink', speed: 40, life: 0.4, size: 2, alpha: 0.6 });
+          P.burst(e.x, e.y - 8, 10, { ramp: e.shadow || e.m?.element === 'dark' ? 'shadow' : 'ink', speed: 40, life: 0.4, size: 2, alpha: 0.6 });
+          break;
+        // Sombra (pantera): lançar a sombra, ir até ela, imitar golpes, crítico, fumaça e noite.
+        case 'shadowCast':
+          P.burst(e.x, e.y - 6, 10, { ramp: 'shadow', speed: 50, life: 0.35, size: 2 });
+          break;
+        case 'shadowLand': case 'shadowFade':
+          P.burst(e.x, e.y - 8, e.type === 'shadowFade' ? 14 : 6, { ramp: 'shadow', speed: 30, life: 0.5, size: 2, grow: 2, alpha: 0.7, vz: 12 });
+          break;
+        case 'shadowSwap':
+          SF.swapTrail(P, e.x0, e.y0, e.x, e.y);
+          P.burst(e.x0, e.y0 - 8, 16, { ramp: 'shadow', speed: 45, life: 0.6, size: 3, grow: 3, alpha: 0.7, vz: 14 });
+          P.burst(e.x, e.y - 8, 20, { ramp: 'shadow', speed: 70, life: 0.45, size: 2, add: true });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: 20, t: 0, color: '#8a6aff' });
+          break;
+        case 'shadowSlash':
+          this.rings.push({ x: e.x, y: e.y, r: 6, max: e.r + 6, t: 0, color: '#c8a8ff' });
+          P.burst(e.x, e.y - 6, 22, { ramp: 'shadow', speed: 110, life: 0.35, add: true });
+          break;
+        // Gênio do vento: marca, micro-vácuo, jaula, sobrecarga dos 4 ventos, crítico e ricochete.
+        case 'turbPulse':
+          P.burst(e.x, e.y, 10, { ramp: 'wind', speed: 60, life: 0.3, add: true });
+          this.rings.push({ x: e.x, y: e.y, r: 3, max: e.r + 6, t: 0, color: '#d8fbff' });
+          break;
+        case 'turbMark':
+          P.burst(e.x, e.y - 8, 6, { ramp: 'wind', speed: 30, life: 0.3, add: true });
+          break;
+        case 'microVacuum':
+          for (let k = 0; k < 28; k++) { const a = (k / 28) * Math.PI * 2, r = e.r; P.add({ ramp: 'wind', x: e.x + Math.cos(a) * r, y: e.y + Math.sin(a) * r * 0.6, vx: -Math.cos(a) * r * 3, vy: -Math.sin(a) * r * 1.8, life: 0.3, add: true }); }
+          this.rings.push({ x: e.x, y: e.y, r: e.r, max: e.r + 2, t: 0, color: '#9ae8ff' });
+          this.addText({ text: 'MICRO-VÁCUO!', x: e.x, y: e.y - 30, color: '#d8fbff', t: 0, big: true });
+          this.shake = Math.max(this.shake, 3);
+          break;
+        case 'windCage':
+          for (let k = 0; k < 30; k++) { const a = Math.random() * Math.PI * 2; P.add({ ramp: 'wind', x: e.x + Math.cos(a) * 12, y: e.y + Math.sin(a) * 5, z: Math.random() * 20, vz: 40 + Math.random() * 30, vx: -Math.sin(a) * 40, vy: Math.cos(a) * 20, life: 0.8, add: true }); }
+          this.rings.push({ x: e.x, y: e.y, r: 6, max: 22, t: 0, color: '#ffffff' });
+          this.addText({ text: 'JAULA DE VENTO!', x: e.x, y: e.y - 34, color: '#9ae8ff', t: 0, big: true });
+          break;
+        case 'cyclonePress':
+          P.burst(e.x, e.y, 16, { ramp: 'wind', speed: 70, life: 0.4, add: true });
+          this.rings.push({ x: e.x, y: e.y, r: e.r * 1.4, max: e.r * 1.5, t: 0, color: '#9ad8ec' });
+          break;
+        case 'windSurge':
+          P.burst(e.x, e.y - 10, 26, { ramp: 'wind', speed: 90, life: 0.45, add: true });
+          this.rings.push({ x: e.x, y: e.y - 4, r: 4, max: 24, t: 0, color: '#ffffff' });
+          this.addText({ text: '4 VENTOS!', x: e.x, y: e.y - 36, color: '#ffffff', t: 0, big: true });
+          break;
+        case 'vacuumCrit':
+          this.addText({ text: 'CRÍTICO!', x: e.x, y: e.y - 30, color: '#9ae8ff', t: 0, big: true });
+          this.stars.push({ x: e.x, y: e.y - 8, life: 0.12, max: 0.12, r: 12, col: '#d8fbff' });
+          break;
+        case 'vacuumChain':
+          for (let k = 0; k <= 10; k++) P.add({ ramp: 'wind', x: e.x0 + (e.x - e.x0) * k / 10, y: e.y0 + (e.y - e.y0) * k / 10 - 6, life: 0.25, add: true });
+          break;
+        case 'brisa':
+          P.burst(e.x, e.y - 26, 5, { ramp: 'wind', speed: 25, life: 0.3, add: true });
+          break;
+        case 'windRepel':
+          P.burst(e.x, e.y, 6, { ramp: 'wind', speed: 50, life: 0.25, add: true });
+          break;
+        case 'fuumaTurn':
+          P.burst(e.x, e.y, 8, { ramp: 'shadow', speed: 40, life: 0.3, add: true });
+          break;
+        case 'fuumaCatch':
+          P.burst(e.x, e.y, 10, { ramp: 'shadow', speed: 50, life: 0.3, add: true });
+          this.rings.push({ x: e.x, y: e.y + 6, r: 3, max: 12, t: 0, color: '#c8a8ff' });
+          break;
+        case 'shadowMirror':
+          P.burst(e.x, e.y - 10, 6, { ramp: 'shadow', speed: 40, life: 0.3, add: true });
+          break;
+        case 'shadowClaw':
+          this.swings.push({ m: { x: e.x, y: e.y }, ang: e.ang, reach: e.r + 6, arc: 2.2, life: 0.16, max: 0.16, col: '#8a6aff' });
+          break;
+        case 'shadowCrit':
+          this.addText({ text: e.back && e.ambush ? 'EMBOSCADA PELAS COSTAS!' : e.back ? 'PELAS COSTAS!' : 'EMBOSCADA!', x: e.x, y: e.y - 30, color: '#c8a8ff', t: 0, big: true });
+          P.burst(e.x, e.y - 8, 14, { ramp: 'shadow', speed: 80, life: 0.35, add: true });
+          this.stars.push({ x: e.x, y: e.y - 8, life: 0.12, max: 0.12, r: 12, col: '#c8a8ff' });
+          break;
+        case 'smokeBomb':
+          P.burst(e.x, e.y - 6, 30, { ramp: 'shadow', speed: 60, life: 0.9, size: 3, grow: 4, alpha: 0.75, vz: 10 });
+          this.rings.push({ x: e.x, y: e.y, r: 4, max: e.r, t: 0, color: '#4a2aa8' });
+          break;
+        case 'nightFall':
+          P.burst(e.x, e.y, 40, { ramp: 'shadow', speed: 70, life: 0.8, size: 2, alpha: 0.8, vz: 20 });
+          this.rings.push({ x: e.x, y: e.y, r: e.r * 0.3, max: e.r, t: 0, color: '#8a6aff' });
           break;
         case 'marked':
           P.burst(e.x, e.y - 18, 4 + e.n * 2, { ramp: 'leaf', speed: 30, life: 0.35 });
@@ -757,6 +865,62 @@ export class Renderer {
     }
   }
 
+  // ───────────── Tutorial ─────────────
+  // Professor Remendo na arena: sprite procedural (sprites.js), aos pulinhos, olhando para o aluno; enquanto fala
+  // mexe a boca e a varinha, com reticências num balãozinho sobre a cabeça.
+  drawProfessor(tut, t) {
+    const P = tut.prof, l = this.l;
+    this.profPb ??= new PixelBuf(48, 48);
+    const hop = P.moving ? Math.abs(Math.sin(P.hop)) * 4 : Math.max(0, Math.sin(P.hop)) * 0.6;
+    const talk = tut.talking || tut.phase === 'praise';
+    drawProfessor(this.profPb, { t, hop, talk, blink: (t % 3.4) < 0.12 });
+    const x = Math.round(P.x), y = Math.round(P.y);
+    l.fillStyle = 'rgba(0,0,0,0.3)';
+    l.beginPath(); l.ellipse(x, y + 3, 8 - hop * 0.6, 3, 0, 0, Math.PI * 2); l.fill();
+    this.blit(this.profPb.commit(), x, y - 6, P.face, 1);
+    if (talk) {
+      const by = y - 52 + Math.round(Math.sin(t * 3) * 1);
+      l.fillStyle = '#fff6dc'; l.fillRect(x - 7, by, 14, 7); l.fillRect(x - 2, by + 7, 3, 2);
+      l.fillStyle = '#2a1a10';
+      for (let k = 0; k < 3; k++) if (Math.floor(t * 4) % 4 > k) l.fillRect(x - 5 + k * 4, by + 3, 2, 2);
+    }
+  }
+
+  // Círculos do objetivo de andar: o atual pulsa com um facho de luz; os feitos ficam apagados com um visto.
+  drawTutorialMarks(tut, t) {
+    if (tut.phase !== 'goal' || !tut.marks.length) return;
+    const g = this.fxG, cur = tut.marks.find((m) => !m.done);
+    const gold = rgba('#ffd23a'), lite = rgba('#fff6c0'), deep = rgba('#c88a1a');
+    for (const mk of tut.marks) {
+      if (mk.done) { this.dotCircle(g, mk.x, mk.y, 12, rgba('#7ae07a'), 0, 3); continue; }
+      if (mk !== cur) { this.dotCircle(g, mk.x, mk.y, 11, rgba('#b8a060'), 0, 4); continue; }
+      // Círculo da vez: disco pontilhado que pulsa, aro grosso e um facho de luz subindo.
+      const R = 15 + Math.sin(t * 6) * 2, ph = Math.floor(t * 12);
+      for (let dy = -Math.ceil(R); dy <= R; dy++) for (let dx = -Math.ceil(R); dx <= R; dx++) {
+        const e = (dx / R) ** 2 + (dy / (R * 0.62)) ** 2;
+        if (e > 1) continue;
+        if (e > 0.72) g.set(mk.x + dx, mk.y + dy, e > 0.88 ? deep : gold);
+        else if ((dx + dy * 2 + ph) % 4 === 0) g.set(mk.x + dx, mk.y + dy, lite);
+      }
+      for (let y = 1; y < 46; y++) for (let dx = -4; dx <= 4; dx++) if ((dx + y + ph) % 5 === 0 && Math.random() < 1 - y / 46) g.set(mk.x + dx, mk.y - y, y < 20 ? lite : gold);
+    }
+  }
+
+  // Seta dourada quicando sobre o alvo do objetivo (círculo da vez ou o boneco).
+  drawTutorialArrow(world, t) {
+    const tut = world.tutorial;
+    if (tut.phase !== 'goal') return;
+    const kind = tut.lesson.goal.kind;
+    let tg = null;
+    if (kind === 'walk') { const mk = tut.marks.find((m) => !m.done); if (mk) tg = { x: mk.x, y: mk.y - 50 }; }
+    else if (kind !== 'evolve' && kind !== 'powers' && tut.dummy) tg = { x: tut.dummy.x, y: tut.dummy.y - 40 };
+    if (!tg) return;
+    const g = this.fxT, bob = Math.round(Math.abs(Math.sin(t * 5)) * 4), x = Math.round(tg.x), y = Math.round(tg.y) - 8 - bob;
+    const gold = rgba('#ffd23a'), lite = rgba('#fff2a0'), dark = rgba('#5a3a08');
+    for (let r = 0; r < 8; r++) for (let q = -7 + r; q <= 7 - r; q++) g.set(x + q, y + r, r === 0 || Math.abs(q) === 7 - r ? dark : q < 0 ? lite : gold);
+    for (let r = -7; r < 0; r++) for (let q = -3; q <= 3; q++) g.set(x + q, y + r, Math.abs(q) === 3 || r === -7 ? dark : q < 0 ? lite : gold);
+  }
+
   addText(o) {
     for (const t of this.texts) if (t.text === o.text && t.t < 0.45 && Math.abs(t.x - o.x) < 24 && Math.abs(t.y - o.y) < 24) return;
     // Avisos próximos sobem um pouco para não sobrepor.
@@ -791,16 +955,18 @@ export class Renderer {
     this.fxT.clear();
     this.drawTerrainFx(world, t);
     for (const h of world.hazards) { if (ARF.ARENA_HAZARDS.has(h.kind)) ARF.drawHazard(this, h, world, t); else drawHazard(h, this.fxG, this.fxT, t, this.dotCircle.bind(this)); }
-    if (world.zones?.length) EF.drawTrails(this.fxG, world.zones.filter((z) => z.kind !== 'psy' && z.kind !== 'coal'), t);
+    if (world.zones?.length) EF.drawTrails(this.fxG, world.zones.filter((z) => z.kind !== 'psy' && z.kind !== 'coal' && z.kind !== 'night'), t);
     // Clarão do raio do céu no chão (por baixo dos monstros).
     if (this.impacts) {
       for (const f of this.impacts) { f.life -= dt; if (f.life > 0) EF.drawImpact(this.fxG, f); }
       this.impacts = this.impacts.filter((f) => f.life > 0);
     }
-    for (const z of world.zones || []) { if (z.kind === 'psy') PF.drawSpiral(this.fxG, z, t); else if (z.kind === 'wind') AF.drawVortex(this.fxG, z, t); else if (z.kind === 'coal') { if (z.life > 0) FF.drawCoal(this.fxG, z, t, this.particles); } else EF.drawZone(this.fxG, z, t); }
+    for (const z of world.zones || []) { if (z.kind === 'psy') PF.drawSpiral(this.fxG, z, t); else if (z.kind === 'wind') AF.drawVortex(this.fxG, z, t); else if (z.kind === 'coal') { if (z.life > 0) FF.drawCoal(this.fxG, z, t, this.particles); } else if (z.kind === 'night') SF.drawNight(this.fxG, z, t); else EF.drawZone(this.fxG, z, t); }
+    for (const s of world.shadows || []) SF.drawShadowTarget(this.fxG, s, t);
     this.toDrawn(world, alpha, true);
     this.drawTelegraphs(world, t);
     this.drawGroundAbilityFx(world, t, dt);
+    if (world.tutorial) this.drawTutorialMarks(world.tutorial, t);
     this.toDrawn(world, alpha, false);
     l.drawImage(this.fxG.commit(), 0, 0);
     this.drawGroundDecor(world);
@@ -812,10 +978,12 @@ export class Renderer {
     for (const o of world.obstacles) ents.push({ y: o.y, o });
     for (const m of world.monsters) ents.push({ y: m.y + (m.alive ? 0 : -20), m });
     for (const d of world.decoys) ents.push({ y: d.y, d });
+    for (const s of world.shadows || []) ents.push({ y: s.y, sh: s });
+    if (world.tutorial) ents.push({ y: world.tutorial.prof.y, prof: world.tutorial });
     ents.sort((a, b) => a.y - b.y);
     for (const m of world.monsters) this.drawShadowRing(m, alpha);
     this.drawSentryLinks(world, t);
-    for (const e of ents) e.o ? this.drawObstacle(e.o, t) : e.d ? this.drawDecoy(e.d, alpha, dt, t) : this.drawMonster(e.m, alpha, dt, t);
+    for (const e of ents) e.o ? this.drawObstacle(e.o, t) : e.d ? this.drawDecoy(e.d, alpha, dt, t) : e.prof ? this.drawProfessor(e.prof, t) : e.sh ? SF.drawLivingShadow(this, e.sh, t) : this.drawMonster(e.m, alpha, dt, t);
     this.drawProjectiles(world, alpha, t);
     this.toDrawn(world, alpha, true);
     this.drawAbilityFx(world, t);
@@ -870,6 +1038,14 @@ export class Renderer {
         }
       }
       this.vines = this.vines.filter((v) => v.life > 0);
+    }
+    if (world.tutorial) this.drawTutorialArrow(world, t);
+    // Gênio do vento: marca de Turbulência nos alvos e cargas de Brisa sobre o gênio.
+    for (const m of world.monsters) {
+      if (!m.alive || !m.onField) continue;
+      const top = this.ms(m).top || 24, pp = this.lerpPos(m, alpha);
+      if (m.turb > 0 && !(m.status.cloak > 0 && this.isFoe(m))) WF.drawTurbMark(this.fxT, m, pp.x, pp.y, top, t);
+      if (m.brisa > 0) WF.drawBrisa(this.fxT, m, pp.x, pp.y, top, t);
     }
     this.drawSlashes(dt); // (no fxT: precisa vir antes do commit, senão nunca aparece)
     for (const d of world.decor) if (d.kind === 'waterfall') drawWaterfall(d, this.fxT, t);
@@ -1403,7 +1579,7 @@ export class Renderer {
     }
     const tr = this.world.terrain;
     if (m.element === 'fire' && tr.fire[tr.at(m.x, m.y)] > 0) pose.power = Math.max(pose.power, 0.4);
-    if (m.dummy) pose.wobble = st.wob;
+    if (m.dummy) { pose.wobble = st.wob; pose.fire = !!m.fireDummy; pose.crown = !!m.boss; }
     if (a?.ab.kind === 'guard' && ph === 'active') pose.crouch = 1;
     return pose;
   }
@@ -1425,7 +1601,7 @@ export class Renderer {
       this.evolveParticles(m, evoK, t);
     }
     if (m.hitFlash > 0 && Math.floor(t * 30) % 2 === 0) pose.flash = true;
-    if (!m.alive) pose.tint = [m.element === 'fire' ? '#5a5250' : m.element === 'plant' ? '#6a7a4a' : m.element === 'electric' ? '#5a6a8a' : m.element === 'psychic' ? '#6a5a7a' : m.element === 'air' ? '#7a5a5a' : '#9ac8e8', Math.min(0.8, m.deathT)];
+    if (!m.alive) pose.tint = [m.element === 'fire' ? '#5a5250' : m.element === 'plant' ? '#6a7a4a' : m.element === 'electric' ? '#5a6a8a' : m.element === 'psychic' ? '#6a5a7a' : m.element === 'air' ? '#7a5a5a' : m.element === 'dark' ? '#3a3448' : '#9ac8e8', Math.min(0.8, m.deathT)];
     // Troca: saída vira um feixe de luz e some; entrada surge do feixe e cresce.
     let wScale = 1, hScale = 1, beam = 0;
     if (m.switchState === 'exiting') {
@@ -1711,7 +1887,7 @@ export class Renderer {
     const a = m.alive ? m.action : null, ab = a?.ab, col = ELEMENT_COLOR[m.element] || '#ffffff';
     const out = { w: 1, h: 1, dx: 0 };
     const P = this.particles, top = frame.top || 24;
-    const RAMP = { fire: 'spark', water: 'water', plant: 'leaf', electric: 'volt', earth: 'dust', psychic: 'psy', air: 'wind' };
+    const RAMP = { fire: 'spark', water: 'water', plant: 'leaf', electric: 'volt', earth: 'dust', psychic: 'psy', air: 'wind', dark: 'shadow' };
     const key = a ? a.ab.id + ':' + a.phase : '';
     if (key !== st.jKey) {
       // Chegada de uma esquiva/investida: poeirinha onde parou.
@@ -1920,6 +2096,9 @@ export class Renderer {
     for (const p of world.projectiles) {
       const x = p.lob ? p.x : p.px + (p.x - p.px) * alpha, y = p.lob ? p.y : p.py + (p.y - p.py) * alpha;
       if (p.kind === 'psyBolt' || p.kind === 'psyOrb') { PF.drawPsyProj(g, p, x, y, t, this.particles); continue; }
+      if (p.kind === 'shuriken' || p.kind === 'kunai' || p.kind === 'fuuma') { SF.drawShuriken(g, p, x, y, t, this.particles); continue; }
+      if (p.kind === 'palm') { WF.drawPalm(g, p, x, y, t); continue; }
+      if (p.kind === 'vacuum') { WF.drawVacuum(g, p, x, y, this.particles); continue; }
       if (p.kind === 'ember') {
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
           const d = Math.hypot(dx, dy);
@@ -2176,7 +2355,8 @@ export class Renderer {
       g.globalAlpha = 0.9;
       if (p.kind === 'wave') { g.globalAlpha = 0.6; g.drawImage(this.glows.blue, p.x - p.r * 1.6, p.y - p.r * 1.6 - 6, p.r * 3.2, p.r * 3.2); }
       else if (p.kind === 'waterBolt') g.drawImage(this.glows.blue, p.x - 9, p.y - 9, 18, 18);
-      else if (p.kind === 'seed' || p.kind === 'thorn' || p.kind === 'roots' || p.kind === 'rock' || p.kind === 'splashSeed' || p.kind === 'splashBubble') continue;
+      else if (p.kind === 'seed' || p.kind === 'thorn' || p.kind === 'roots' || p.kind === 'rock' || p.kind === 'splashSeed' || p.kind === 'splashBubble' || p.kind === 'shuriken' || p.kind === 'kunai' || p.kind === 'fuuma' || p.kind === 'palm') continue;
+      else if (p.kind === 'vacuum') { g.globalAlpha = 0.5; g.drawImage(this.glows.blue, p.x - 9, p.y - 9, 18, 18); }
       else if (p.kind === 'inferno') { g.globalAlpha = 0.9; g.drawImage(this.glows.fire, p.x - p.r * 2.5, p.y - p.r * 2.5 - 4, p.r * 5, p.r * 5); }
       else g.drawImage(this.glows.fire, p.x - 10, (p.lob ? p.y - p.h : p.y) - 10, 20, 20);
     }
@@ -2802,9 +2982,10 @@ export class Renderer {
       c.font = `${(n.big ? 11 : 8) * dpr * Math.min(1.15, this.hudScale || 1) * 0.8}px "Press Start 2P", monospace`;
       c.lineWidth = 3 * dpr;
       c.strokeStyle = '#140c0a';
-      c.strokeText(n.text, sx, sy);
+      const tx = n.text.replace(/Í/g, 'I'); // a fonte não tem o Í maiúsculo
+      c.strokeText(tx, sx, sy);
       c.fillStyle = n.color;
-      c.fillText(n.text, sx, sy);
+      c.fillText(tx, sx, sy);
     }
     c.globalAlpha = 1;
     this.nums = this.nums.filter((n) => n.t < 0.9);

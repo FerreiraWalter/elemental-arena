@@ -9,7 +9,7 @@ import { hash2 } from '../core/math.js';
 const FLAME = [rgba('#fff7c2'), rgba('#ffd84a'), rgba('#ff9a1f'), rgba('#f2541b'), rgba('#b3200f')];
 const WHITE = rgba('#ffffff');
 // Suba quando trocar algum PNG de assets/monsters (força o navegador a baixar de novo).
-const ART_VERSION = 18;
+const ART_VERSION = 22;
 
 // Direção para onde a arte original olha (-1 esquerda, 0 frente, 1 direita). O renderer espelha a arte
 // para que o monstro sempre olhe para a mira; sprite que olha para a esquerda precisa de -1 aqui.
@@ -25,6 +25,8 @@ const FACES = {
   cat_1: 1, cat_3: 0, // Raiolua (de lado) e Trovogato (de frente)
   frog_1: 0, frog_3: 0, // Sapomental e Sapofilósofo (meditando, de frente)
   bird_1: 1, bird_3: -1, // Araralvo olha para a direita; Araravento vira a cabeça para a esquerda
+  djinn_1: 0, djinn_3: 0, // Zefirinho e Zefirão (gênios de frente)
+  panther_1: 1, panther_3: -1, // Pantrinja agachada olhando para a direita; Kagepantera avança com a cabeça à esquerda
 };
 
 // Braços que socam (coordenadas na arte original, que olha para a direita). L = mão esquerda do personagem (o braço do
@@ -36,7 +38,7 @@ const ARMS = {
 };
 
 // Escala de desenho por arte (1 = tamanho do PNG). Os gatos de chapéu ficavam grandes demais perto dos outros.
-const SIZE = { cat_1: 0.82, cat_3: 0.8, forge_1: 0.82 }; // Brasalinha menor (o Fornalhonte já é gerado no tamanho certo)
+const SIZE = { cat_1: 0.82, cat_3: 0.8, forge_1: 0.82, panther_3: 0.86, djinn_3: 0.84 }; // Brasalinha menor (o Fornalhonte já é gerado no tamanho certo)
 
 function classify(r, g, b) {
   const max = Math.max(r, g, b), min = Math.min(r, g, b);

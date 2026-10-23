@@ -73,11 +73,12 @@ export function setDummies(w, n) {
 }
 
 // Chamado pelo World.damage antes de decidir se alguém caiu.
-export function onDamage(w, t, src, dmg) {
+export function onDamage(w, t, src, dmg, o = {}) {
   const T = w.training;
   t._hurtT = w.time;
   if (t.dummy && dmg > 0 && src && src.team === 0) { T.log.push({ t: w.time, d: dmg }); T.lastHit = dmg; }
   if (t.hp < 1) t.hp = 1; // ninguém cai no treino
+  w.tutorial?.onDamage(t, src, dmg, o);
 }
 
 export function update(w, dt) {
@@ -87,7 +88,7 @@ export function update(w, dt) {
     if (m.dummy) continue;
     if (m.hp < 1) m.hp = 1;
     // Energia sempre cheia: o G evolui na hora.
-    if (m.def.evolvesTo && !m.evolved && m.evolveT <= 0) m.energy = EVOLUTION.threshold;
+    if (T.opts.fullEnergy !== false && m.def.evolvesTo && !m.evolved && m.evolveT <= 0) m.energy = EVOLUTION.threshold;
     // Vida volta sozinha depois de alguns segundos sem levar dano.
     if (w.time - (m._hurtT ?? -99) > 3) m.hp = m.maxHp;
   }
@@ -109,7 +110,7 @@ export function update(w, dt) {
     if (T.opts.shoot && me && me.alive && me.onField && !me.switchState) {
       d.shootT -= dt;
       if (d.shootT <= 0) {
-        d.shootT = 2.2;
+        d.shootT = T.opts.every || 2.2;
         const ang = Math.atan2(me.y - d.y, me.x - d.x);
         if (Math.hypot(me.x - d.x, me.y - d.y) < 280 && w.los(d.x, d.y, me.x, me.y)) {
           w.spawnProjectile({ kind: 'seed', tag: 'treino', owner: d, ang, speed: 150, r: 3, range: 290, dmg: 4, x: d.x + Math.cos(ang) * 12, y: d.y + Math.sin(ang) * 12 - 6, minorShot: true });
@@ -119,6 +120,7 @@ export function update(w, dt) {
     }
   }
   while (T.log.length && w.time - T.log[0].t > 5) T.log.shift();
+  w.tutorial?.update(dt);
 }
 
 // Medidor: dano nos últimos 5 s e por segundo.

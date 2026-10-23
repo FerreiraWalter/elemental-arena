@@ -20,6 +20,7 @@ const RAMPS = {
   sap: ['#c8ff7a', '#8ad84a', '#5aa83c'],
   heal: ['#ffffff', '#c8ffd0', '#7dff8a', '#3fd65a'],
   wind: ['#ffffff', '#d8f6ff', '#9ad8ec', '#5a9ab8'],
+  shadow: ['#c8a8ff', '#8a6aff', '#4a2aa8', '#2a1652', '#140a24'],
 };
 
 export class Particles {

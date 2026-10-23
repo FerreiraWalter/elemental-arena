@@ -4,7 +4,9 @@ import { ARENAS, ARENA_ORDER } from '../arenas/index.js';
 import { ELEMENT_MULT, EVOLUTION, SWITCH, WORLD_W, WORLD_H, ROWS, FFA_COLORS } from '../config.js';
 import { World } from '../sim/world.js';
 import { Renderer, ELEMENT_COLOR, SIG_COLOR } from '../render/renderer.js';
-import { makeCanvas } from '../render/pixel.js';
+import { makeCanvas, PixelBuf } from '../render/pixel.js';
+import { drawProfessor } from '../render/sprites.js';
+import { TUTORIAL_KEY } from '../sim/tutorial.js';
 import { abilityIcon, statusIcon } from '../render/hud.js';
 import { drawTail } from '../render/electricfx.js';
 
@@ -12,7 +14,7 @@ import { drawTail } from '../render/electricfx.js';
 // Tudo desenhado no canvas no mesmo estilo pixel art; mouse e teclado funcionam em todas as telas.
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico', air: 'Voador' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico', air: 'Voador', dark: 'Sombra' };
 const KEY_LABEL = { primary: 'MOUSE E', melee: 'MOUSE D', q: 'Q', e: 'E', f: 'F', dodge: 'ESPAÇO' };
 const TOUCH_LABEL = { primary: 'ATQ', melee: 'GOLPE', q: 'Q', e: 'E', f: 'F', dodge: 'ESQ' };
 const DIFF_NAME = ['', 'fácil de jogar', 'médio', 'exige prática'];
@@ -37,6 +39,7 @@ export function loadSettings() {
 function saveSettings(s) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* armazenamento indisponível */ } }
 
 function text(c, s, x, y, size, color, align = 'left', u = 1, stroke = true) {
+  s = s.replace(/Í/g, 'I'); // a fonte não tem o Í maiúsculo (sairia minúsculo no meio da palavra)
   c.font = `${size * u}px ${FONT}`;
   c.textAlign = align;
   if (stroke) { c.lineWidth = 3 * u; c.strokeStyle = '#0c0806'; c.strokeText(s, x, y); }
@@ -316,6 +319,11 @@ export class UI {
       text(this.c, this.mp.error, W / 2, H - 40 * u, sz, '#ffd0d0', 'center', u);
     }
     this.drawButtons(u);
+    if (this.screen === 'menu' && this.newTag) {
+      const { x, y } = this.newTag, b = Math.round(Math.sin(this.time * 6) * 1.5 * u);
+      c.fillStyle = '#e8203a'; c.fillRect(x - 18 * u, y - 9 * u + b, 38 * u, 12 * u);
+      text(c, 'NOVO!', x + u, y + b, 6, '#ffffff', 'center', u);
+    }
     if (this.fade > 0) { c.fillStyle = `rgba(0,0,0,${this.fade})`; c.fillRect(0, 0, W, H); }
   }
 
@@ -409,13 +417,26 @@ export class UI {
     // Botões (embaixo do palco). No celular, mais altos (dedo).
     const bw = Math.min(230 * u, side ? W * 0.4 : W), bh = (this.phone ? 30 : 24) * u, gapB = 6 * u;
     const bx = side ? W * 0.76 : cx;
-    let by = side ? Math.max(H * 0.25, (H - 5 * (bh + gapB)) / 2 + 24 * u) : Math.max(sy + ry + 44 * u, H - 5 * (bh + gapB) - 18 * u);
+    let by = side ? Math.max(H * 0.2, (H - 6 * (bh + gapB)) / 2 + 24 * u) : Math.max(sy + ry + 44 * u, H - 6 * (bh + gapB) - 18 * u);
+    // Tutorial: primeiro da lista e com selo NOVO! até ser concluído uma vez.
+    let tutDone = true;
+    try { tutDone = !!localStorage.getItem(TUTORIAL_KEY); } catch { /* sem armazenamento */ }
+    const tutBtn = () => {
+      this.button(bx - bw / 2, by, bw, bh, 'TUTORIAL', () => this.hooks.startTutorial(), { color: '#e8b8ff', size: tutDone ? 9 : 10 });
+      if (!tutDone) {
+        this.newTag = { x: bx + bw / 2 - 22 * u, y: by + 2 * u }; // selo desenhado depois dos botões (render)
+      }
+      by += bh + gapB;
+    };
+    this.newTag = null;
+    if (!tutDone) tutBtn();
     this.button(bx - bw / 2, by, bw, bh, 'JOGAR CONTRA A IA', () => { this.team = []; this.flow = 'local'; this.go('team'); }, { size: 10 });
     by += bh + gapB;
     this.button(bx - bw / 2, by, bw, bh, 'MULTIPLAYER ONLINE', () => { this.team = this.team.length === 3 ? this.team : []; this.flow = 'mp'; this.go('team'); }, { color: '#ff8a3a', size: 10 });
     by += bh + gapB;
     this.button(bx - bw / 2, by, bw, bh, 'TREINAMENTO', () => { this.team = []; this.flow = 'training'; this.go('team'); }, { color: '#d8c08a' });
     by += bh + gapB;
+    if (tutDone) tutBtn();
     this.button(bx - bw / 2, by, bw, bh, 'MONSTROS', () => this.go('bestiary'), { color: '#7ad84a' });
     by += bh + gapB;
     this.button(bx - bw / 2, by, bw, bh, 'OPÇÕES', () => this.go('options'), { color: '#46b4ff' });
@@ -1063,6 +1084,162 @@ export class UI {
     this.drawButtons(u);
   }
 
+  // ───────────── Tutorial (Professor Remendo) ─────────────
+  // Retrato do professor (do capelo à cintura) num quadro, ampliado em pixels inteiros. talking mexe a boca.
+  drawProfPortrait(x, y, s, talking, u, border = '#ffd23a') {
+    const c = this.c;
+    this.profPb ??= new PixelBuf(48, 48);
+    drawProfessor(this.profPb, { t: this.time, hop: 0, talk: talking, blink: this.time % 3.1 < 0.12 });
+    const cv = this.profPb.commit();
+    c.fillStyle = '#2a3a5a'; c.fillRect(x, y, s, s);
+    c.fillStyle = '#34486c'; c.fillRect(x, y + s * 0.62, s, s * 0.38);
+    c.save();
+    c.beginPath(); c.rect(x, y, s, s); c.clip();
+    c.imageSmoothingEnabled = false;
+    const k = Math.max(1, Math.round(s / 31));
+    c.drawImage(cv, Math.round(x + s / 2 - 24.5 * k), Math.round(y + s / 2 - 20 * k), 48 * k, 48 * k);
+    c.restore();
+    c.strokeStyle = border; c.lineWidth = 2 * u; c.strokeRect(x + u, y + u, s - 2 * u, s - 2 * u);
+  }
+
+  // Linha com as palavras em MAIÚSCULAS destacadas em dourado; mostra só os primeiros `max` caracteres (máquina de escrever).
+  richLine(ln, x, y, size, u, max = Infinity, color = '#f4ead0') {
+    const c = this.c;
+    c.font = `${size * u}px ${FONT}`;
+    const sp = c.measureText(' ').width;
+    let n = 0;
+    for (const w of ln.split(' ')) {
+      if (n >= max) break;
+      const letters = w.replace(/[^A-Za-zÀ-ÿ]/g, '');
+      const caps = letters.length >= 2 && letters === letters.toUpperCase();
+      text(c, w.slice(0, Math.max(0, max - n)), x, y, size, caps ? '#ffd23a' : color, 'left', u);
+      x += c.measureText(w).width + sp;
+      n += w.length + 1;
+    }
+  }
+
+  // Toque/clique/Enter durante a fala: completa o texto; se já estava completo, vai para a próxima fala.
+  tutorialTap(tut) {
+    if (!tut?.talking) return false;
+    const st = this.tutT;
+    if (st && st.key === tut.pageKey && !st.full) st.t = 99;
+    else if (!st || st.key !== tut.pageKey || st.t > 0.25) { this.hooks.sfx?.('click'); tut.next(); }
+    return true;
+  }
+
+  // Desenhado por cima da arena (main.js). area = { top, bottom } em px do canvas: faixa livre entre a HUD do alto e a
+  // de baixo. Fala: caixa grande embaixo com o retrato e o texto aparecendo. Objetivo e elogio: cartão no alto.
+  renderTutorial(u, W, H, world, area, dt) {
+    const tut = world.tutorial, c = this.c, ph = this.phone;
+    if (tut.talking) {
+      if (this.tutT?.key !== tut.pageKey) this.tutT = { key: tut.pageKey, t: 0, full: false };
+      const st = this.tutT;
+      st.t += dt;
+      const line = tut.line, shown = Math.min(line.length, Math.floor(st.t * 50));
+      st.full = shown >= line.length;
+      c.fillStyle = 'rgba(8,4,2,0.32)'; c.fillRect(0, 0, W, H);
+      const bw = Math.min(W - 16 * u, 580 * u), ps = (ph ? 60 : 68) * u, pad = 8 * u;
+      const tw = bw - ps - 3 * pad, sz = ph ? 7.5 : 7, lh = (ph ? 12.5 : 11.5) * u;
+      const lines = wrap(c, line, sz, tw, u);
+      const bh = Math.max(ps + 2 * pad + 4 * u, lines.length * lh + 30 * u + pad);
+      const bx = Math.round((W - bw) / 2), by = Math.round(area.bottom - bh - 8 * u);
+      panel(c, bx, by, bw, bh, u, '#ffd23a', 'rgba(22,14,10,0.97)');
+      // Plaquinha com o nome, presa em cima da caixa.
+      const name = 'PROF. REMENDO', nw = (ph ? 112 : 104) * u;
+      panel(c, bx + pad, by - 13 * u, nw, 15 * u, u, '#ffd23a', '#3a2412');
+      text(c, name, bx + pad + nw / 2, by - 2 * u, fitSize(c, name, 6.5, nw - 10 * u, u), '#ffe9b0', 'center', u);
+      this.drawProfPortrait(bx + pad, by + pad + 4 * u, ps, !st.full, u);
+      let left = shown, y = by + pad + 16 * u;
+      const tx = bx + ps + 2 * pad;
+      for (const ln of lines) { if (left <= 0) break; this.richLine(ln, tx, y, sz, u, left); left -= ln.length + 1; y += lh; }
+      const pages = tut.pages().length;
+      for (let k = 0; k < pages; k++) { c.fillStyle = k === tut.page ? '#ffd23a' : k < tut.page ? '#8a7a50' : '#3a302a'; c.fillRect(tx + k * 9 * u, by + bh - 11 * u, 6 * u, 4 * u); }
+      if (st.full) {
+        const last = tut.page === pages - 1;
+        const hint = `${this.touchMode ? 'toque' : 'clique ou Enter'} ${last ? (tut.phase === 'end' ? '· terminar' : '· começar!') : '· continuar'}`;
+        const bob = Math.floor(this.time * 3) % 2 ? u : 0;
+        text(c, hint + ' >', bx + bw - pad, by + bh - 7 * u + bob, ph ? 6 : 5.5, last ? '#7ae07a' : '#d8c08a', 'right', u);
+      }
+      return;
+    }
+    // Cartão do objetivo (ou do elogio) no alto da arena.
+    const praise = tut.praise, info = praise ? null : tut.goalInfo();
+    if (!praise && !info) return;
+    const cw = Math.min(W - 16 * u, (ph ? 340 : 400) * u), ps = (ph ? 34 : 32) * u, pad = 6 * u;
+    const iw = cw - ps - 3 * pad, tsz = ph ? 7 : 6.5, tlh = (ph ? 10.5 : 9.5) * u;
+    const body = wrap(c, praise || info.text, tsz, iw, u).slice(0, praise ? 3 : 2);
+    let extra = 0;
+    if (info?.items) extra = info.items.length * 11 * u + 2 * u;
+    else if (info?.bar || info?.need) extra = 13 * u;
+    const ch = Math.max(ps + 2 * pad, 14 * u + body.length * tlh + extra + pad);
+    const x = Math.round((W - cw) / 2), y = Math.round(area.top + 6 * u);
+    const col = praise ? '#7ae07a' : '#ffd23a';
+    panel(c, x, y, cw, ch, u, col, 'rgba(22,14,10,0.9)');
+    this.drawProfPortrait(x + pad, y + pad, ps, !!praise, u, col);
+    const ix = x + ps + 2 * pad;
+    const title = praise ? 'MUITO BEM!' : info.title;
+    text(c, title, ix, y + pad + 7 * u, fitSize(c, title, praise ? 7 : 5.5, iw, u), col, 'left', u);
+    let ty = y + pad + 7 * u + tlh + 1 * u;
+    for (const ln of body) { this.richLine(ln, ix, ty, tsz, u, Infinity, praise ? '#e8ffe0' : '#ffffff'); ty += tlh; }
+    if (info?.items) {
+      for (const it of info.items) {
+        const bs = 7 * u, by2 = ty - bs + u;
+        c.fillStyle = it.done ? '#7ae07a' : '#1a1210'; c.fillRect(ix, by2, bs, bs);
+        c.strokeStyle = it.done ? '#7ae07a' : '#d8c08a'; c.lineWidth = u; c.strokeRect(ix + 0.5 * u, by2 + 0.5 * u, bs - u, bs - u);
+        if (it.done) { c.strokeStyle = '#0c2a08'; c.lineWidth = 1.5 * u; c.beginPath(); c.moveTo(ix + 1.5 * u, by2 + 3.5 * u); c.lineTo(ix + 3 * u, by2 + 5.5 * u); c.lineTo(ix + 6 * u, by2 + 1.5 * u); c.stroke(); }
+        text(c, it.label, ix + bs + 5 * u, ty, fitSize(c, it.label, 6, iw - bs - 6 * u, u), it.done ? '#7ae07a' : '#e8dcc0', 'left', u);
+        ty += 11 * u;
+      }
+    } else if (info?.bar) {
+      const bw2 = iw, bh2 = 9 * u, by2 = ty - 7 * u;
+      c.fillStyle = '#100a08'; c.fillRect(ix - u, by2 - u, bw2 + 2 * u, bh2 + 2 * u);
+      c.fillStyle = '#3a1a14'; c.fillRect(ix, by2, bw2, bh2);
+      c.fillStyle = '#e8403a'; c.fillRect(ix, by2, bw2 * Math.max(0, info.bar.k), bh2);
+      c.fillStyle = 'rgba(255,255,255,0.25)'; c.fillRect(ix, by2, bw2 * Math.max(0, info.bar.k), 2 * u);
+      text(c, info.bar.label, ix + bw2 / 2, by2 + bh2 - 1.5 * u, fitSize(c, info.bar.label, 5.5, bw2 - 8 * u, u), '#fff', 'center', u);
+    } else if (info?.need) {
+      const bs = 9 * u;
+      for (let k = 0; k < info.need; k++) {
+        const done = k < info.n;
+        c.fillStyle = done ? '#7ae07a' : '#1a1210'; c.fillRect(ix + k * (bs + 4 * u), ty - bs + 2 * u, bs, bs);
+        c.strokeStyle = done ? '#c8ffc0' : '#6a5a3a'; c.lineWidth = u; c.strokeRect(ix + k * (bs + 4 * u) + 0.5 * u, ty - bs + 2.5 * u, bs - u, bs - u);
+      }
+      text(c, `${info.n}/${info.need}`, ix + info.need * (bs + 4 * u) + 4 * u, ty + u, 6, '#ffe9b0', 'left', u);
+    }
+    if (tut.tip && !praise) {
+      const tsz2 = ph ? 7 : 6;
+      let yy = y + ch + 12 * u;
+      for (const ln of wrap(c, tut.tip.text, tsz2, cw - 12 * u, u)) { text(c, ln, W / 2, yy, tsz2, Math.floor(this.time * 4) % 2 ? '#ffb04a' : '#ffd08a', 'center', u); yy += (tsz2 + 4) * u; }
+    }
+  }
+
+  // Formatura: diploma com o professor e os próximos passos.
+  renderTutorialEnd(u, W, H, actions) {
+    const c = this.c, cx = W / 2, ph = this.phone, col = ph && this.portrait;
+    c.fillStyle = 'rgba(8,4,2,0.8)'; c.fillRect(0, 0, W, H);
+    const pw = Math.min(W - 20 * u, 460 * u), x = cx - pw / 2;
+    const bh = (ph ? 30 : 26) * u, g = 8 * u;
+    const btnH = col ? 3 * (bh + g) : bh;
+    const dh = Math.min(H - btnH - 40 * u, 200 * u), y = Math.max(10 * u, (H - dh - btnH - 16 * u) / 2);
+    panel(c, x, y, pw, dh, u, '#ffd23a', 'rgba(40,28,16,0.97)');
+    c.strokeStyle = '#8a6a2a'; c.lineWidth = u; c.strokeRect(x + 6 * u, y + 6 * u, pw - 12 * u, dh - 12 * u);
+    text(c, 'DIPLOMA', cx, y + 26 * u, 14, '#ffd23a', 'center', u);
+    const sub = 'Escola de Monstros do Professor Remendo';
+    text(c, sub, cx, y + 40 * u, fitSize(c, sub, 6, pw - 24 * u, u), '#e8dcc0', 'center', u);
+    const ps = Math.min(70 * u, dh - 100 * u);
+    if (ps > 30 * u) this.drawProfPortrait(cx - ps / 2, y + 48 * u, ps, false, u);
+    const yy = y + 62 * u + Math.max(0, ps);
+    para(c, 'Você aprendeu a andar, atirar, golpear, esquivar, usar poderes, evoluir e trocar de monstro.', cx, yy, ph ? 6.5 : 6, pw - 30 * u, '#f4ead0', 'center', u, ph ? 10 : 9, 3);
+    const by = y + dh + 12 * u;
+    const list = [['JOGAR CONTRA A IA', actions.tutorialPlay, { color: '#ff8a3a' }], ['TREINAMENTO', actions.tutorialTrain, { color: '#d8c08a' }], ['MENU PRINCIPAL', actions.menu, { color: '#aa9' }]];
+    const bw = col ? Math.min(220 * u, W - 40 * u) : Math.min(150 * u, (W - 40 * u) / 3);
+    list.forEach(([label, fn, opts], k) => {
+      if (col) this.button(cx - bw / 2, by + k * (bh + g), bw, bh, label, fn, opts);
+      else this.button(cx - (3 * bw + 2 * g) / 2 + k * (bw + g), by, bw, bh, label, fn, opts);
+    });
+    this.drawButtons(u);
+  }
+
   // Menus sobre a batalha (pausa / fim de partida). Retorna true se algo foi desenhado.
   renderOverlay(kind, u, W, H, world, actions) {
     const c = this.c, cx = W / 2;
@@ -1074,7 +1251,8 @@ export class UI {
       text(c, 'PAUSADO', cx, H * 0.32, 16, '#ffe9b0', 'center', u);
       let y = H * 0.4;
       this.button(cx - bw / 2, y, bw, bh, 'CONTINUAR', actions.resume); y += bh + 10 * u;
-      if (world.training) this.button(cx - bw / 2, y, bw, bh, 'PAINEL DE TREINO (T)', actions.trainingPanel, { color: '#d8c08a' });
+      if (world.tutorial) this.button(cx - bw / 2, y, bw, bh, world.tutorial.phase === 'end' ? 'ENCERRAR TUTORIAL' : 'PULAR LIÇÃO', actions.tutorialSkip, { color: '#d8c08a' });
+      else if (world.training) this.button(cx - bw / 2, y, bw, bh, 'PAINEL DE TREINO (T)', actions.trainingPanel, { color: '#d8c08a' });
       else this.button(cx - bw / 2, y, bw, bh, 'REINICIAR PARTIDA', actions.rematch, { color: '#ff8a3a' });
       y += bh + 10 * u;
       this.button(cx - bw / 2, y, bw, bh, 'MENU PRINCIPAL', actions.menu, { color: '#aa9' });
@@ -1087,6 +1265,9 @@ export class UI {
       this.button(cx - bw / 2, y, bw, bh, 'SAIR DA PARTIDA', actions.leaveOnline, { color: '#ff8a3a' });
     } else if (kind === 'training') {
       this.renderTrainingPanel(u, W, H, world, actions);
+      return;
+    } else if (kind === 'tutorialEnd') {
+      this.renderTutorialEnd(u, W, H, actions);
       return;
     } else if (kind === 'help') {
       this.renderHelp(u, W, H, world, actions);

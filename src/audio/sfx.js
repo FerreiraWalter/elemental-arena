@@ -149,6 +149,23 @@ export class Sfx {
       case 'clash': if (this.ok('steam', MIN_GAP.steam)) this.hiss({ type: 'highpass', f0: 2500, f1: 4000, dur: 0.3, vol: 0.12, x }); return;
       case 'ignite': if (this.ok('ignite', MIN_GAP.ignite)) this.hiss({ type: 'bandpass', f0: 900, f1: 1400, q: 2, dur: 0.18, vol: 0.05, x }); return;
       case 'extinguish': if (this.ok('extinguish', 0.2)) this.hiss({ type: 'highpass', f0: 3000, f1: 2000, dur: 0.25, vol: 0.06, x }); return;
+      case 'turbPulse': this.tone({ type: 'square', f0: 1600, f1: 900, dur: 0.04, vol: 0.07, x }); this.hiss({ type: 'bandpass', f0: 2500, f1: 1200, q: 2, dur: 0.1, vol: 0.08, x }); return;
+      case 'microVacuum': this.hiss({ type: 'lowpass', f0: 300, f1: 3000, dur: 0.3, vol: 0.2, x }); this.tone({ type: 'sine', f0: 120, f1: 380, dur: 0.25, vol: 0.15, x }); return;
+      case 'windCage': this.hiss({ type: 'bandpass', f0: 800, f1: 2600, q: 1.5, dur: 0.6, vol: 0.18, x }); return;
+      case 'windSurge': [880, 1175, 1568].forEach((f, k) => this.tone({ type: 'triangle', f0: f, dur: 0.1, vol: 0.07, at: k * 0.05, x })); return;
+      case 'vacuumCrit': this.hiss({ type: 'highpass', f0: 4000, f1: 1800, dur: 0.12, vol: 0.22, x }); return;
+      case 'qReset': if (this.ok('qReset', 0.1)) this.tone({ type: 'sine', f0: 1320, f1: 1760, dur: 0.05, vol: 0.05, x }); return;
+      case 'fuumaTurn': this.hiss({ type: 'bandpass', f0: 1400, f1: 2600, q: 3, dur: 0.15, vol: 0.08, x }); return;
+      case 'fuumaCatch': this.tone({ type: 'square', f0: 1320, f1: 990, dur: 0.05, vol: 0.06, x }); return;
+      case 'shadowCast': this.hiss({ type: 'bandpass', f0: 600, f1: 2400, dur: 0.18, vol: 0.12, x }); return;
+      case 'shadowSwap': this.tone({ type: 'sine', f0: 220, f1: 880, dur: 0.12, vol: 0.12, x }); this.hiss({ type: 'highpass', f0: 3000, f1: 1200, dur: 0.2, vol: 0.12, x }); return;
+      case 'shadowCrit': this.hiss({ type: 'bandpass', f0: 4000, f1: 1500, q: 2, dur: 0.12, vol: 0.25, x }); this.tone({ type: 'square', f0: 990, f1: 660, dur: 0.08, vol: 0.08, x }); return;
+      case 'shadowSlash': this.hiss({ type: 'bandpass', f0: 3000, f1: 900, q: 1.5, dur: 0.2, vol: 0.25, x }); return;
+      case 'smokeBomb': this.hiss({ type: 'lowpass', f0: 1800, f1: 300, dur: 0.5, vol: 0.2, x }); return;
+      case 'nightFall': this.tone({ type: 'sine', f0: 180, f1: 70, dur: 0.8, vol: 0.2, x }); this.hiss({ type: 'lowpass', f0: 800, f1: 200, dur: 0.7, vol: 0.12, x }); return;
+      case 'tutorialCheer': [659, 784, 988, 1318].forEach((f, k) => this.tone({ type: 'square', f0: f, dur: 0.14, vol: 0.09, at: k * 0.07 })); return;
+      case 'tutorialMark': this.tone({ type: 'triangle', f0: 660, f1: 1320, dur: 0.14, vol: 0.12 }); return;
+      case 'tutorialPoof': if (this.ok('poof', 0.2)) this.hiss({ type: 'bandpass', f0: 1800, f1: 500, dur: 0.25, vol: 0.12 }); return;
       case 'evaded': if (this.ok('evaded', 0.1)) this.tone({ type: 'sine', f0: 1200, f1: 1800, dur: 0.1, vol: 0.1, x }); return;
       case 'interrupt': if (this.ok('interrupt', 0.1)) this.tone({ type: 'square', f0: 300, f1: 180, dur: 0.1, vol: 0.08, x }); return;
       case 'death':

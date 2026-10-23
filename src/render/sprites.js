@@ -336,6 +336,91 @@ export function drawDummy(pb, s) {
   pb.ellipse(ox + at(hy), hy, 4.6, 4.2, BURLAP, { shift: 0.2 });
   for (const ex of [-2, 2]) { const x0 = ox + ex + at(hy); pb.set(x0 - 1, hy - 1, WOOD[0]); pb.set(x0 + 1, hy + 1, WOOD[0]); pb.set(x0 + 1, hy - 1, WOOD[0]); pb.set(x0 - 1, hy + 1, WOOD[0]); pb.set(x0, hy, WOOD[0]); }
   for (let k = 0; k < 3; k++) pb.set(ox - 1 + k + at(hy - 5), hy - 5, STRAW[k]); // palha no topo
+  // Tutorial: boneco de FOGO (avermelhado, em chamas) e Boneco Mestre (coroa dourada com rubi).
+  if (s.fire) {
+    pb.tint('#ff5a1a', 0.35);
+    flamePixels(pb, ox - 3 + at(hy - 4), hy - 4, t, 6, 1);
+    flamePixels(pb, ox + 2 + at(hy - 5), hy - 5, t, 8, 4);
+    flamePixels(pb, ox - 11 + at(ay), ay - 3, t, 4, 7);
+    flamePixels(pb, ox + 12 + at(ay), ay - 3, t, 4, 9);
+  }
+  if (s.crown) {
+    const cy = hy - 5, cx = ox + at(cy);
+    for (let x = -3; x <= 3; x++) { pb.set(cx + x, cy, PROF_GOLD[1]); pb.set(cx + x, cy - 1, PROF_GOLD[x < 0 ? 2 : 1]); }
+    for (const x of [-3, 0, 3]) { pb.set(cx + x, cy - 2, PROF_GOLD[1]); pb.set(cx + x, cy - 3, PROF_GOLD[2]); }
+    pb.set(cx, cy - 1, rgba('#e8203a'));
+  }
   pb.outline(rgba('#1a0e06'));
   void hash2;
+}
+
+// Professor Remendo (tutorial): o boneco de treino veterano, de beca azul com gravata-borboleta, óculos redondos,
+// bigode branco, capelo de formatura com borla dourada e uma varinha de apontar. s.talk mexe a boca e a varinha;
+// s.hop = pulinho (px); s.blink fecha os olhos. Olha para a direita (o renderer espelha).
+const GOWN = ramp('#10142a', '#1c2444', '#2a3666', '#3e4c86', '#5a6aa6');
+const CAP = ramp('#0a0c16', '#141828', '#1e2438', '#2a3248', '#38425c');
+const PROF_GOLD = [rgba('#a8741a'), rgba('#ffd23a'), rgba('#fff2a0')];
+const HAIR = [rgba('#bdb3a0'), rgba('#ece4d0'), rgba('#ffffff')];
+const BOW = [rgba('#7a1020'), rgba('#d02a3a')];
+export function drawProfessor(pb, s) {
+  pb.clear();
+  const t = s.t || 0, ox = 24, oy = 44 - Math.round(s.hop || 0);
+  // Base em cruz e estaca curta (ele anda aos pulinhos).
+  pb.rect(ox - 5, oy - 1, 11, 2, WOOD[1]);
+  pb.rect(ox - 1, oy - 3, 3, 2, WOOD[2]);
+  for (let y = oy - 4; y >= oy - 9; y--) { pb.set(ox, y, WOOD[2]); pb.set(ox + 1, y, WOOD[3]); }
+  // Beca: trapézio azul (luz da esquerda), barra escura e botões dourados.
+  const gy0 = oy - 25, gy1 = oy - 9;
+  for (let y = gy0; y <= gy1; y++) {
+    const hw = Math.round(5 + ((y - gy0) / (gy1 - gy0)) * 3.5);
+    for (let x = -hw; x <= hw; x++) pb.set(ox + x, y, GOWN[x <= -hw + 1 ? 3 : x >= hw - 1 ? 0 : x < 0 ? 2 : 1]);
+    if (y === gy1) for (let x = -hw; x <= hw; x++) pb.set(ox + x, y, GOWN[0]);
+  }
+  for (let y = gy0; y < gy0 + 5; y++) { const hw = Math.round(3 - (y - gy0) * 0.6); for (let x = -hw; x <= hw; x++) pb.set(ox + x, y, BURLAP[3]); } // peito de juta no decote
+  for (let y = gy0 + 7; y < gy1 - 1; y += 3) pb.set(ox, y, PROF_GOLD[1]);
+  pb.rect(ox - 3, gy0 + 1, 2, 2, BOW[1]); pb.rect(ox + 2, gy0 + 1, 2, 2, BOW[1]); pb.set(ox, gy0 + 1, BOW[0]); pb.set(ox + 1, gy0 + 1, BOW[0]); pb.set(ox, gy0 + 2, BOW[0]); pb.set(ox + 1, gy0 + 2, BOW[0]);
+  // Braço de trás, parado; braço da frente segura a varinha (aponta e gesticula enquanto fala).
+  const sl = ox - 6, sr = ox + 6, sy = gy0 + 2;
+  pb.line(sl, sy, sl - 2, sy + 8, GOWN[3]); pb.line(sl + 1, sy, sl - 1, sy + 8, GOWN[2]);
+  pb.set(sl - 2, sy + 9, BURLAP[2]); pb.set(sl - 1, sy + 9, BURLAP[3]);
+  const raise = s.talk ? 0.55 + 0.45 * Math.sin(t * 7) : 0.15 + 0.08 * Math.sin(t * 1.7);
+  const hx = Math.round(sr + 4), hy2 = Math.round(sy + 6 - raise * 9);
+  pb.line(sr, sy, hx, hy2, GOWN[2]); pb.line(sr, sy + 1, hx, hy2 + 1, GOWN[1]);
+  const pa = -1.1 - raise * 0.5 + (s.talk ? Math.sin(t * 7) * 0.25 : 0);
+  const px = Math.round(hx + Math.cos(pa) * 11), py = Math.round(hy2 + Math.sin(pa) * 11);
+  pb.line(hx, hy2, px, py, WOOD[3]);
+  pb.set(px, py, HAIR[2]); pb.set(px + Math.sign(Math.cos(pa)), py, HAIR[1]);
+  pb.rect(hx - 1, hy2 - 1, 2, 2, BURLAP[3]);
+  // Cabeça de pano com palha saindo dos lados.
+  const hy = gy0 - 6;
+  pb.ellipse(ox, hy, 5.6, 5.2, BURLAP, { shift: 0.2 });
+  for (let k = 0; k < 3; k++) pb.set(ox - 6 - (k % 2), hy - 1 + k, STRAW[k]);
+  pb.set(ox - 3, hy + 3, WOOD[1]); pb.set(ox - 4, hy + 2, WOOD[1]); // costura na bochecha
+  // Óculos redondos (aro escuro, lente clara), olhos e sobrancelhas brancas.
+  const blink = s.blink;
+  for (const ex of [-3, 2]) {
+    const x0 = ox + ex;
+    for (const [dx, dy] of [[0, -2], [1, -2], [-1, -1], [2, -1], [-1, 0], [2, 0], [0, 1], [1, 1]]) pb.set(x0 + dx, hy + dy, WOOD[0]);
+    pb.rect(x0, hy - 1, 2, 2, rgba('#d8ecff'));
+    if (blink) { pb.set(x0, hy, WOOD[0]); pb.set(x0 + 1, hy, WOOD[0]); } else pb.set(x0 + 1, hy, EYE_DARK);
+    pb.set(x0 - 1, hy - 3, HAIR[1]); pb.set(x0, hy - 3, HAIR[2]); pb.set(x0 + 1, hy - 3, HAIR[1]);
+  }
+  pb.set(ox, hy - 1, WOOD[0]); pb.set(ox + 1, hy - 1, WOOD[0]); // ponte dos óculos
+  // Bigodão branco e boca costurada (abre quando fala).
+  for (let x = -3; x <= 4; x++) pb.set(ox + x, hy + 2, HAIR[x < 1 ? 2 : 1]);
+  for (const x of [-4, -3, 4, 5]) pb.set(ox + x, hy + 3, HAIR[0]);
+  if (s.talk && Math.sin(t * 19) > -0.2) { pb.rect(ox, hy + 3, 2, 2, rgba('#3a1410')); pb.set(ox, hy + 4, rgba('#c84a3a')); }
+  else { pb.set(ox, hy + 4, WOOD[0]); pb.set(ox + 1, hy + 4, WOOD[0]); }
+  // Capelo: tábua quadrada em perspectiva, botão e borla dourada que balança.
+  const cy = hy - 6;
+  for (let x = -4; x <= 4; x++) pb.set(ox + x, cy + 2, CAP[1]);
+  for (let x = -4; x <= 4; x++) pb.set(ox + x, cy + 3, CAP[0]);
+  for (let x = -7; x <= 7; x++) pb.set(ox + x, cy, CAP[x < 0 ? 4 : 3]);
+  for (let x = -4; x <= 4; x++) { pb.set(ox + x, cy - 1, CAP[3]); pb.set(ox + x, cy + 1, CAP[2]); }
+  for (let x = -2; x <= 2; x++) pb.set(ox + x, cy - 2, CAP[4]);
+  pb.set(ox, cy - 1, PROF_GOLD[2]);
+  const sway = Math.round(Math.sin(t * 3 + (s.hop || 0)) * 1);
+  for (let x = 1; x <= 7; x++) pb.set(ox + x, cy - 1 + (x > 4 ? 1 : 0), PROF_GOLD[1]);
+  for (let k = 0; k < 5; k++) pb.set(ox + 8 + (k > 1 ? sway : 0), cy + k, PROF_GOLD[k >= 3 ? 2 : 1]);
+  pb.outline(rgba('#0c0806'));
 }

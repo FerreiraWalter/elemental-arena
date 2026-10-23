@@ -16,6 +16,8 @@ import * as Air from './air.js';
 import * as Forge from './forge.js';
 import { landShot as krakenLand, krakenDown } from './arenaevents.js';
 import * as Training from './training.js';
+import * as Shadow from './shadow.js';
+import * as Maestro from './maestro.js';
 
 const OBSTACLE_DEFS = {
   rock: { flammable: false, hp: Infinity, blocksLOS: true },
@@ -71,6 +73,7 @@ export class World {
     this.monsters = []; // somente os que estão em campo (1 por time, mais corpos de derrotados sumindo)
     this.projectiles = [];
     this.decoys = []; // ilusões de tinta (Gotapus)
+    this.shadows = []; // sombras da pantera (Sombra Viva): { owner, x, y, tx, ty, life, moving }
     this.zones = []; // solo eletrificado, espirais, vórtices e brasas (kind): { x, y, r, life, dps, slow, team, owner }
     this.steam = [];
     this.events = [];
@@ -707,7 +710,7 @@ export class World {
     }
     if (guarding) Sig.blocked(this, t, src, o);
     Sig.afterDamage(this, t, src, dmg, o);
-    if (this.training) Training.onDamage(this, t, src, dmg);
+    if (this.training) Training.onDamage(this, t, src, dmg, o);
     if (t.hp <= 0) this.kill(t, src);
     return dmg;
   }
@@ -977,6 +980,7 @@ export class World {
     Air.updateWind(this, dt);
     this.updateProjectiles(dt);
     Sig.updateDecoys(this, dt);
+    Shadow.update(this, dt);
     this.updateObstacles(dt);
     this.updateRelics(dt);
     this.terrainAcc += dt;
@@ -1145,6 +1149,7 @@ export class World {
       // Psíquico: esferas em órbita (não andam em linha) e projéteis teleguiados.
       if (p.orbit && Psy.updateOrbit(this, p, dt)) continue;
       if (p.homing) Psy.steerHoming(this, p, dt);
+      if (p.boomerang && Shadow.steerBoomerang(this, p, dt)) continue;
       const nx = p.x + p.vx * dt, ny = p.y + p.vy * dt;
       let best = 2, hitM = null, hitO = null, hitWall = false, hitGuard = null, hitDecoy = null;
       for (const m of this.monsters) {
@@ -1173,18 +1178,21 @@ export class World {
         const t = segCircle(p.x, p.y, nx, ny, d.x, d.y, d.owner.r + p.r);
         if (t >= 0 && t < best) { best = t; hitDecoy = d; hitM = null; hitGuard = null; }
       }
+      const flyBack = p.boomerang?.back; // a shuriken bumerangue volta por cima de tudo
       for (const o of this.obstacles) {
+        if (flyBack) break;
         if (o.destroyed || !o.solid) continue;
         if (o.team !== undefined && o.team === p.team) continue; // não acerta a própria sentinela
         const t = segCircle(p.x, p.y, nx, ny, o.x, o.y, o.r + p.r * 0.5);
         if (t >= 0 && t < best) { best = t; hitO = o; hitM = null; hitGuard = null; hitDecoy = null; }
       }
       for (const w of this.walls) {
+        if (flyBack) break;
         const t = segAabb(p.x, p.y, nx, ny, w.x, w.y, w.w, w.h);
         if (t >= 0 && t < best) { best = t; hitWall = true; hitM = null; hitO = null; hitGuard = null; hitDecoy = null; }
       }
       // Penhasco mais alto que o nível do disparo: o projétil bate na encosta.
-      if (this.arena.heights && this.terrain.heightAt(nx, ny) > p.level + 1.01) {
+      if (!flyBack && this.arena.heights && this.terrain.heightAt(nx, ny) > p.level + 1.01) {
         const segL = Math.hypot(nx - p.x, ny - p.y);
         for (let s = 0; s <= segL; s += 2) {
           const t = s / (segL || 1);
@@ -1225,6 +1233,7 @@ export class World {
       const out = p.x < 0 || p.y < 0 || p.x > WORLD_W || p.y > WORLD_H;
       if (hitGuard) { Sig.reflect(this, p, hitGuard); continue; }
       if (hitDecoy) { p.dead = true; p.hitTarget = hitDecoy; Sig.popDecoy(this, hitDecoy); this.emit({ type: 'impact', kind: p.kind, x: p.x, y: p.y }); continue; }
+      if (p.boomerang && !p.boomerang.back && (hitO || hitWall || out || p.traveled >= p.range)) { if (hitO) this.hurtObstacle(hitO, p.dmg); Shadow.turnBack(this, p); continue; }
       if (hitM) { p.dead = true; p.hitTarget = hitM; this.projectileHitMonster(p, hitM); }
       else if (hitO || hitWall || out) { p.dead = true; if (hitO) hitO.lastHitBy = p.owner; this.projectileHitSolid(p, hitO); }
       else if (p.traveled >= p.range) { p.dead = true; this.projectileExpire(p); }
@@ -1262,6 +1271,10 @@ export class World {
       Air.projectileHit(this, p, m);
     } else if (Forge.KINDS.has(p.kind)) {
       Forge.projectileHit(this, p, m);
+    } else if (Shadow.KINDS.has(p.kind)) {
+      Shadow.projectileHit(this, p, m);
+    } else if (Maestro.KINDS.has(p.kind)) {
+      Maestro.projectileHit(this, p, m);
     } else if (p.kind === 'ember') {
       this.damage(m, p.dmg, p.owner, { ...base, tag: p.tag || 'ember', burn: 1.5, kb: 70, stun: 0.1, element: 'fire' });
       this.igniteTile(this.terrain.at(p.x, p.y), 1, p.owner);

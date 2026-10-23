@@ -9,11 +9,17 @@
 //                         Couraça de espinhos fere quem o ataca corpo a corpo.
 //   decoy    Gotapus     — Ilusões de Tinta: cópias falsas enganam a mira e a IA; pode ficar camuflado.
 //   volt     Raiolua     — Cargas: golpes elétricos acumulam cargas; cheio fica ELETRIZADO; o E consome tudo.
+//   shadow   Pantrinja   — Rastro Invisível / Emboscada da Noite: sombra que imita golpes e para onde a pantera vai;
+//                         crítico saindo da camuflagem e pelas costas. Ver shadow.js.
+//   maestro  Zefirinho   — Maestro dos 4 Braços: E/F zeram o Q e carregam a Brisa; a Turbulência muda cada botão.
+//                         Ver maestro.js.
 //   marks    Mantifolha  — Marca do Louva-a-deus: acertos marcam a presa; com 3 marcas, um golpe de perto
 //                         ou o pouso do salto EXECUTA (dano extra, prende e recarrega o salto).
 
 import { T } from './tiles.js';
 import { addVolt, applySlow } from './electric.js';
+import * as Shadow from './shadow.js';
+import * as Maestro from './maestro.js';
 
 export const SIG = {
   momentum: { gain: 60, loss: 75, keep: 0.3, chargedSpeed: 1.15, strike: 1.6, kb: 1.4 },
@@ -27,6 +33,7 @@ export const kindOf = (m) => m?.def?.sig?.kind;
 
 // ───────────── Ao usar uma habilidade ─────────────
 export function onCast(w, m, ab) {
+  Shadow.onCast(w, m, ab); // antes de tirar a camuflagem: atacar saindo dela é emboscada
   if (m.status.cloak > 0 && ab.kind !== 'dodge') { m.status.cloak = 0; w.emit({ type: 'uncloak', m, x: m.x, y: m.y }); }
   // Atacar denuncia a posição: quem estava enganado por uma cópia volta a enxergar o verdadeiro.
   if (ab.kind !== 'dodge' && ab.kind !== 'buff' && w.decoys.length) for (const e of w.enemiesOf(m)) if (e.ai?.fooled?.owner === m.id) e.ai.fooled = null;
@@ -35,6 +42,7 @@ export function onCast(w, m, ab) {
 // ───────────── Atualização por passo (monstro em campo) ─────────────
 export function update(w, m, dt) {
   const st = m.status;
+  Maestro.update(w, m, dt); // marca de Turbulência (do gênio) some com o tempo
   const k = kindOf(m);
   if (k === 'momentum') {
     const M = SIG.momentum;
@@ -77,6 +85,7 @@ export function outgoing(w, src, t, o) {
     src.charged = false; src.momentum = 0;
     w.emit({ type: 'empowered', m: src, target: t, x: t.x, y: t.y });
   }
+  mult *= Shadow.outgoing(w, src, t, o); // pantera: emboscada e pelas costas
   return { mult, o };
 }
 

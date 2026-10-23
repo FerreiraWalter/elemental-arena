@@ -3,12 +3,14 @@ import { TEAM_COLOR, ELEMENT_COLOR, SIG_COLOR, REL_COLOR, relation } from './ren
 import { EVOLUTION, COMBO_BREAK } from '../config.js';
 import { SIG } from '../sim/signature.js';
 import { meter } from '../sim/training.js';
+import { shadowOf } from '../sim/shadow.js';
 
 const FONT = '"Press Start 2P", monospace';
-const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico', air: 'Voador', neutral: 'Treino' };
+const ELEMENT_NAME = { fire: 'Fogo', water: 'Água', plant: 'Planta', earth: 'Terra', electric: 'Elétrico', psychic: 'Psíquico', air: 'Voador', dark: 'Sombra', neutral: 'Treino' };
 const SLOTS = [['primary', 'MOUSE E'], ['melee', 'MOUSE D'], ['q', 'Q'], ['e', 'E'], ['f', 'F'], ['dodge', 'ESPAÇO']];
 
 function text(c, s, x, y, size, color, align = 'left', dpr = 1) {
+  s = s.replace(/Í/g, 'I'); // a fonte não tem o Í maiúsculo
   c.font = `${size * dpr}px ${FONT}`;
   c.textAlign = align;
   c.lineWidth = 3 * dpr;
@@ -74,6 +76,7 @@ function elementGlyph(c, el, x, y, s) {
     case 'earth': P(1, 1, 4, 4, '#a8743e'); P(2, 0, 2, 1, '#c89a5a'); P(1, 2, 2, 1, '#c89a5a'); P(4, 3, 1, 2, '#6a4a28'); break;
     case 'air': P(0, 1, 4, 1, '#d8f6ff'); P(3, 0, 2, 1, '#9ad8ec'); P(1, 3, 5, 1, '#ffffff'); P(4, 2, 2, 1, '#9ad8ec'); P(0, 5, 3, 1, '#9ad8ec'); P(2, 4, 2, 1, '#d8f6ff'); break;
     case 'psychic': P(1, 2, 4, 2, '#d07aff'); P(0, 3, 6, 1, '#9a4ad8'); P(2, 2, 2, 2, '#ffffff'); P(2.5, 2.5, 1, 1, '#5a2a9a'); P(2, 0, 2, 1, '#ff9ae6'); P(2, 5, 2, 1, '#ff9ae6'); break;
+    case 'dark': P(2, 0, 3, 1, '#c8a8ff'); P(1, 1, 2, 1, '#8a6aff'); P(0, 2, 2, 2, '#8a6aff'); P(1, 4, 2, 1, '#8a6aff'); P(2, 5, 3, 1, '#c8a8ff'); P(4, 2, 1, 1, '#f4ecff'); break;
     case 'electric': P(3, 0, 2, 1, '#ffe24a'); P(2, 1, 2, 1, '#ffe24a'); P(1, 2, 4, 1, '#ffffff'); P(3, 3, 2, 1, '#ffe24a'); P(2, 4, 2, 1, '#ffe24a'); P(2, 5, 1, 1, '#c8a838'); break;
   }
 }
@@ -245,6 +248,21 @@ function sigGauge(world, m) {
   if (!sig) return null;
   const st = m.status;
   switch (sig.kind) {
+    case 'maestro': {
+      // Cargas de Brisa (2 = Q dá escudo e disparada) e quantos inimigos estão com a sua Turbulência.
+      const n = m.brisa || 0, max = sig.charges ?? 2;
+      const marks = world.monsters.filter((e) => e.alive && e.turb > 0 && e.turbBy === m.id).length;
+      const tail = marks ? ` · ${marks} MARCADO${marks > 1 ? 'S' : ''}` : '';
+      return n >= max ? { label: `BRISA CHEIA: Q = ESCUDO${tail}`, k: 1, color: '#d8fbff', blink: true } : { label: `BRISA ${n}/${max}${tail}`, k: n / max, color: SIG_COLOR.maestro };
+    }
+    case 'shadow': {
+      // Sombra no chão: quanto tempo falta para ir até ela; camuflada: o próximo ataque é crítico.
+      const s = shadowOf(world, m), f = m.def.controls.f, ab = m.ability(f);
+      if (s) return { label: `SOMBRA ${Math.max(0, s.life).toFixed(1)}s · F = IR`, k: s.life / s.max, color: SIG_COLOR.shadow, blink: s.life < 1 };
+      if (st.cloak > 0) return { label: 'CAMUFLADA · ATAQUE = CRÍTICO', k: 1, color: '#c8a8ff', blink: true };
+      const cd = m.cd[f] || 0;
+      return { label: cd > 0 ? `SOMBRA EM ${Math.ceil(cd)}s` : 'SOMBRA PRONTA (F)', k: ab ? 1 - cd / ab.cooldown : 1, color: SIG_COLOR.shadow };
+    }
     case 'forge': {
       const max = sig.sparkMax ?? 2, n = m.spark || 0;
       const coals = world.zones.filter((z) => z.kind === 'coal' && z.owner === m && z.life > 0).length;
@@ -285,6 +303,17 @@ function sigGauge(world, m) {
     }
   }
   return null;
+}
+
+// Tutorial: moldura branca piscando e setinha sobre o botão que a lição pede.
+function tutHint(c, world, slot, x, y, bw, bh, dpr) {
+  if (!world.tutorial?.hint.includes(slot)) return;
+  const on = Math.floor(performance.now() / 250) % 2;
+  c.strokeStyle = on ? '#ffffff' : '#ffd23a'; c.lineWidth = 2 * dpr;
+  c.strokeRect(x - 2 * dpr, y - 2 * dpr, bw + 4 * dpr, bh + 4 * dpr);
+  const ay = y - 6 * dpr - Math.abs(Math.sin(performance.now() / 160)) * 3 * dpr, cx = x + bw / 2;
+  c.fillStyle = '#ffd23a';
+  c.beginPath(); c.moveTo(cx - 5 * dpr, ay - 5 * dpr); c.lineTo(cx + 5 * dpr, ay - 5 * dpr); c.lineTo(cx, ay); c.closePath(); c.fill();
 }
 
 // Barra de habilidades do monstro controlado.
@@ -339,7 +368,8 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
   const deny = r.denySlot;
   for (const [slot, key] of slots) {
     const ab = m.ability(m.def.controls[slot]);
-    const cd = m.waitFor ? m.waitFor(ab.id) : m.cd[ab.id];
+    const goShadow = slot === 'f' && !!shadowOf(world, m); // Sombra no chão: o F vira "ir até a sombra", sem recarga
+    const cd = goShadow ? 0 : m.waitFor ? m.waitFor(ab.id) : m.cd[ab.id];
     const charges = ab.charges ? (m.ch[ab.id] ?? ab.charges) : 0;
     const using = m.action?.ab === ab;
     const locked = false;
@@ -355,8 +385,8 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     c.fillRect(x + 3 * dpr, y + 3 * dpr, kw, 9 * dpr);
     c.fillStyle = off ? '#9aa4b8' : '#141a2a'; c.textAlign = 'left';
     c.fillText(key, x + 6 * dpr, y + 10.5 * dpr);
-    const words = ab.name.split(' ');
-    const l1 = words.length > 1 ? words.slice(0, Math.ceil(words.length / 2)).join(' ') : ab.name;
+    const words = (goShadow ? 'IR ATÉ A SOMBRA' : ab.name).split(' ');
+    const l1 = words.length > 1 ? words.slice(0, Math.ceil(words.length / 2)).join(' ') : words[0];
     const l2 = words.length > 1 ? words.slice(Math.ceil(words.length / 2)).join(' ') : '';
     const nsz = Math.min(fit(c, l1, 6, bw - 6 * dpr, dpr), fit(c, l2 || l1, 6, bw - 6 * dpr, dpr));
     text(c, l1, x + bw / 2, y + (l2 ? 22 : 26) * dpr, nsz, off ? '#8a94a8' : '#f2ecdc', 'center', dpr);
@@ -387,6 +417,7 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
       text(c, 'EXAUSTO', x + bw / 2, y + bh / 2 + 3 * dpr, fit(c, 'EXAUSTO', 5.5, bw - 6 * dpr, dpr), '#d8ccb8', 'center', dpr);
     }
     if (denied) text(c, deny.reason === 'root' ? 'PRESO' : 'RECARGA', x + bw / 2, y - 4 * dpr, 5, '#ff8a8a', 'center', dpr);
+    tutHint(c, world, slot, x, y, bw, bh, dpr);
     x += bw + gap;
   }
   // Botão de evolução: enche com a energia; pisca quando está pronto.
@@ -403,6 +434,7 @@ function abilityBar(c, world, ox, aw, y, dpr, r) {
     const underdog = !ready && !m.evolved && m.def.evolvesTo && world.monsters.some((e) => e.alive && e.onField && e.team !== m.team && e.def.stage >= 2);
     text(c, underdog ? 'VIRADA x1.6' : 'EVOLUIR', x + bw / 2, y + 22 * dpr, Math.min(underdog ? 5 : 6, bw / dpr / (underdog ? 12 : 9)), underdog ? '#ffd23a' : '#fff', 'center', dpr);
     text(c, ready ? 'PRONTO!' : `${Math.floor(k * 100)}%`, x + bw / 2, y + bh - 4 * dpr, 5, ready ? '#e8b8ff' : '#c8bce0', 'center', dpr);
+    tutHint(c, world, 'evolve', x, y, bw, bh, dpr);
   }
 }
 
@@ -556,7 +588,10 @@ export function drawHud(c, r, world, ui) {
   const tm = world.over ? world.endTime : world.time;
   text(c, `${String(Math.floor(tm / 60)).padStart(2, '0')}:${String(Math.floor(tm % 60)).padStart(2, '0')}`, mid, 22 * dpr, 11, '#ffffff', 'center', dpr);
   const aliveSide = (side) => world.roster.filter((m) => m.team === side && m.alive).length;
-  if (world.training) {
+  if (world.tutorial) {
+    const tu = world.tutorial;
+    text(c, tu.phase === 'end' ? 'TUTORIAL COMPLETO' : tu.i ? `TUTORIAL · LIÇÃO ${tu.i}/${tu.count}` : 'TUTORIAL', mid, 36 * dpr, 6, '#d8c08a', 'center', dpr);
+  } else if (world.training) {
     // Medidor do treino: dano nos bonecos nos últimos 5 s, por segundo e o último golpe.
     const mt = meter(world);
     text(c, `TREINO · dano 5s ${Math.round(mt.sum)} · ${mt.dps.toFixed(1)}/s`, mid, 36 * dpr, 6, '#d8c08a', 'center', dpr);
@@ -602,19 +637,21 @@ export function drawHud(c, r, world, ui) {
       text(c, `SALA: ${net.room || '—'}`, 14 * dpr, cy + 14 * dpr, 5.5, '#e8ecf6', 'left', dpr);
       text(c, `PING: ${ms ? ms + 'ms' : '...'}`, 14 * dpr, cy + 27 * dpr, 5.5, ms < 80 ? '#7ae07a' : ms < 160 ? '#ffe066' : '#ff6a6a', 'left', dpr);
     } else {
-      text(c, world.training ? 'TREINO' : 'PARTIDA LOCAL', 14 * dpr, cy + 14 * dpr, fit(c, 'PARTIDA LOCAL', 5.5, cwid - 12 * dpr, dpr), '#e8ecf6', 'left', dpr);
+      text(c, world.tutorial ? 'TUTORIAL' : world.training ? 'TREINO' : 'PARTIDA LOCAL', 14 * dpr, cy + 14 * dpr, fit(c, 'PARTIDA LOCAL', 5.5, cwid - 12 * dpr, dpr), '#e8ecf6', 'left', dpr);
       text(c, 'contra a IA', 14 * dpr, cy + 27 * dpr, 5, '#8fa0c0', 'left', dpr);
     }
     const rx = c.canvas.width - 8 * dpr - cwid;
     panel(c, rx, cy, cwid, chh, '#3a5a8a', dpr, 4);
     const nSides = new Set(world.teams.map((t) => t.side)).size;
-    const mode = world.training ? 'TREINO' : ffa ? `TODOS × TODOS (${nSides})` : world.teams.length > 2 ? '2 × 2' : `DUELO ${left.length}×${right.length}`;
+    const mode = world.tutorial ? 'TUTORIAL' : world.training ? 'TREINO' : ffa ? `TODOS × TODOS (${nSides})` : world.teams.length > 2 ? '2 × 2' : `DUELO ${left.length}×${right.length}`;
     text(c, mode, rx + cwid - 6 * dpr, cy + 14 * dpr, fit(c, mode, 5.5, cwid - 12 * dpr, dpr), '#ffd86a', 'right', dpr);
     const an = (world.arenaDef?.name || '').toUpperCase();
     text(c, an, rx + cwid - 6 * dpr, cy + 27 * dpr, fit(c, an, 5, cwid - 12 * dpr, dpr), '#8fa0c0', 'right', dpr);
   }
   comboPrompt(c, world, mid, oy + ah * 0.78, dpr);
-  const help = world.training
+  const help = world.tutorial
+    ? 'TUTORIAL · siga o Professor Remendo · Enter/clique passa a fala · Esc pausa (pular lição)'
+    : world.training
     ? 'TREINO · T painel (bonecos, tiros, recargas, forma base) · B nº de bonecos · G evoluir · H ajuda · 1/2/3 trocar · Esc menu'
     : world.playerTeam !== null
     ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 trocar · G evoluir · H ajuda · P pausar · preso? Espaço quebra o combo'

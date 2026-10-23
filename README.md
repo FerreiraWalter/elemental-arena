@@ -1,6 +1,6 @@
 # Elemental Arena (título provisório)
 
-Duelo de monstros elementais em tempo real, em pixel art. **10 monstros jogáveis**, cada um com forma evoluída, 6 arenas, partidas **contra a IA** ou **online (1v1 e 2v2)**. Em cada vaga o time tem 3 monstros, mas só um por jogador luta de cada vez.
+Duelo de monstros elementais em tempo real, em pixel art. **12 monstros jogáveis**, cada um com forma evoluída, um **tutorial** guiado, 6 arenas, partidas **contra a IA** ou **online (1v1 e 2v2)**. Em cada vaga o time tem 3 monstros, mas só um por jogador luta de cada vez.
 
 ## Como rodar
 ```bash
@@ -11,6 +11,9 @@ Abra `http://localhost:8140`. O mesmo servidor entrega o jogo e as salas de mult
 
 - **Jogar sozinho (contra a IA):** Menu → *Jogar contra a IA* → time → arena. Também funciona abrindo o jogo por qualquer servidor estático, mas o multiplayer precisa do `npm start`.
 - **Com amigos:** mesma rede → `http://IP-DO-ANFITRIÃO:8140`; pela internet → veja **[DEPLOY.md](DEPLOY.md)** (Render, Docker/Fly, túnel). Na sala, **Copiar link** gera um convite com o código. Não há contas nem login.
+
+## Tutorial
+Menu → **Tutorial** (com o selo *NOVO!* até ser concluído). O **Professor Remendo**, um boneco de treino veterano de beca, óculos e varinha, conduz 8 lições curtas: andar, atirar, golpe de perto, esquiva, poderes Q/E/F, evolução, elementos e troca de monstro, e a prova final contra o **Boneco Mestre** (que revida e tem vida limitada). Enquanto ele fala o jogador fica parado; toque/clique/Enter passa a fala. Cada objetivo aparece num cartão com o progresso, e o botão certo pisca (na barra do PC e nos botões de toque). Esc → **Pular lição**. No fim, um diploma leva para a partida contra a IA ou o Treinamento.
 
 ## Modo Treinamento
 Menu → **Treinamento** → escolha de 1 a 3 monstros e a arena. Você treina contra **bonecos de pano com alvo** (até 3), que têm **vida infinita**, reagem aos golpes (balançam, queimam, ficam presos, recebem marcas) e voltam ao lugar. Seus monstros não caem e se curam sozinhos.

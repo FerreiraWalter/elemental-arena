@@ -9,6 +9,7 @@ import { createMirror } from './net/mirror.js';
 import { NetSmoother } from './net/smooth.js';
 import { sfx } from './audio/sfx.js';
 import * as Training from './sim/training.js';
+import { Tutorial, TUTORIAL_TEAM, TUTORIAL_KEY } from './sim/tutorial.js';
 import { createTouchControls } from './control/touch.js';
 
 // Fluxo: carregando → menu (time → arena | multiplayer → sala) → batalha → pausa/fim.
@@ -55,6 +56,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const ui = new UI(canvas, renderer.art, {
   startBattle, applySettings,
+  startTutorial: () => startBattle({ tutorial: true, team: TUTORIAL_TEAM, arena: 'quadra' }),
   sfx: (n) => sfx.play(n),
   mpCreate: (m) => mpEnter({ t: 'create', mode: m, name: playerName }),
   mpJoin: (code) => mpEnter({ t: 'join', code, name: playerName }),
@@ -237,7 +239,9 @@ function startBattle(cfg) {
   const enemy = [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3);
   const seed = (Math.random() * 1e6) | 0;
   // Treinamento: seus monstros contra bonecos de pano (mantém as opções da sessão anterior de treino).
-  if (cfg.training) world = World.training(seed, cfg.team, cfg.arena, trainingOpts || {});
+  // Tutorial: treino com o time fixo e o Professor Remendo conduzindo as lições (sim/tutorial.js).
+  if (cfg.tutorial) { world = World.training(seed, TUTORIAL_TEAM, 'quadra', { dummies: 1, shoot: false, noCd: false }); new Tutorial(world); }
+  else if (cfg.training) world = World.training(seed, cfg.team, cfg.arena, trainingOpts || {});
   else if (cfg.ffa) {
     // Todos contra todos local: você + 3 IAs, cada um por si.
     const pick = () => [...ROSTER].sort(() => Math.random() - 0.5).slice(0, 3);
@@ -266,7 +270,7 @@ function startBattle(cfg) {
   sfx.play('start');
   let seen = true;
   try { seen = !!localStorage.getItem(HELP_KEY); } catch { /* sem armazenamento */ }
-  if (!seen && !cfg.spectator && !params.has('autostart')) openHelp(true);
+  if (!seen && !cfg.spectator && !cfg.tutorial && !params.has('autostart')) openHelp(true);
 }
 
 function trainingPanel() {
@@ -321,6 +325,9 @@ const overlayActions = {
   trainingToggle: (k) => { world.training.opts[k] = !world.training.opts[k]; saveTrainingOpts(); },
   trainingEvolve: () => { const m = world.active; if (m && world.requestEvolve(m)) { overlay = null; hud.paused = false; } },
   trainingDevolve: () => { const m = world.active; if (m) Training.devolve(world, m); },
+  tutorialSkip: () => { world.tutorial?.skip(); overlay = null; hud.paused = false; },
+  tutorialPlay: () => { ui.team = []; ui.flow = 'local'; toMenu('team'); },
+  tutorialTrain: () => { ui.team = []; ui.flow = 'training'; toMenu('team'); },
   get firstTime() { return helpFirst; },
 };
 
@@ -369,6 +376,7 @@ function toWorld(clientX, clientY) {
 
 function press(slot) {
   if (mode !== 'battle' || overlay || world.over || !world.active) return;
+  if (world.tutorial?.talking) { ui.tutorialTap(world.tutorial); return; } // professor falando: o botão passa a fala
   if (online) {
     // Resposta na hora (esquiva/investida/salto, som e recarga) e a tecla vai ao servidor sem esperar o próximo quadro.
     const now = performance.now();
@@ -380,7 +388,7 @@ function press(slot) {
 
 // Troca o monstro em campo (1×1 por vaga). Tab procura o próximo vivo na reserva.
 function switchTo(m) {
-  if (mode !== 'battle' || overlay || world.playerTeam === null) return;
+  if (mode !== 'battle' || overlay || world.playerTeam === null || world.tutorial?.talking) return;
   if (online) net?.send({ t: 'switch', idx: world.teamOf(world.playerTeam).indexOf(m) });
   else world.requestSwitch(world.playerTeam, m);
 }
@@ -432,6 +440,11 @@ window.addEventListener('keydown', (e) => {
     else if (!e.repeat) ui.keyDown(e.code);
     return;
   }
+  // Professor falando: Enter/Espaço passam a fala; Esc/P pausam; o resto espera.
+  if (world.tutorial?.talking && e.code !== 'Escape' && e.code !== 'KeyP') {
+    if (!e.repeat && ['Enter', 'NumpadEnter', 'Space'].includes(e.code)) ui.tutorialTap(world.tutorial);
+    return;
+  }
   keys.add(e.code);
   if (e.repeat) return;
   const playing = world.playerTeam !== null;
@@ -446,8 +459,8 @@ window.addEventListener('keydown', (e) => {
     ui.focus = 0;
     if (online) sendInput(performance.now(), true);
   } else if (e.code === 'KeyH' && playing) openHelp();
-  else if (e.code === 'KeyT' && world.training) trainingPanel();
-  else if (e.code === 'KeyB' && world.training) { Training.setDummies(world, (world.training.opts.dummies % 3) + 1); saveTrainingOpts(); }
+  else if (e.code === 'KeyT' && world.training && !world.tutorial) trainingPanel();
+  else if (e.code === 'KeyB' && world.training && !world.tutorial) { Training.setDummies(world, (world.training.opts.dummies % 3) + 1); saveTrainingOpts(); }
   else if (e.code === 'KeyI') renderer.debug = !renderer.debug;
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
@@ -460,6 +473,7 @@ canvas.addEventListener('pointerdown', (e) => {
   mouse.x = e.clientX; mouse.y = e.clientY; mouse.inside = true;
   if (mode === 'menu' || overlay) { if (e.button === 0) ui.pointerDown(e.clientX * hud.dpr, e.clientY * hud.dpr); return; }
   if (mode !== 'battle') return;
+  if (world.tutorial?.talking) { ui.tutorialTap(world.tutorial); return; }
   const slot = e.button === 2 ? 'melee' : e.button === 0 ? 'primary' : null;
   if (!slot) return;
   if (e.pointerType === 'touch' && touch.active) return; // no celular, só os botões na tela atacam
@@ -591,7 +605,9 @@ function frame(now) {
   // Rede de segurança: se o tamanho do canvas na página mudou sem evento (iOS), refaz a resolução.
   if (canvas.clientWidth !== cssW || canvas.clientHeight !== cssH) { const s2 = cssSize(); if (s2.w !== cssW || s2.h !== cssH) resize(); }
   watchPerf(dt);
-  touch.update(mode === 'battle' && !overlay && !!world && world.playerTeam !== null);
+  touch.update(mode === 'battle' && !overlay && !!world && world.playerTeam !== null && !world.tutorial?.talking);
+  touch.hint?.(mode === 'battle' && !overlay && world?.tutorial ? world.tutorial.hint : null);
+  if (world?.tutorial) world.tutorial.touch = touch.active;
   hud.touch = touch.visible; // HUD sem a barra de teclas/mouse (os botões de toque mostram as recargas)
   ui.touchMode = touch.active;
   if (!(mode === 'menu' && ui.screen === 'mp') && document.activeElement === codeInput) codeInput.blur();
@@ -624,8 +640,11 @@ function frame(now) {
     }
   } else {
     canvas.style.cursor = world.active && !overlay ? 'none' : 'default';
+    const tut = world.tutorial;
+    if (tut?.finished && overlay !== 'tutorialEnd') { overlay = 'tutorialEnd'; ui.focus = 0; sfx.play('victory'); try { localStorage.setItem(TUTORIAL_KEY, '1'); } catch { /* sem armazenamento */ } }
     if (!overlay) {
-      readInput();
+      // Professor falando: o mundo continua (animações, entrada do monstro), mas o jogador fica parado.
+      if (tut?.talking) { world.input.move.x = world.input.move.y = 0; world.input.held = {}; world.input.presses.length = 0; } else readInput();
       if (renderer.hitstop > 0) renderer.hitstop -= dt;
       else {
         acc += dt * hud.speed;
@@ -640,6 +659,14 @@ function frame(now) {
     renderer.render(world, Math.min(1, acc / DT), overlay === 'pause' || overlay === 'help' || overlay === 'training' ? 0 : dt * hud.speed, hud);
     drawTouchAim(c);
     drawRotateHint(c, dt);
+    if (tut && !overlay) {
+      // Caixa de fala embaixo (no toque, os controles somem enquanto ele fala) e cartão do objetivo no alto da arena.
+      const u = ui.scale(canvas.width, canvas.height, hud.dpr), f = renderer.frame;
+      ui.time += dt;
+      // Toque em pé: os botões de pausa e tela cheia ficam logo abaixo dos cartões; o objetivo vem embaixo deles.
+      const top = touch.visible && canvas.height > canvas.width * 1.05 ? Math.max(f.oy, (renderer.hudTop + 52) * hud.dpr) : f.oy;
+      ui.renderTutorial(u, canvas.width, canvas.height, world, { top, bottom: tut.talking && touch.active ? canvas.height : f.oy + f.ah }, dt);
+    }
     drawNotice(c, dt);
     if (overlay) {
       const u = ui.scale(canvas.width, canvas.height, hud.dpr);

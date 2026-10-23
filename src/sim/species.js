@@ -391,6 +391,84 @@ export const SPECIES = {
       fireCost: 1, wetCost: 0, waterCost: 0,
     },
   },
+  // ───────────── SOMBRA ─────────────
+  // Pantera ninja: assassina de perto, com crítico pelas costas e saindo da camuflagem; a Sombra Viva (F) é a fuga
+  // e a emboscada (lança a sombra e, com F de novo, vai até ela). Ver shadow.js.
+  pantrinja: {
+    key: 'pantrinja', line: 'pantrinja', stage: 1, evolvesTo: 'kagepantera',
+    name: 'Pantrinja', title: 'Forma base', element: 'dark', sprite: 'panther_1',
+    hp: 112, speed: 84, radius: 9, mass: 0.9, evoRate: 0.85,
+    abilities: [A.furtiveClaw, A.shuriken, A.shadowFan, A.smokeBomb, A.livingShadow, A.shadowStep],
+    dodge: A.shadowStep,
+    controls: { primary: 'shuriken', melee: 'furtiveClaw', q: 'shadowFan', e: 'smokeBomb', f: 'livingShadow', dodge: 'shadowStep' },
+    sig: { kind: 'shadow', name: 'Rastro Invisível', desc: 'Esquivar ou ir até a SOMBRA deixa a Pantrinja CAMUFLADA por um instante. Atacar saindo da camuflagem (EMBOSCADA) ou golpear de perto PELAS COSTAS é CRÍTICO. A Sombra Viva (F) imita a Shuriken Bumerangue; aperte F de novo para ir até ela.', crit: 1.25, back: 1.2, trail: 0.45 },
+    traits: ['Rastro Invisível: some depois de esquivar', 'Sombra Viva: lance a sombra e vá até ela', 'Crítico pelas costas e saindo da camuflagem'],
+    tips: 'Ponto fraco: frágil e o fogo vence a sombra. Sem a Sombra (F) não há fuga: guarde-a para entrar ou para sair.',
+    difficulty: 3,
+    profile: {
+      personality: 'Furtivo',
+      range: [26, 120], aggression: 0.72, retreatHp: 0.35, reaction: 0.17, dodgeSkill: 0.75,
+      accuracy: 0.07, lead: 0.85,
+      fireCost: 1, wetCost: 0, waterCost: 0,
+    },
+  },
+  kagepantera: {
+    key: 'kagepantera', line: 'pantrinja', stage: 2,
+    name: 'Kagepantera', title: 'Lâmina da Noite', element: 'dark', sprite: 'panther_3',
+    hp: 192, speed: 82, radius: 12, mass: 1.4,
+    abilities: [A.twinFangs, A.kunai, A.fuumaShadow, A.eternalNight, A.assassinShadow, A.nightStep],
+    dodge: A.nightStep,
+    controls: { primary: 'kunai', melee: 'twinFangs', q: 'fuumaShadow', e: 'eternalNight', f: 'assassinShadow', dodge: 'nightStep' },
+    sig: { kind: 'shadow', name: 'Emboscada da Noite', desc: 'Críticos de EMBOSCADA e PELAS COSTAS mais fortes, e cada crítico recarrega a Sombra. A sombra imita a Fuuma e as Lâminas; ir até ela CORTA quem está em volta. Na NOITE ETERNA a Kagepantera volta a se camuflar sozinha.', crit: 1.3, back: 1.2, trail: 0.5, critRefund: 1 },
+    traits: ['Emboscada da Noite: críticos recarregam a Sombra', 'Sombra Assassina: chega cortando', 'Noite Eterna: some de novo a cada golpe'],
+    tips: 'Ponto fraco: tudo depende de chegar por trás. Fique de frente para ela, use fogo e área.',
+    difficulty: 3,
+    profile: {
+      personality: 'Assassino',
+      range: [26, 130], aggression: 0.78, retreatHp: 0.3, reaction: 0.16, dodgeSkill: 0.72,
+      accuracy: 0.07, lead: 0.85,
+      fireCost: 1, wetCost: 0, waterCost: 0,
+    },
+  },
+  // ───────────── VENTO: gênio de quatro braços ─────────────
+  // Zefirinho → Zefirão: "Maestro dos 4 Braços". E e F zeram o Q e carregam a Brisa; a Turbulência (E) é o que
+  // transforma cada botão (Q crítico com ricochete, micro-vácuo, Jaula de Vento). Ver maestro.js.
+  zefirinho: {
+    key: 'zefirinho', line: 'zefirinho', stage: 1, evolvesTo: 'zefirao',
+    name: 'Zefirinho', title: 'Forma base', element: 'air', sprite: 'djinn_1', hover: true,
+    hp: 106, speed: 70, radius: 9, mass: 0.9, evoRate: 0.9,
+    abilities: [A.gustSlap, A.airPalm, A.vacuumBlade, A.turbulencePulse, A.cyclonePressure, A.windDrift],
+    dodge: A.windDrift,
+    controls: { primary: 'airPalm', melee: 'gustSlap', q: 'vacuumBlade', e: 'turbulencePulse', f: 'cyclonePressure', dodge: 'windDrift' },
+    sig: { kind: 'maestro', name: 'Maestro dos 4 Braços', desc: 'Usar E ou F ZERA a recarga do Q e guarda uma CARGA DE BRISA (máx. 2); o Q com 2 cargas dá ESCUDO + DISPARADA. O E marca TURBULÊNCIA: Q em alvo marcado é CRÍTICO e ricocheteia; E em marcado é MICRO-VÁCUO (espalha e puxa); F em marcado é JAULA DE VENTO (prende e levanta).', crit: 1.4, chain: 3, charges: 2, surge: { hp: 6, t: 1.5 } },
+    traits: ['Fluxo: E e F zeram o Q', 'Turbulência: marca que muda cada botão', 'Brisa: 2 cargas = escudo e disparada'],
+    tips: 'Combos: E→Q (crítico), E→F→Q (jaula + escudo), E→E→Q (área). Ponto fraco: frágil e o elétrico derruba quem voa.',
+    difficulty: 3,
+    profile: {
+      personality: 'Maestro',
+      range: [60, 135], aggression: 0.55, retreatHp: 0.35, reaction: 0.18, dodgeSkill: 0.65,
+      accuracy: 0.06, lead: 0.85,
+      fireCost: 1, wetCost: 0, waterCost: 0,
+    },
+  },
+  zefirao: {
+    key: 'zefirao', line: 'zefirinho', stage: 2,
+    name: 'Zefirão', title: 'Regente dos Ventos', element: 'air', sprite: 'djinn_3', hover: true,
+    hp: 176, speed: 68, radius: 12, mass: 1.4,
+    abilities: [A.galeClap, A.stormPalm, A.greaterVacuum, A.turbulenceBurst, A.cycloneCage, A.stormDrift],
+    dodge: A.stormDrift,
+    controls: { primary: 'stormPalm', melee: 'galeClap', q: 'greaterVacuum', e: 'turbulenceBurst', f: 'cycloneCage', dodge: 'stormDrift' },
+    sig: { kind: 'maestro', name: 'Regente dos 4 Ventos', desc: 'Fluxo evoluído: E e F zeram o Q e carregam a Brisa (máx. 2). Com 2 cargas, o Q sai em DUAS lâminas (braços de cima) e dá ESCUDO + DISPARADA. Crítico maior e ricochete em até 4 alvos marcados.', crit: 1.45, chain: 4, charges: 2, twin: true, surge: { hp: 9, t: 1.6 } },
+    traits: ['Duas lâminas com a Brisa cheia', 'Micro-vácuo maior', 'Jaula do Ciclone de 1,2 s'],
+    tips: 'Ponto fraco: grande e depende da marca; quem esquiva o E desmonta o combo.',
+    difficulty: 3,
+    profile: {
+      personality: 'Regente',
+      range: [60, 145], aggression: 0.6, retreatHp: 0.3, reaction: 0.18, dodgeSkill: 0.6,
+      accuracy: 0.06, lead: 0.85,
+      fireCost: 1, wetCost: 0, waterCost: 0,
+    },
+  },
 };
 
 // Espécies escolhíveis no time (formas base) e time padrão (partidas rápidas e testes).
@@ -405,6 +483,6 @@ export const SPECIES = {
   }
 }
 
-export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha', 'pugilar', 'raiolua', 'sapomental', 'araralvo'];
+export const ROSTER = ['brasalisco', 'hidrocasco', 'brotossauro', 'ouriflama', 'gotapus', 'mantifolha', 'pugilar', 'raiolua', 'sapomental', 'araralvo', 'pantrinja', 'zefirinho'];
 export const DEFAULT_TEAM = ['brasalisco', 'hidrocasco', 'brotossauro'];
 export const formsOf = (line) => Object.values(SPECIES).filter((s) => s.line === line).sort((a, b) => a.stage - b.stage);

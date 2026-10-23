@@ -546,7 +546,100 @@ export const TACTICS = {
   },
   sparkHop() { return null; },
   emberRoll() { return null; },
+
+  // ───────────── Sombra (Pantrinja → Kagepantera): entra por trás, emboscada com a sombra, foge por ela ─────────────
+  shuriken(c) { return ninjaShot(c, 160); },
+  kunai(c) { return ninjaShot(c, 165); },
+  furtiveClaw(c) { return ninjaClaw(c, 20); },
+  twinFangs(c) { return ninjaClaw(c, 24); },
+  shadowFan(c) { return ninjaBoomerang(c, 150); },
+  fuumaShadow(c) { return ninjaBoomerang(c, 170); },
+  smokeBomb(c) {
+    if (c.m.status.cloak > 0) return null;
+    if (c.vis && c.d < 50 && c.hpF < 0.55) return { score: 0.75, target: c.t, purpose: 'escape' };
+    if (c.vis && c.d > 60 && c.d < 140 && c.hpF > 0.4) return { score: 0.42, target: c.t }; // some antes de entrar
+    return null;
+  },
+  eternalNight(c) {
+    if (!c.vis || c.d > 120) return null;
+    return { score: 0.55 + (c.d < 50 ? 0.2 : 0) + (c.tBusy ? 0.1 : 0), aimPoint: { x: c.t.x, y: c.t.y } };
+  },
+  livingShadow(c) { return shadowThrow(c, 150); },
+  assassinShadow(c) { return shadowThrow(c, 160); },
+  shadowStep() { return null; },
+  nightStep() { return null; },
+
+  // ───────────── Vento (Zefirinho → Zefirão): tece combos — marca com E, crítico com Q, jaula com F ─────────────
+  airPalm(c) { return palmShot(c, 140); },
+  stormPalm(c) { return palmShot(c, 150); },
+  gustSlap(c) { return gustPeel(c, 18); },
+  galeClap(c) { return gustPeel(c, 22); },
+  vacuumBlade(c) { return vacuumShot(c, 155); },
+  greaterVacuum(c) { return vacuumShot(c, 165); },
+  turbulencePulse(c) { return turbMark(c, 130, 18); },
+  turbulenceBurst(c) { return turbMark(c, 140, 22); },
+  cyclonePressure(c) { return cageTry(c, 140); },
+  cycloneCage(c) { return cageTry(c, 150); },
+  windDrift() { return null; },
+  stormDrift() { return null; },
 };
+
+// Gênio do vento: o alvo está com a Turbulência dele? Quantos outros marcados perto (ricochete)?
+const turbOn = (c, t = c.t) => t.turb > 0 && t.turbBy === c.m.id;
+const turbAround = (c) => c.w.enemiesOf(c.m).filter((e) => e !== c.t && turbOn(c, e) && Math.hypot(e.x - c.t.x, e.y - c.t.y) < 150).length;
+function palmShot(c, range) {
+  if (c.tGuarding || !c.vis || c.d < 20 || c.d > range) return null;
+  return { score: 0.48 + (c.m.cd[c.m.def.controls.e] > 0.6 ? 0.1 : 0), target: c.t };
+}
+function gustPeel(c, px) {
+  if (!c.vis || c.d > reach(c, px) || c.tGuarding) return null;
+  return { score: 0.86 + (c.tBusy ? 0.1 : 0), target: c.t };
+}
+// Q: vale muito com a marca (crítico + ricochete) ou com a Brisa cheia (escudo + disparada); sem nada, é só um tiro.
+function vacuumShot(c, range) {
+  if (!c.vis || c.d > range || c.tGuarding) return null;
+  const full = (c.m.brisa || 0) >= (c.m.def.sig.charges ?? 2);
+  return { score: 0.42 + (turbOn(c) ? 0.45 + turbAround(c) * 0.1 : 0) + (full ? 0.25 + (c.hpF < 0.5 ? 0.15 : 0) : 0), target: c.t };
+}
+// E: marca quem não está marcado; com o alvo marcado e outros por perto, estoura o micro-vácuo.
+function turbMark(c, range, r) {
+  if (!c.vis || c.d > range + r) return null;
+  if (!turbOn(c)) return { score: 0.62 + (c.m.cd[c.m.def.controls.q] > 0.5 ? 0.15 : 0), aimPoint: { x: c.t.x, y: c.t.y } };
+  const near = c.w.enemiesOf(c.m).filter((e) => e !== c.t && Math.hypot(e.x - c.t.x, e.y - c.t.y) < 70).length;
+  return near ? { score: 0.6 + near * 0.12, aimPoint: { x: c.t.x, y: c.t.y } } : null;
+}
+// F: Jaula de Vento em alvo marcado (melhor ainda se ele está vindo para cima); sem marca, só para frear quem encosta.
+function cageTry(c, range) {
+  if (!c.vis || c.d > range) return null;
+  if (turbOn(c)) return { score: 0.66 + (c.d < 70 ? 0.2 : 0) + (c.tBusy ? 0.1 : 0), aimPoint: { x: c.t.x, y: c.t.y } };
+  if (c.d < 45) return { score: 0.45, aimPoint: { x: c.t.x, y: c.t.y } };
+  return null;
+}
+
+// Pantera: a sombra dela no chão (ir até ela é decidido em sim/shadow.js) e se está pelas costas do alvo.
+const myShadow = (c) => c.w.shadows?.find((q) => q.owner === c.m) || null;
+const behindT = (c) => { const a = Math.atan2(c.m.y - c.t.y, c.m.x - c.t.x) - (c.t.facing ?? 0); return Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) > 1.95; };
+function ninjaShot(c, range) {
+  if (c.tGuarding || !c.vis || c.d < 22 || c.d > range) return null;
+  return { score: 0.5 + (c.d > 60 ? 0.1 : 0), target: c.t };
+}
+function ninjaClaw(c, px) {
+  if (!c.vis || c.d > reach(c, px) || c.tGuarding) return null;
+  return { score: 0.95 + (c.tBusy ? 0.2 : 0) + (behindT(c) ? 0.3 : 0) + (c.m.status.cloak > 0 ? 0.3 : 0), target: c.t };
+}
+function ninjaBoomerang(c, range) { // Shuriken bumerangue: melhor com o alvo longe (acerta na ida e na volta) ou com a sombra perto dele
+  if (!c.vis || c.d > range || c.tGuarding) return null;
+  const s = myShadow(c), near = s && !s.moving && Math.hypot(s.x - c.t.x, s.y - c.t.y) < 120;
+  return { score: 0.56 + (near ? 0.35 : 0) + (c.d > 60 ? 0.1 : 0) + (c.tBusy ? 0.15 : 0), target: c.t };
+}
+// Sombra Viva: às costas do alvo (para emboscar) ou para longe quando está apanhando (para fugir).
+function shadowThrow(c, range) {
+  if (myShadow(c)) return null;
+  if (c.vis && c.hpF < 0.35 && c.d < 60) return { score: 0.8, aimPoint: c.awayPoint, purpose: 'escape' };
+  if (!c.vis || c.d < 40 || c.d > range + 60) return null;
+  const back = c.t.facing ?? Math.atan2(c.t.y - c.m.y, c.t.x - c.m.x);
+  return { score: 0.62 + (c.tBusy ? 0.2 : 0), aimPoint: { x: c.t.x - Math.cos(back) * 26, y: c.t.y - Math.sin(back) * 26 } };
+}
 
 // Brasas minhas perto de alguém (até R de distância).
 function coalsNear(c, who, R) {

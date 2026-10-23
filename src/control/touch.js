@@ -27,6 +27,7 @@ const CSS = `
 #touch .btn i{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.6)}
 #touch .btn.brk{border-color:#ff9a3a;color:#fff;background:rgba(150,60,10,.75);animation:tb .4s infinite alternate}
 @keyframes tb{to{transform:scale(1.12)}}
+#touch .tut{box-shadow:0 0 0 3px #fff,0 0 16px 6px #ffd23a;animation:tb .45s infinite alternate}
 #touch .sw{position:absolute;border-radius:6px;pointer-events:auto;touch-action:none;color:#ffe9b0;background:rgba(20,14,12,.5);border:2px solid #6a5a3a;font-size:calc(8px*var(--k));display:flex;align-items:center;justify-content:center}
 #touch .sw.cur{border-color:#ffe066;background:rgba(90,74,26,.8)}
 #touch .sw.off{opacity:.35}
@@ -50,7 +51,7 @@ const DEAD = 16; // px de arraste antes de virar mira manual
 const PULL = 110; // px de arraste para a distância máxima
 
 export function createTouchControls({ press, hold, key, getWorld, getLayout }) {
-  const off = { active: false, visible: false, update() {}, aim() { return null; }, move: { x: 0, y: 0 }, preview: null };
+  const off = { active: false, visible: false, update() {}, hint() {}, aim() { return null; }, move: { x: 0, y: 0 }, preview: null };
   if (!CAN_TOUCH) return off;
   const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
   const root = document.createElement('div'); root.id = 'touch'; root.style.display = 'none'; document.body.appendChild(root);
@@ -186,6 +187,8 @@ export function createTouchControls({ press, hold, key, getWorld, getLayout }) {
       let label = b.label, sub = '', frac = 0, cls = false, brk = false;
       if (slot === 'evolve' && m) { frac = 0; sub = m.canEvolve ? 'PRONTO' : `${Math.floor(Math.min(1, m.energy / 150) * 100)}%`; cls = !m.canEvolve; }
       else if (ab) { sub = ab.name.length > 11 ? ab.name.slice(0, 10) + '.' : ab.name; frac = ab.cooldown ? Math.min(1, t / ab.cooldown) : 0; cls = t > 0.05; }
+      // Sombra Viva no chão: o F leva até ela.
+      if (slot === 'f' && m && w.shadows?.some((s) => s.owner === m)) { label = 'IR'; sub = 'à sombra'; frac = 0; cls = false; brk = true; }
       if (slot === 'dodge' && m && w.canBreakCombo?.(m)) { label = 'QUEBRAR'; sub = 'combo!'; brk = true; cls = false; }
       if (el.firstChild.nodeValue !== label) el.firstChild.nodeValue = label;
       if (small.textContent !== sub) small.textContent = sub;
@@ -196,6 +199,17 @@ export function createTouchControls({ press, hold, key, getWorld, getLayout }) {
       const team = w.teamOf(w.playerTeam);
       sws.forEach((el, k) => { const mm = team[k]; el.classList.toggle('cur', !!mm && mm === m); el.classList.toggle('off', !mm || !mm.alive); });
     }
+  };
+  // Tutorial: destaca (brilho piscando) os controles que a lição pede: vagas de habilidade, 'move' (analógico), 'sw' (botão 2).
+  let lastHint = '';
+  api.hint = (list) => {
+    const k = list && api.visible ? list.join(',') : '';
+    if (k === lastHint) return;
+    lastHint = k;
+    const on = new Set(k ? k.split(',') : []);
+    for (const slot in els) els[slot].el.classList.toggle('tut', on.has(slot));
+    stick.classList.toggle('tut', on.has('move'));
+    sws.forEach((el, i) => el.classList.toggle('tut', i === 1 && on.has('sw')));
   };
   // Mira: manual enquanto arrasta (direção do dedo; distância pelo tamanho do arraste nos poderes de área) ou
   // automática no inimigo mais próximo do monstro controlado (ou para onde ele olha).
