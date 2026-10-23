@@ -41,6 +41,8 @@ export function relation(world, m) {
   return m.slot === world.playerTeam ? 'self' : 'ally';
 }
 const PUNCH_HAND = { jab: 'L', armoredJab: 'L', cross: 'R', clawRip: 'R' };
+// Distâncias da câmera (opção "Câmera"): largura do mapa visível, em px do mundo (1024 = arena inteira).
+export const CAM_VIEW = { longe: 820, media: 640, perto: 500 };
 export const ELEMENT_COLOR = { fire: '#ff8a3a', water: '#46b4ff', plant: '#7ad84a', earth: '#d8a060', electric: '#ffe24a', psychic: '#d07aff', air: '#9ad8ec', dark: '#8a6aff', neutral: '#d8c08a' };
 // Escurece uma cor #rrggbb (k < 1).
 function shade(hex, k) {
@@ -1090,7 +1092,7 @@ export class Renderer {
   // Onde a arena fica na tela. Faixas da interface: cartões no alto e barra de habilidades embaixo (no toque não
   // há barra: os botões na tela mostram as recargas). Se a arena inteira ficaria pequena demais (celular, tablet em
   // pé, notebook com a barra do navegador), a câmera aproxima e segue o seu monstro; as faixas da interface ficam
-  // por cima do mapa e a câmera para nas bordas do mundo. ui.camera: 'auto' | 'arena' (sempre inteira) | 'perto'.
+  // por cima do mapa e a câmera para nas bordas do mundo. ui.camera: 'auto' | 'arena' (sempre inteira) | 'longe' | 'media' | 'perto' (CAM_VIEW).
   // Resultado: this.view (ox, oy, S, dpr, zoomed) e this.frame (parte visível da arena, usada pela HUD).
   layout(world, alpha, dt, ui) {
     const W = this.canvas.width, H = this.canvas.height, dpr = ui.dpr;
@@ -1106,7 +1108,12 @@ export class Renderer {
     const fit = Math.min(W / WORLD_W, availH / WORLD_H);
     const cam = playing && !world.over ? ui.camera || 'auto' : 'arena';
     let S = fit;
-    if (cam === 'perto') S = Math.max(fit, 1.5 * dpr);
+    // Distância escolhida: quanto do mapa (px do mundo) cabe na largura da tela. Antes "perto" era só uma escala
+    // mínima de 1,5: num monitor grande o jogo já passava disso e as três opções ficavam iguais.
+    // Tela em pé (celular): a largura é pouca, então as distâncias encolhem para continuar mais perto que a automática.
+    const viewW = CAM_VIEW[cam] && CAM_VIEW[cam] * (H > W * 1.05 ? 0.62 : 1);
+    const level = viewW ? Math.max(fit, Math.min(W / viewW, availH / (viewW * 0.45))) : 0;
+    if (viewW) S = level;
     else if (cam === 'auto') {
       // Confortável: ~1,15 px de tela por px do mundo. Corta no máximo 20% da altura, a não ser que a arena fique
       // ilegível (celular deitado), quando aproxima até ~0,95.
@@ -1115,7 +1122,7 @@ export class Renderer {
     }
     // Fase que anda (Atlântida): a câmera mostra ~640 px de largura e rola com a corrida, em qualquer configuração.
     const scroll = !!world.arenaDef?.scroll && !world.over;
-    if (scroll) S = Math.max(fit, Math.min(W / 640, availH / (WORLD_H * 0.6)));
+    if (scroll) S = Math.max(fit, level, Math.min(W / 640, availH / (WORLD_H * 0.6))); // e mais perto, se o jogador escolheu
     // Pixels inteiros (todos do mesmo tamanho) quando o arredondamento muda pouco a escala.
     if (S >= 2) {
       const n = S > fit + 1e-6 ? Math.round(S) : Math.floor(S);

@@ -129,6 +129,9 @@ Feedback: iPhone travava ao confirmar o time; HUD grande e arena pequena (notebo
 - Bug corrigido: projéteis de tipo novo (shurikens, palma, vácuo, mão) caíam no caso padrão de `projectileExpire`/`projectileHitSolid`, que é o da ÁGUA, e molhavam o chão (areia escura, lentidão, apagava fogo). Agora não fazem nada no chão.
 - Equilíbrio: a 1ª versão vencia 100% (E→Q infinito, alcance 200 fora do dos outros e atordoamento em todo Q que cancelava ataques). Agora Q 160 de alcance sem atordoar, danos menores, velocidade 70/68: duelos 56% base / 53% evolução.
 
+## 6k. Distância da câmera (2026-10-23)
+- Bug: a opção "APROXIMADA" era só uma escala mínima de 1,5 e, num monitor grande (fit 1,55 em 1080p), as três opções davam o mesmo zoom. Agora `CAM_VIEW` (renderer.js) fixa quanto do mapa aparece na largura: LONGE 820, MÉDIA 640 (a da Atlântida), PERTO 500 px (×0,62 em tela em pé); limitada pela altura útil. Opções: `CAMERAS`/`CAMERA_NAME` (ui.js) = AUTOMÁTICA, ARENA INTEIRA, LONGE, MÉDIA, PERTO; tecla C troca na partida (salva). Na Atlântida vale o mais perto entre a rolagem e a escolha.
+
 ## 7. Próximos passos (ordem)
 1. Confirmar no navegador real (com GPU) a HUD nova em 1280×720 e em janelas menores; o painel de testes desta sessão não renderizava em segundo plano.
 2. Extremos de confronto (ver 6c) — decidir se mexe em mecânica.

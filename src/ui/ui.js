@@ -30,13 +30,16 @@ function diffMarks(c, n, x, y, u, align = 'left') {
   return w;
 }
 const DIFFICULTY = { easy: 'Fácil', normal: 'Normal', hard: 'Difícil' };
+// Opção "Câmera" (distâncias em CAM_VIEW, renderer.js). Também troca na partida com a tecla C (main.js).
+export const CAMERAS = ['auto', 'arena', 'longe', 'media', 'perto'];
+export const CAMERA_NAME = { auto: 'AUTOMÁTICA', arena: 'ARENA INTEIRA', longe: 'LONGE', media: 'MÉDIA', perto: 'PERTO' };
 const SETTINGS_KEY = 'elemental-arena-opcoes';
 
 export function loadSettings() {
   const def = { shake: true, numbers: true, difficulty: 'normal', speed: 1, debug: false, sound: true, volume: 0.6, camera: 'auto', quality: 'auto' };
   try { return { ...def, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch { return def; }
 }
-function saveSettings(s) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* armazenamento indisponível */ } }
+export function saveSettings(s) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* armazenamento indisponível */ } }
 
 function text(c, s, x, y, size, color, align = 'left', u = 1, stroke = true) {
   s = s.replace(/Í/g, 'I'); // a fonte não tem o Í maiúsculo (sairia minúsculo no meio da palavra)
@@ -952,8 +955,9 @@ export class UI {
     row('Dificuldade da IA', DIFFICULTY[S.difficulty].toUpperCase(), () => set('difficulty', diffs[(diffs.indexOf(S.difficulty) + 1) % diffs.length]));
     const speeds = [0.5, 1, 1.5];
     row('Velocidade do jogo', `${S.speed}x`, () => set('speed', speeds[(speeds.indexOf(S.speed) + 1) % speeds.length]));
-    // Câmera: automática aproxima e segue o seu monstro quando a arena inteira ficaria pequena (celular, notebook).
-    const cams = ['auto', 'arena', 'perto'], camName = { auto: 'AUTOMÁTICA', arena: 'ARENA INTEIRA', perto: 'APROXIMADA' };
+    // Câmera: automática aproxima e segue o seu monstro quando a arena inteira ficaria pequena (celular, notebook);
+    // longe/média/perto fixam quanto do mapa aparece e a câmera segue o monstro (a média é a da Atlântida).
+    const cams = CAMERAS, camName = CAMERA_NAME;
     row('Câmera', camName[S.camera] || camName.auto, () => set('camera', cams[(cams.indexOf(S.camera) + 1) % cams.length]));
     const qs = ['auto', 'alta', 'leve'], qName = { auto: 'AUTOMÁTICA', alta: 'ALTA', leve: 'LEVE (mais FPS)' };
     row('Qualidade gráfica', qName[S.quality] || qName.auto, () => set('quality', qs[(qs.indexOf(S.quality) + 1) % qs.length]));
@@ -973,7 +977,7 @@ export class UI {
     ] : [
       ['WASD / setas', 'mover'], ['Mouse', 'mirar'], ['Botão esquerdo', 'ataque à distância'], ['Botão direito', 'corpo a corpo'],
       ['Q / E / F', 'poderes especiais'], ['Espaço / Shift', 'esquiva (preso? quebra o combo: 35 de energia, recarga 14s)'], ['1 2 3 / Tab', `trocar monstro (recarga ${SWITCH.cooldown}s)`],
-      ['G', 'evoluir (com a energia cheia)'], ['H', 'ajuda do monstro em campo'], ['P / Esc', 'pausar'], ['I', 'visão da IA'],
+      ['G', 'evoluir (com a energia cheia)'], ['H', 'ajuda do monstro em campo'], ['P / Esc', 'pausar'], ['C', 'distância da câmera'], ['I', 'visão da IA'],
     ];
     const lh = (this.phone ? 11 : 13) * u, kw = (this.phone ? 104 : 156) * u;
     if (backY - 6 * u - y > 30 * u) {

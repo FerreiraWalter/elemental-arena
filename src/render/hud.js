@@ -654,7 +654,7 @@ export function drawHud(c, r, world, ui) {
     : world.training
     ? 'TREINO · T painel (bonecos, tiros, recargas, forma base) · B nº de bonecos · G evoluir · H ajuda · 1/2/3 trocar · Esc menu'
     : world.playerTeam !== null
-    ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 trocar · G evoluir · H ajuda · P pausar · preso? Espaço quebra o combo'
+    ? 'WASD mover · mouse mirar · cliques e Q/E/F poderes · Espaço esquiva · 1/2/3 trocar · G evoluir · H ajuda · C câmera · P pausar · preso? Espaço quebra o combo'
     : 'MODO ESPECTADOR · P pausar · I visão da IA';
   const hsz = fit(c, help, 5, aw, dpr);
   // Câmera aproximada: o mapa passa por baixo do rodapé; faixa escura para a linha de ajuda continuar legível.

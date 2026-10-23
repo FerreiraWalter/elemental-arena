@@ -3,7 +3,7 @@ import { DT, WORLD_W, WORLD_H } from './config.js';
 import { ROSTER, DEFAULT_TEAM } from './sim/species.js';
 import { ARENAS, ARENA_ORDER } from './arenas/index.js';
 import { Renderer, setPerspective } from './render/renderer.js';
-import { UI } from './ui/ui.js';
+import { UI, CAMERAS, CAMERA_NAME, saveSettings } from './ui/ui.js';
 import { NetClient, serverUrls, inviteCode } from './net/client.js';
 import { createMirror } from './net/mirror.js';
 import { NetSmoother } from './net/smooth.js';
@@ -461,7 +461,12 @@ window.addEventListener('keydown', (e) => {
   } else if (e.code === 'KeyH' && playing) openHelp();
   else if (e.code === 'KeyT' && world.training && !world.tutorial) trainingPanel();
   else if (e.code === 'KeyB' && world.training && !world.tutorial) { Training.setDummies(world, (world.training.opts.dummies % 3) + 1); saveTrainingOpts(); }
-  else if (e.code === 'KeyI') renderer.debug = !renderer.debug;
+  else if (e.code === 'KeyC') {
+    // Distância da câmera na hora (fica salva nas opções).
+    const s = ui.settings, k = CAMERAS[(CAMERAS.indexOf(s.camera) + 1) % CAMERAS.length];
+    s.camera = k; saveSettings(s); applySettings(s);
+    notice = { text: `Câmera: ${CAMERA_NAME[k]}`, t: 1.4 };
+  } else if (e.code === 'KeyI') renderer.debug = !renderer.debug;
 });
 window.addEventListener('keyup', (e) => keys.delete(e.code));
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
