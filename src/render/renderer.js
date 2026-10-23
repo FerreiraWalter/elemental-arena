@@ -921,7 +921,11 @@ export class Renderer {
     // Escala da interface: cresce pouco com a janela (antes chegava a 2× e a HUD comia a arena no notebook).
     const hs = this.hudScale = Math.max(1, Math.min(1.5, H / dpr / 640, W / dpr / 1100));
     const playing = world.playerTeam !== null;
-    const top = 64 * dpr * hs, bottom = (playing && !ui.touch ? 62 : 22) * dpr * hs;
+    // Celular em pé: os 6 cartões numa linha ficavam com ~36 px (letra ilegível). Lá a HUD usa duas linhas de
+    // cartões abaixo do cronômetro (seu time e o adversário) e a faixa do alto fica mais alta (hud.js).
+    const tall = this.hudTall = H > W * 1.05 && W / dpr < 500;
+    const top = (tall ? 174 : 64) * dpr * hs, bottom = (playing && !ui.touch && !tall ? 62 : 22) * dpr * hs;
+    this.hudTop = top / dpr; // px CSS (os botões de toque do alto ficam logo abaixo)
     const availH = H - top - bottom;
     const fit = Math.min(W / WORLD_W, availH / WORLD_H);
     const cam = playing && !world.over ? ui.camera || 'auto' : 'arena';

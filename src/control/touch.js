@@ -19,7 +19,7 @@ const CSS = `
 #touch .stick{position:absolute;border-radius:50%;background:rgba(20,14,12,.22);border:2px solid rgba(255,233,176,.3);pointer-events:auto;touch-action:none}
 #touch .knob{position:absolute;left:50%;top:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;background:rgba(255,233,176,.55);border:2px solid #ffe9b0}
 #touch .btn{position:absolute;pointer-events:auto;touch-action:none;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:50%;color:#ffe9b0;background:rgba(20,14,12,.4);border:3px solid rgba(255,224,102,.85);font-size:calc(9px*var(--k));text-shadow:0 0 3px #100a08;overflow:hidden}
-#touch .btn small{font-size:calc(6px*var(--k));color:#d8c8a0;margin-top:3px;max-width:90%;white-space:nowrap;overflow:hidden}
+#touch .btn small{font-size:calc(7px*var(--k));color:#d8c8a0;margin-top:3px;max-width:90%;white-space:nowrap;overflow:hidden}
 #touch .btn.cd{border-color:#5a4a3a;color:#887}
 #touch .btn.on{background:rgba(255,224,102,.55)}
 #touch .btn.aim{background:rgba(70,180,255,.45);border-color:#c8f0ff}

@@ -60,6 +60,22 @@ function wrap(c, s, size, maxW, u) {
   if (line) lines.push(line);
   return lines;
 }
+// Texto quebrado em linhas; devolve o y logo abaixo da última linha.
+function para(c, s, x, y, size, maxW, color, align, u, lh = size + 3.5, max = 99) {
+  for (const ln of wrap(c, s, size, maxW, u).slice(0, max)) { text(c, ln, x, y, size, color, align, u); y += lh * u; }
+  return y;
+}
+
+// Escala da interface: 1 unidade = u px do canvas. No PC a tela lógica tem ~760×520. No celular (lado menor < 500 px
+// CSS) a conta era só em px do canvas: com dpr 2 cada unidade virava meio pixel de tela e a letra 6 tinha 3 px no
+// iPhone. Agora, em pé, a largura lógica é 340; deitado, a altura lógica é 360 (as telas têm layout próprio para isso).
+export function uiScale(W, H, dpr = 1) {
+  const phone = Math.min(W, H) / (dpr || 1) < 500, portrait = H > W * 1.05;
+  let u = Math.max(1, Math.min(W / 760, H / 520));
+  if (phone) u = portrait ? W / 340 : Math.min(W / 640, H / 360);
+  return { u, phone, portrait };
+}
+
 function panel(c, x, y, w, h, u, border = '#5a4636', fill = 'rgba(18,12,10,0.92)') {
   c.fillStyle = fill;
   c.fillRect(x, y, w, h);
@@ -245,15 +261,20 @@ export class UI {
     return f.top * scale;
   }
 
+  // Celular (lado menor da tela < 500 px CSS): escala maior e telas com layout compacto (ver uiScale).
+  // Também usada pelos menus sobre a batalha (main.js), que não passam por render().
+  scale(W, H, dpr) {
+    const { u, phone, portrait } = uiScale(W, H, dpr);
+    this.phone = phone; this.portrait = portrait;
+    return u;
+  }
+
   // ───────────── Quadro ─────────────
   render(dt, dpr) {
     this.time += dt;
     this.fade = Math.max(0, this.fade - dt * 4);
     const c = this.c, W = this.canvas.width, H = this.canvas.height;
-    const u = Math.max(1, Math.min(W / 760, H / 520)) ;
-    // Celular (lado menor da tela < 500 px CSS): telas com muito texto usam um layout compacto, letra maior.
-    this.phone = Math.min(W, H) / (dpr || 1) < 500;
-    this.portrait = H > W * 1.05;
+    const u = this.scale(W, H, dpr);
     this.buttons = [];
     // Fundo: luta de demonstração escurecida.
     this.ensureDemo();
@@ -319,7 +340,7 @@ export class UI {
 
     // Título: letras nas cores dos elementos, sombra funda e um brilho que passa por cima.
     const title = 'ELEMENTAL ARENA';
-    const ts = Math.min(30, (W / u) / 22);
+    const ts = Math.min(30, (W / u) / (this.phone && this.portrait ? 18 : 22));
     c.font = `${ts * u}px ${FONT}`;
     const tw = c.measureText(title).width;
     const ty = H * 0.13;
@@ -334,23 +355,27 @@ export class UI {
       text(c, ch, x, y, ts, shine ? '#ffffff' : cols[Math.floor((k / title.length) * cols.length)], 'left', u);
       x += cw;
     }
-    text(c, `Duelo de monstros elementais em tempo real · ${ROSTER.length} monstros · 6 elementos · online até 4 jogadores`, cx, ty + 22 * u, 6, '#e8dcc0', 'center', u);
+    const tagline = `Duelo de monstros elementais em tempo real · ${ROSTER.length} monstros · 6 elementos · online até 4 jogadores`;
+    para(c, tagline, cx, ty + 22 * u, this.phone ? 6.5 : 6, W - 24 * u, '#e8dcc0', 'center', u);
 
     // Palco giratório: os monstros num anel em perspectiva (os da frente maiores e mais claros).
-    const N = ROSTER.length, sy = H * 0.43, rx = Math.min(W * 0.36, 300 * u), ry = 34 * u;
+    // Celular deitado (só 360 de altura lógica): palco à esquerda e botões numa coluna à direita.
+    const side = this.phone && !this.portrait;
+    const sx = side ? W * 0.3 : cx;
+    const N = ROSTER.length, sy = H * (side ? 0.56 : 0.43), rx = Math.min(W * (side ? 0.22 : 0.36), 300 * u), ry = 34 * u;
     c.save();
-    const pg = c.createRadialGradient(cx, sy, 4 * u, cx, sy, rx + 30 * u);
+    const pg = c.createRadialGradient(sx, sy, 4 * u, sx, sy, rx + 30 * u);
     pg.addColorStop(0, 'rgba(70,52,110,0.55)'); pg.addColorStop(1, 'rgba(20,14,36,0)');
-    c.fillStyle = pg; c.beginPath(); c.ellipse(cx, sy, rx + 30 * u, ry + 14 * u, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = pg; c.beginPath(); c.ellipse(sx, sy, rx + 30 * u, ry + 14 * u, 0, 0, Math.PI * 2); c.fill();
     for (let k = 0; k < 64; k++) { // anel pontilhado girando nas cores dos elementos
       const a = (k / 64) * Math.PI * 2 + t * 0.25;
       c.fillStyle = MOTE[k % MOTE.length]; c.globalAlpha = 0.35 + 0.35 * Math.max(0, Math.cos(a));
-      c.fillRect(Math.round(cx + Math.sin(a) * (rx + 12 * u)), Math.round(sy + Math.cos(a) * (ry + 6 * u)), 2 * u, u);
+      c.fillRect(Math.round(sx + Math.sin(a) * (rx + 12 * u)), Math.round(sy + Math.cos(a) * (ry + 6 * u)), 2 * u, u);
     }
     c.restore();
     const items = ROSTER.map((key, k) => {
       const a = t * 0.32 + (k / N) * Math.PI * 2;
-      return { key, k, x: cx + Math.sin(a) * rx, depth: Math.cos(a), y: sy + Math.cos(a) * ry };
+      return { key, k, x: sx + Math.sin(a) * rx, depth: Math.cos(a), y: sy + Math.cos(a) * ry };
     }).sort((p, q) => p.depth - q.depth);
     const front = items[items.length - 1];
     for (const it of items) {
@@ -369,30 +394,32 @@ export class UI {
         c.beginPath(); c.ellipse(it.x, it.y + 2 * u, 20 * u, 6 * u, 0, 0, Math.PI * 2); c.stroke();
         c.globalAlpha = 1;
       }
-      this.drawMonsterArt(base, it.x, it.y + Math.sin(t * 2 + it.k) * 1.5 * u * f, scale, it.k, it.x > cx + 4 * u);
+      this.drawMonsterArt(base, it.x, it.y + Math.sin(t * 2 + it.k) * 1.5 * u * f, scale, it.k, it.x > sx + 4 * u);
       c.globalAlpha = 1;
     }
     // Ficha do monstro em destaque.
     {
       const def = SPECIES[front.key], col = ELEMENT_COLOR[def.element];
       const fy = sy + ry + 20 * u;
-      text(c, def.name.toUpperCase(), cx, fy, 11, col, 'center', u);
-      text(c, `${ELEMENT_NAME[def.element]} · ${def.profile.personality}${def.sig ? ` · ${def.sig.name}` : ''}`, cx, fy + 12 * u, 6, '#e8dcc0', 'center', u);
+      text(c, def.name.toUpperCase(), sx, fy, 11, col, 'center', u);
+      const sub = `${ELEMENT_NAME[def.element]} · ${def.profile.personality}${def.sig ? ` · ${def.sig.name}` : ''}`;
+      text(c, sub, sx, fy + 12 * u, fitSize(c, sub, this.phone ? 7 : 6, side ? W * 0.56 : W - 24 * u, u), '#e8dcc0', 'center', u);
     }
 
-    // Botões (embaixo do palco).
-    const bw = 230 * u, bh = 24 * u, gapB = 6 * u;
-    let by = Math.max(sy + ry + 44 * u, H - 5 * (bh + gapB) - 18 * u);
-    this.button(cx - bw / 2, by, bw, bh, 'JOGAR CONTRA A IA', () => { this.team = []; this.flow = 'local'; this.go('team'); }, { size: 10 });
+    // Botões (embaixo do palco). No celular, mais altos (dedo).
+    const bw = Math.min(230 * u, side ? W * 0.4 : W), bh = (this.phone ? 30 : 24) * u, gapB = 6 * u;
+    const bx = side ? W * 0.76 : cx;
+    let by = side ? Math.max(H * 0.25, (H - 5 * (bh + gapB)) / 2 + 24 * u) : Math.max(sy + ry + 44 * u, H - 5 * (bh + gapB) - 18 * u);
+    this.button(bx - bw / 2, by, bw, bh, 'JOGAR CONTRA A IA', () => { this.team = []; this.flow = 'local'; this.go('team'); }, { size: 10 });
     by += bh + gapB;
-    this.button(cx - bw / 2, by, bw, bh, 'MULTIPLAYER ONLINE', () => { this.team = this.team.length === 3 ? this.team : []; this.flow = 'mp'; this.go('team'); }, { color: '#ff8a3a', size: 10 });
+    this.button(bx - bw / 2, by, bw, bh, 'MULTIPLAYER ONLINE', () => { this.team = this.team.length === 3 ? this.team : []; this.flow = 'mp'; this.go('team'); }, { color: '#ff8a3a', size: 10 });
     by += bh + gapB;
-    this.button(cx - bw / 2, by, bw, bh, 'TREINAMENTO', () => { this.team = []; this.flow = 'training'; this.go('team'); }, { color: '#d8c08a' });
+    this.button(bx - bw / 2, by, bw, bh, 'TREINAMENTO', () => { this.team = []; this.flow = 'training'; this.go('team'); }, { color: '#d8c08a' });
     by += bh + gapB;
-    this.button(cx - bw / 2, by, bw, bh, 'MONSTROS', () => this.go('bestiary'), { color: '#7ad84a' });
+    this.button(bx - bw / 2, by, bw, bh, 'MONSTROS', () => this.go('bestiary'), { color: '#7ad84a' });
     by += bh + gapB;
-    this.button(cx - bw / 2, by, bw, bh, 'OPÇÕES', () => this.go('options'), { color: '#46b4ff' });
-    text(c, 'Mouse ou setas + Enter', cx, H - 8 * u, 5, '#887', 'center', u);
+    this.button(bx - bw / 2, by, bw, bh, 'OPÇÕES', () => this.go('options'), { color: '#46b4ff' });
+    if (!this.touchMode) text(c, 'Mouse ou setas + Enter', cx, H - 8 * u, 5, '#887', 'center', u);
   }
 
   // Troca de time de dentro da sala: abre a montagem de time já preenchida; CONFIRMAR envia e volta para a sala.
@@ -403,8 +430,6 @@ export class UI {
   }
 
   renderTeam(u, W, H) {
-    // Celular em pé: a escala segue a largura (~400 de largura lógica, 2 colunas), não a altura.
-    if (this.phone && this.portrait) u = Math.max(u, W / 400);
     const c = this.c, cx = W / 2;
     const training = this.flow === 'training', editing = this.flow === 'mpEdit';
     // Saiu da sala (conexão caiu ou partida começou) enquanto editava: nada a confirmar.
@@ -528,20 +553,21 @@ export class UI {
   // ───────────── Multiplayer: criar / entrar em sala ─────────────
   renderMp(u, W, H) {
     const c = this.c, cx = W / 2, mp = this.mp;
-    text(c, 'MULTIPLAYER ONLINE', cx, 36 * u, 14, '#ffe9b0', 'center', u);
-    text(c, 'Seu time: ' + this.team.map((k) => SPECIES[k].name).join(' · '), cx, 54 * u, 6, '#d8ccb0', 'center', u);
-    const bw = 250 * u, bh = 30 * u;
-    let y = 82 * u;
-    text(c, 'CRIAR UMA SALA (você recebe um código para os amigos)', cx, y, 6, '#e8dcc0', 'center', u);
-    y += 10 * u;
+    const tall = this.phone && this.portrait, sz = this.phone ? 7 : 6, maxW = W - 24 * u;
+    text(c, 'MULTIPLAYER ONLINE', cx, 36 * u, fitSize(c, 'MULTIPLAYER ONLINE', 14, maxW, u), '#ffe9b0', 'center', u);
+    const mine = 'Seu time: ' + this.team.map((k) => SPECIES[k].name).join(' · ');
+    text(c, mine, cx, 54 * u, fitSize(c, mine, sz, maxW, u), '#d8ccb0', 'center', u);
+    const bw = 250 * u, bh = (this.phone ? 32 : 30) * u;
+    let y = (tall ? 86 : 82) * u;
+    y = para(c, 'CRIAR UMA SALA (você recebe um código para os amigos)', cx, y, sz, maxW, '#e8dcc0', 'center', u) - (sz + 3.5) * u + 10 * u;
     const bw3 = Math.min(bw * 0.66, (W - 40 * u) / 3 - 6 * u);
     this.button(cx - bw3 * 1.5 - 6 * u, y, bw3, bh, 'SALA 1v1', () => this.hooks.mpCreate('1v1'), { color: '#ff8a3a', disabled: mp.busy });
     this.button(cx - bw3 / 2, y, bw3, bh, 'SALA 2v2', () => this.hooks.mpCreate('2v2'), { color: '#ff8a3a', disabled: mp.busy });
     this.button(cx + bw3 / 2 + 6 * u, y, bw3, bh, 'SALA 1v1v1v1', () => this.hooks.mpCreate('ffa'), { color: '#ff5a8a', disabled: mp.busy });
-    y += bh + 30 * u;
-    text(c, this.touchMode ? 'OU ENTRAR COM UM CÓDIGO (toque nos quadrados para digitar)' : 'OU ENTRAR COM UM CÓDIGO (4 caracteres, digite no teclado)', cx, y, 6, '#e8dcc0', 'center', u);
-    y += 12 * u;
-    const bx = 44 * u, gp = 8 * u, tot = bx * 4 + gp * 3;
+    y += bh + (tall ? 36 : 30) * u;
+    const how = this.touchMode ? 'OU ENTRAR COM UM CÓDIGO (toque nos quadrados para digitar)' : 'OU ENTRAR COM UM CÓDIGO (4 caracteres, digite no teclado)';
+    y = para(c, how, cx, y, sz, maxW, '#e8dcc0', 'center', u) - (sz + 3.5) * u + 12 * u;
+    const bx = (tall ? 52 : 44) * u, gp = 8 * u, tot = bx * 4 + gp * 3;
     for (let k = 0; k < 4; k++) {
       const x = cx - tot / 2 + k * (bx + gp);
       panel(c, x, y, bx, bx, u, k === mp.code.length ? '#ffd23a' : '#5a4636');
@@ -554,9 +580,12 @@ export class UI {
     y += bx + 12 * u;
     this.button(cx - 100 * u, y, 200 * u, bh, mp.busy ? 'CONECTANDO...' : 'ENTRAR NA SALA', () => this.hooks.mpJoin(mp.code), { color: '#7ad84a', disabled: mp.code.length !== 4 || mp.busy });
     y += bh + 14 * u;
-    if (mp.status) text(c, mp.status, cx, y, 6, '#ffe066', 'center', u);
-    text(c, 'Todos precisam abrir o jogo pelo mesmo endereço do servidor.', cx, H - 52 * u, 5, '#887', 'center', u);
-    this.button(cx - 75 * u, H - 40 * u, 150 * u, 28 * u, 'VOLTAR', () => { this.go('team'); }, { back: true, color: '#aa9' });
+    if (mp.status) para(c, mp.status, cx, y, sz, maxW, '#ffe066', 'center', u, sz + 3.5, 2);
+    const backH = (this.phone ? 32 : 28) * u;
+    const note = 'Todos precisam abrir o jogo pelo mesmo endereço do servidor.';
+    if (this.phone) para(c, note, cx, H - backH - 30 * u, 6, maxW, '#887', 'center', u, 9, 2);
+    else text(c, note, cx, H - backH - 22 * u, fitSize(c, note, 5, maxW, u), '#887', 'center', u);
+    this.button(cx - 75 * u, H - backH - 10 * u, 150 * u, backH, 'VOLTAR', () => { this.go('team'); }, { back: true, color: '#aa9' });
   }
 
   // ───────────── Multiplayer: sala de espera ─────────────
@@ -564,41 +593,69 @@ export class UI {
     const c = this.c, cx = W / 2, mp = this.mp;
     const room = mp.room;
     if (!room) { this.go('mp'); return; }
+    // Celular em pé (340 de largura lógica): tudo numa coluna, com as vagas uma embaixo da outra.
+    const tall = this.phone && this.portrait;
     const isHost = room.host === mp.myId;
     const me = room.players.find((p) => p.id === mp.myId);
-    text(c, 'SALA', cx - 70 * u, 34 * u, 10, '#bba', 'center', u);
-    text(c, room.code, cx + 20 * u, 36 * u, 22, '#ffe066', 'center', u);
-    text(c, 'Passe o código (ou o link) aos amigos para eles entrarem.', cx, 52 * u, 6, '#d8ccb0', 'center', u);
     const copied = mp.copiedAt && performance.now() - mp.copiedAt < 2000;
-    this.button(cx + 90 * u, 20 * u, 150 * u, 22 * u, copied ? 'LINK COPIADO!' : 'COPIAR LINK', () => { this.hooks.mpCopyLink?.(room.code).then((ok) => { mp.copiedAt = ok ? performance.now() : 0; if (!ok) this.mpError('Não foi possível copiar. Passe o código: ' + room.code); }); }, { color: '#46b4ff', size: 7 });
+    const copy = () => { this.hooks.mpCopyLink?.(room.code).then((ok) => { mp.copiedAt = ok ? performance.now() : 0; if (!ok) this.mpError('Não foi possível copiar. Passe o código: ' + room.code); }); };
+    const hint = 'Passe o código (ou o link) aos amigos para eles entrarem.';
+    let y;
+    if (tall) {
+      text(c, 'SALA', cx - 52 * u, 30 * u, 10, '#bba', 'center', u);
+      text(c, room.code, cx + 24 * u, 32 * u, 22, '#ffe066', 'center', u);
+      y = para(c, hint, cx, 48 * u, 6.5, W - 24 * u, '#d8ccb0', 'center', u);
+      this.button(cx - 90 * u, y - 4 * u, 180 * u, 24 * u, copied ? 'LINK COPIADO!' : 'COPIAR LINK', copy, { color: '#46b4ff', size: 7 });
+      y += 26 * u;
+    } else {
+      text(c, 'SALA', cx - 70 * u, 34 * u, 10, '#bba', 'center', u);
+      text(c, room.code, cx + 20 * u, 36 * u, 22, '#ffe066', 'center', u);
+      text(c, hint, cx, 52 * u, this.phone ? 6.5 : 6, '#d8ccb0', 'center', u);
+      this.button(cx + 90 * u, 20 * u, 150 * u, 22 * u, copied ? 'LINK COPIADO!' : 'COPIAR LINK', copy, { color: '#46b4ff', size: 7 });
+      y = 62 * u;
+    }
     const arenaName = ARENAS[room.arena].name;
     // Configuração (só o anfitrião muda).
-    let y = 62 * u;
-    const bw = 190 * u, bh = 24 * u;
-    this.button(cx - bw - 6 * u, y, bw, bh, `MODO: ${room.mode === 'ffa' ? '1v1v1v1' : room.mode}`, () => this.hooks.mpSend({ t: 'config', mode: { '1v1': '2v2', '2v2': 'ffa', ffa: '1v1' }[room.mode] || '1v1' }), { disabled: !isHost, color: '#ff8a3a', size: 8 });
+    const bw = tall ? (W - 30 * u) / 2 : 190 * u, bh = (this.phone ? 26 : 24) * u, bgap = (tall ? 5 : 6) * u;
+    this.button(cx - bw - bgap, y, bw, bh, `MODO: ${room.mode === 'ffa' ? '1v1v1v1' : room.mode}`, () => this.hooks.mpSend({ t: 'config', mode: { '1v1': '2v2', '2v2': 'ffa', ffa: '1v1' }[room.mode] || '1v1' }), { disabled: !isHost, color: '#ff8a3a', size: 8 });
     const ai = ARENA_ORDER.indexOf(room.arena);
-    this.button(cx + 6 * u, y, bw, bh, `ARENA: ${arenaName}`, () => this.hooks.mpSend({ t: 'config', arena: ARENA_ORDER[(ai + 1) % ARENA_ORDER.length] }), { disabled: !isHost, color: '#46b4ff', size: 7 });
+    this.button(cx + bgap, y, bw, bh, `ARENA: ${arenaName}`, () => this.hooks.mpSend({ t: 'config', arena: ARENA_ORDER[(ai + 1) % ARENA_ORDER.length] }), { disabled: !isHost, color: '#46b4ff', size: 7 });
     y += bh + 6 * u;
     // Robôs: dificuldade e completar as vagas livres.
     const LV = ['easy', 'normal', 'hard'], lvl = room.botLevel || 'normal';
     const free = room.seats - room.players.length;
-    this.button(cx - bw - 6 * u, y, bw, bh, `ROBÔS: ${DIFFICULTY[lvl].toUpperCase()}`, () => this.hooks.mpSend({ t: 'config', botLevel: LV[(LV.indexOf(lvl) + 1) % 3] }), { disabled: !isHost, color: '#b8a0ff', size: 7 });
-    this.button(cx + 6 * u, y, bw, bh, 'COMPLETAR COM ROBÔS', () => this.hooks.mpSend({ t: 'fillBots' }), { disabled: !isHost || free <= 0, color: '#b8a0ff', size: 7 });
+    this.button(cx - bw - bgap, y, bw, bh, `ROBÔS: ${DIFFICULTY[lvl].toUpperCase()}`, () => this.hooks.mpSend({ t: 'config', botLevel: LV[(LV.indexOf(lvl) + 1) % 3] }), { disabled: !isHost, color: '#b8a0ff', size: 7 });
+    this.button(cx + bgap, y, bw, bh, 'COMPLETAR COM ROBÔS', () => this.hooks.mpSend({ t: 'fillBots' }), { disabled: !isHost || free <= 0, color: '#b8a0ff', size: 7 });
     y += bh + 4 * u;
-    if (!isHost) text(c, 'Só o anfitrião muda o modo, a arena e os robôs.', cx, y + 6 * u, 5, '#887', 'center', u);
+    const onlyHost = 'Só o anfitrião muda o modo, a arena e os robôs.';
+    if (!isHost) text(c, onlyHost, cx, y + 6 * u, fitSize(c, onlyHost, this.phone ? 6 : 5, W - 24 * u, u), '#887', 'center', u);
     y += 12 * u;
-    // Vagas por equipe.
+    // Rodapé: em pé, SAIR e PRONTO numa linha e INICIAR PARTIDA embaixo, largo.
+    const fbH = (this.phone ? 30 : 28) * u;
+    const by = H - fbH - 10 * u, by1 = tall ? by - fbH - 6 * u : by;
+    // Vagas por equipe (em pé: as duas equipes empilhadas).
     const half = room.seats / 2; // ffa: 4 vagas em 2×2 (cada vaga é um lado)
-    const sw = Math.min(250 * u, (W - 40 * u) / 2 - 6 * u), sh = Math.min(54 * u, (H - y - 120 * u) / half - 6 * u);
-    const small = (x0, y0, w0, label, onClick, color) => this.button(x0, y0, w0, 16 * u, label, onClick, { color, size: 5.5 });
+    const headH = 14 * u, heads = tall && room.mode !== 'ffa' ? 2 : 1;
+    const sw = tall ? W - 24 * u : Math.min(250 * u, (W - 40 * u) / 2 - 6 * u);
+    const sh = Math.min(54 * u, (by1 - 26 * u - y - heads * headH) / (tall ? room.seats : half) - 6 * u);
+    const smH = (this.phone ? 20 : 16) * u, smSz = this.phone ? 6 : 5.5;
+    const small = (x0, y0, w0, label, onClick, color) => this.button(x0, y0, w0, smH, label, onClick, { color, size: smSz });
+    const tap = this.touchMode ? 'toque' : 'clique';
+    let colY = y;
     for (let side = 0; side < 2; side++) {
-      const x = cx + (side === 0 ? -sw - 6 * u : 6 * u);
-      if (room.mode === 'ffa') { if (side === 0) text(c, 'TODOS CONTRA TODOS · último de pé vence', cx, y + 8 * u, 8, '#ff9ab0', 'center', u); }
-      else text(c, side === 0 ? 'EQUIPE A' : 'EQUIPE B', x + sw / 2, y + 8 * u, 8, side === 0 ? '#ffd23a' : '#ff4a5a', 'center', u);
+      const x = tall ? cx - sw / 2 : cx + (side === 0 ? -sw - 6 * u : 6 * u);
+      let sy0 = tall ? colY : y;
+      if (room.mode === 'ffa') {
+        const ffaTxt = 'TODOS CONTRA TODOS · último de pé vence';
+        if (side === 0) { text(c, ffaTxt, cx, y + 8 * u, fitSize(c, ffaTxt, 8, W - 24 * u, u), '#ff9ab0', 'center', u); sy0 += headH; } else if (!tall) sy0 += headH;
+      } else {
+        text(c, side === 0 ? 'EQUIPE A' : 'EQUIPE B', x + sw / 2, sy0 + 8 * u, 8, side === 0 ? '#ffd23a' : '#ff4a5a', 'center', u);
+        sy0 += headH;
+      }
       for (let k = 0; k < half; k++) {
         const seat = side === 0 ? (room.mode === '1v1' ? 0 : k) : (room.mode === '1v1' ? 1 : half + k);
         const p = room.players.find((q) => q.seat === seat);
-        const sy = y + 14 * u + k * (sh + 6 * u);
+        const sy = sy0 + k * (sh + 6 * u);
         panel(c, x, sy, sw, sh, u, p ? (p.bot ? '#8a70d0' : p.ready ? '#7ad84a' : '#8a7a5a') : '#3a302a');
         if (room.mode === 'ffa') { c.fillStyle = FFA_COLORS[seat]; c.fillRect(x, sy, 4 * u, sh); text(c, 'J' + (seat + 1), x + sw - 6 * u, sy + sh - 5 * u, 6, FFA_COLORS[seat], 'right', u); }
         if (p && p.bot) {
@@ -609,57 +666,71 @@ export class UI {
             small(x + sw - 128 * u, sy + 5 * u, 58 * u, 'NOVO TIME', () => this.hooks.mpSend({ t: 'botTeam', seat }), '#b8a0ff');
             small(x + sw - 66 * u, sy + 5 * u, 58 * u, 'REMOVER', () => this.hooks.mpSend({ t: 'removeBot', seat }), '#ff8a8a');
           } else {
-            text(c, 'clique para ocupar', x + sw - 8 * u, sy + 14 * u, 5, '#998', 'right', u);
+            text(c, `${tap} para ocupar`, x + sw - 8 * u, sy + 14 * u, this.phone ? 6 : 5, '#998', 'right', u);
             this.button(x, sy, sw, sh, '', () => this.hooks.mpSend({ t: 'seat', seat }), { custom: true });
           }
         } else if (p) {
-          text(c, p.name + (p.id === room.host ? ' ★' : '') + (p.id === mp.myId ? ' (você)' : ''), x + 8 * u, sy + 14 * u, fitSize(c, p.name + ' (você) ★', 7, sw - 16 * u, u), p.connected ? '#fff' : '#888', 'left', u);
+          const who = p.name + (p.id === room.host ? ' ★' : '') + (p.id === mp.myId ? ' (você)' : '');
+          text(c, who, x + 8 * u, sy + 14 * u, fitSize(c, p.name + ' (você) ★', 7, sw - 90 * u, u), p.connected ? '#fff' : '#888', 'left', u);
           text(c, p.ready ? 'PRONTO' : 'esperando...', x + sw - 8 * u, sy + 14 * u, 6, p.ready ? '#7ad84a' : '#bba', 'right', u);
           (p.team || []).forEach((key, i) => this.drawMonsterArt(SPECIES[key], x + 30 * u + i * 44 * u, sy + sh - 6 * u, 1, i + seat));
-          if (!p.team) text(c, 'sem time', x + 8 * u, sy + sh - 10 * u, 5, '#887', 'left', u);
+          if (!p.team) text(c, 'sem time', x + 8 * u, sy + sh - 10 * u, this.phone ? 6 : 5, '#887', 'left', u);
           // Seu lugar: troca o time sem sair da sala (volta para cá depois de confirmar).
-          if (p.id === mp.myId) small(x + sw - (room.mode === 'ffa' ? 104 : 84) * u, sy + sh - 20 * u, 78 * u, 'TROCAR TIME', () => this.editRoomTeam(p.team), '#ffd23a');
+          if (p.id === mp.myId) small(x + sw - (room.mode === 'ffa' ? 104 : 84) * u, sy + sh - smH - 4 * u, 78 * u, 'TROCAR TIME', () => this.editRoomTeam(p.team), '#ffd23a');
         } else if (isHost) {
           text(c, 'vaga livre', x + sw / 2, sy + sh / 2 - 6 * u, 7, '#776', 'center', u);
           small(x + sw / 2 - 98 * u, sy + sh / 2, 92 * u, 'SENTAR AQUI', () => this.hooks.mpSend({ t: 'seat', seat }), '#ffd23a');
           small(x + sw / 2 + 6 * u, sy + sh / 2, 92 * u, '+ ROBÔ', () => this.hooks.mpSend({ t: 'addBot', seat }), '#b8a0ff');
         } else {
           text(c, 'vaga livre', x + sw / 2, sy + sh / 2 - 2 * u, 7, '#776', 'center', u);
-          text(c, 'clique para sentar aqui', x + sw / 2, sy + sh / 2 + 9 * u, 5, '#665', 'center', u);
+          text(c, `${tap} para sentar aqui`, x + sw / 2, sy + sh / 2 + 9 * u, this.phone ? 6 : 5, '#665', 'center', u);
           this.button(x, sy, sw, sh, '', () => this.hooks.mpSend({ t: 'seat', seat }), { custom: true });
         }
       }
+      colY = sy0 + half * (sh + 6 * u);
     }
-    const by = H - 40 * u;
-    if (!me?.team) text(c, 'Escolha seu time em TROCAR TIME', cx, by - 18 * u, 6, '#ff9a6a', 'center', u);
-    this.button(cx - 270 * u, by, 120 * u, 28 * u, 'SAIR', () => this.hooks.mpLeave(), { back: true, color: '#aa9' });
-    this.button(cx - 130 * u, by, 150 * u, 28 * u, me?.ready ? 'DESMARCAR' : 'PRONTO', () => this.hooks.mpSend({ t: 'ready', ready: !me?.ready }), { color: '#7ad84a', disabled: !me?.team });
+    if (!me?.team) text(c, 'Escolha seu time em TROCAR TIME', cx, by1 - 18 * u, this.phone ? 6.5 : 6, '#ff9a6a', 'center', u);
     const allReady = room.players.length === room.seats && room.players.every((p) => p.team && (p.ready || p.id === room.host));
-    this.button(cx + 40 * u, by, 220 * u, 28 * u, 'INICIAR PARTIDA', () => this.hooks.mpSend({ t: 'start' }), { disabled: !isHost || !allReady, color: '#ff8a3a' });
+    const leave = () => this.hooks.mpLeave(), ready = () => this.hooks.mpSend({ t: 'ready', ready: !me?.ready }), start = () => this.hooks.mpSend({ t: 'start' });
+    if (tall) {
+      const hw = (W - 30 * u) / 2;
+      this.button(cx - hw - 5 * u, by1, hw, fbH, 'SAIR', leave, { back: true, color: '#aa9' });
+      this.button(cx + 5 * u, by1, hw, fbH, me?.ready ? 'DESMARCAR' : 'PRONTO', ready, { color: '#7ad84a', disabled: !me?.team });
+      this.button(cx - hw - 5 * u, by, hw * 2 + 10 * u, fbH, 'INICIAR PARTIDA', start, { disabled: !isHost || !allReady, color: '#ff8a3a' });
+    } else {
+      this.button(cx - 270 * u, by, 120 * u, fbH, 'SAIR', leave, { back: true, color: '#aa9' });
+      this.button(cx - 130 * u, by, 150 * u, fbH, me?.ready ? 'DESMARCAR' : 'PRONTO', ready, { color: '#7ad84a', disabled: !me?.team });
+      this.button(cx + 40 * u, by, 220 * u, fbH, 'INICIAR PARTIDA', start, { disabled: !isHost || !allReady, color: '#ff8a3a' });
+    }
     const need = room.seats - room.players.length;
     const msg = need > 0 ? (isHost ? `Faltam ${need}: chame amigos ou use + ROBÔ` : `Aguardando ${need} jogador${need > 1 ? 'es' : ''}...`) : allReady ? 'Todos prontos!' : 'Aguardando todos ficarem prontos...';
-    text(c, msg, cx, by - 8 * u, 6, '#ffe066', 'center', u);
+    text(c, msg, cx, by1 - 8 * u, fitSize(c, msg, this.phone ? 6.5 : 6, W - 24 * u, u), '#ffe066', 'center', u);
   }
 
   renderArena(u, W, H) {
-    const c = this.c, cx = W / 2;
-    text(c, 'ESCOLHA A ARENA', cx, 30 * u, 13, '#ffe9b0', 'center', u);
+    const c = this.c, cx = W / 2, tr = this.flow === 'training';
+    // Celular em pé: 2 colunas e o botão de modo embaixo do título (no canto ele ficava por cima do título).
+    const stack = this.phone && this.portrait;
+    text(c, 'ESCOLHA A ARENA', cx, (stack ? 26 : 30) * u, 13, '#ffe9b0', 'center', u);
     const ids = ARENA_ORDER;
     // Layout que sempre cabe: botões fixos no rodapé, descrição acima deles, cartões no espaço restante.
-    const btnH = 28 * u, btnY = H - btnH - 10 * u;
-    const descH = 24 * u;
-    const top = 44 * u, bottom = btnY - descH - 8 * u;
+    const btnH = (this.phone ? 32 : 28) * u, btnY = H - btnH - 10 * u;
+    const dsz = this.phone ? 7 : 5.5, dLines = stack ? 4 : 2;
+    const descH = (dLines * (dsz + 3.5) + 8) * u;
+    const top = (stack && !tr ? 70 : 44) * u, bottom = btnY - descH - 8 * u;
     const gap = 8 * u;
-    const cols = ids.length > 4 ? 3 : 2, rows = Math.ceil(ids.length / cols);
-    const ch = Math.floor((bottom - top - gap * (rows - 1)) / rows);
+    const cols = stack ? 2 : ids.length > 4 ? 3 : 2, rows = Math.ceil(ids.length / cols);
+    const chMax = Math.floor((bottom - top - gap * (rows - 1)) / rows);
     const cwMax = Math.floor((Math.min(W - 24 * u, 1100 * u) - gap * (cols - 1)) / cols);
     // Celular: só nome e subtítulo (maiores); os recursos ficavam com letra de ~2 px e vazavam do cartão.
-    const textH = (this.phone ? 30 : rows > 2 ? 40 : 56) * u; // nome + subtítulo + linhas de recursos
+    const textH = (this.phone ? 40 : rows > 2 ? 40 : 56) * u; // nome + subtítulo + linhas de recursos
     // Prévia 16:9 que cabe na altura e na largura do cartão.
-    let ph = Math.min(ch - textH - 8 * u, (cwMax - 12 * u) * 9 / 16);
+    let ph = Math.min(chMax - textH - 8 * u, (cwMax - 12 * u) * 9 / 16);
     ph = Math.max(40 * u, ph);
     const pw = ph * 16 / 9;
     const cw = Math.min(cwMax, pw + 12 * u);
+    // No celular o cartão tem só a altura do conteúdo (antes esticava até o rodapé e sobrava um vazio enorme).
+    const ch = this.phone ? Math.min(chMax, ph + textH + 8 * u) : chMax;
     const x0 = cx - (cw * cols + gap * (cols - 1)) / 2;
     ids.forEach((id, k) => {
       const A = ARENAS[id];
@@ -674,7 +745,8 @@ export class UI {
       }
       const ty = y + ph + (this.phone ? 18 : 20) * u;
       text(c, A.name.toUpperCase(), x + 8 * u, ty, fitSize(c, A.name.toUpperCase(), this.phone ? 9 : 7, cw - 16 * u, u), sel ? '#ffd23a' : '#f4ead0', 'left', u);
-      text(c, A.subtitle, x + 8 * u, ty + (this.phone ? 12 : 11) * u, fitSize(c, A.subtitle, this.phone ? 6.5 : 5, cw - 16 * u, u), '#bba', 'left', u);
+      if (this.phone) para(c, A.subtitle, x + 8 * u, ty + 12 * u, 6.5, cw - 16 * u, '#bba', 'left', u, 9.5, 2);
+      else text(c, A.subtitle, x + 8 * u, ty + 11 * u, fitSize(c, A.subtitle, 5, cw - 16 * u, u), '#bba', 'left', u);
       if (this.phone) { this.button(x, y, cw, ch, '', () => { this.arena = id; }, { custom: true }); return; }
       // Recursos em linhas curtas (cortadas ao espaço disponível).
       let ly = ty + 22 * u;
@@ -686,16 +758,91 @@ export class UI {
       this.button(x, y, cw, ch, '', () => { this.arena = id; }, { custom: true });
     });
     const A = this.arena && ARENAS[this.arena];
-    const desc = A ? A.description : 'Clique em uma arena para selecioná-la.';
-    const dsz = this.phone ? 6.5 : 5.5;
-    wrap(c, desc, dsz, Math.min(W - 40 * u, 700 * u), u).slice(0, 2).forEach((ln, k) => text(c, ln, cx, bottom + 16 * u + k * 10 * u, dsz, '#e8dcc0', 'center', u));
-    this.button(cx - 170 * u, btnY, 150 * u, btnH, 'VOLTAR', () => this.go('team'), { back: true, color: '#aa9' });
-    const tr = this.flow === 'training';
-    if (!tr) this.button(W - 214 * u, 12 * u, 202 * u, 22 * u, this.ffaLocal ? 'MODO: 1v1v1v1 (você + 3 IAs)' : 'MODO: 1v1 (contra 1 IA)', () => { this.ffaLocal = !this.ffaLocal; }, { color: this.ffaLocal ? '#ff5a8a' : '#ff8a3a', size: 6 });
-    this.button(cx + 20 * u, btnY, 150 * u, btnH, tr ? 'TREINAR!' : 'LUTAR!', () => this.hooks.startBattle({ team: [...this.team], arena: this.arena, training: tr, ffa: !tr && !!this.ffaLocal }), { disabled: !this.arena, color: tr ? '#d8c08a' : '#ff8a3a' });
+    const desc = A ? A.description : this.touchMode ? 'Toque em uma arena para selecioná-la.' : 'Clique em uma arena para selecioná-la.';
+    // Descrição logo abaixo dos cartões (no celular eles não vão mais até o rodapé).
+    const dy = this.phone ? top + rows * ch + (rows - 1) * gap + 18 * u : bottom + 16 * u;
+    para(c, desc, cx, dy, dsz, Math.min(W - 32 * u, 700 * u), '#e8dcc0', 'center', u, dsz + 3.5, dLines);
+    const bw = Math.min(150 * u, (W - 36 * u) / 2);
+    this.button(cx - bw - 10 * u, btnY, bw, btnH, 'VOLTAR', () => this.go('team'), { back: true, color: '#aa9' });
+    if (!tr) {
+      const [mx, my, mw, mh] = stack ? [cx - 150 * u, 36 * u, 300 * u, 26 * u] : [W - 214 * u, 12 * u, 202 * u, 22 * u];
+      this.button(mx, my, mw, mh, this.ffaLocal ? 'MODO: 1v1v1v1 (você + 3 IAs)' : 'MODO: 1v1 (contra 1 IA)', () => { this.ffaLocal = !this.ffaLocal; }, { color: this.ffaLocal ? '#ff5a8a' : '#ff8a3a', size: this.phone ? 7 : 6 });
+    }
+    this.button(cx + 10 * u, btnY, bw, btnH, tr ? 'TREINAR!' : 'LUTAR!', () => this.hooks.startBattle({ team: [...this.team], arena: this.arena, training: tr, ffa: !tr && !!this.ffaLocal }), { disabled: !this.arena, color: tr ? '#d8c08a' : '#ff8a3a' });
+  }
+
+  // Celular: uma forma por vez (BASE / EVOLUÇÃO) num painel largo, com letra maior. Em pé, tudo numa coluna; deitado,
+  // ficha e mecânica à esquerda e habilidades à direita. As duas formas lado a lado ficavam com letra de ~2 px.
+  renderBestiaryPhone(u, W, H) {
+    const c = this.c, cx = W / 2, tall = this.portrait;
+    text(c, 'MONSTROS', cx, 26 * u, 12, '#ffe9b0', 'center', u);
+    const cols = tall ? 3 : ROSTER.length, tg = 4 * u, th = 22 * u;
+    const tw = (W - 24 * u - (cols - 1) * tg) / cols;
+    ROSTER.forEach((key, k) => {
+      const def = SPECIES[key], sel = this.bestiaryLine === key;
+      this.button(12 * u + (k % cols) * (tw + tg), 34 * u + Math.floor(k / cols) * (th + tg), tw, th, sel ? '» ' + def.name.toUpperCase() + ' «' : def.name.toUpperCase(), () => { this.bestiaryLine = key; }, { color: ELEMENT_COLOR[def.element], size: 6.5 });
+    });
+    let y = 34 * u + Math.ceil(ROSTER.length / cols) * (th + tg) + 2 * u;
+    const forms = formsOf(this.bestiaryLine), fi = this.bestiaryForm ? 1 : 0;
+    const fw = (W - 30 * u) / 2;
+    forms.forEach((d, k) => this.button(12 * u + k * (fw + 6 * u), y, fw, th, `${k ? 'EVOLUÇÃO' : 'BASE'}: ${d.name.toUpperCase()}`, () => { this.bestiaryForm = k; }, { color: k === fi ? ELEMENT_COLOR[d.element] : '#776', size: 6.5 }));
+    y += th + 6 * u;
+    const def = forms[fi], other = forms[1 - fi], col = ELEMENT_COLOR[def.element];
+    const backH = 30 * u, x = 12 * u, pw = W - 24 * u, ph = H - y - backH - 18 * u;
+    panel(c, x, y, pw, ph, u, col);
+    const bottomY = y + ph - 8 * u;
+    // Ficha: arte à esquerda; nome, título e atributos à direita dela.
+    const mh = this.art.models?.[def.sprite]?.h || 40, box = 76 * u;
+    this.drawMonsterArt(def, x + 42 * u, y + box + 4 * u, Math.max(1, Math.floor(Math.min(box, 2.4 * mh * u) / mh)), fi);
+    const ix = x + 88 * u, iw = (tall ? pw : pw / 2) - 96 * u;
+    text(c, def.name.toUpperCase(), ix, y + 18 * u, fitSize(c, def.name.toUpperCase(), 9, iw, u), col, 'left', u);
+    const sub = `${def.title} · ${ELEMENT_NAME[def.element]} · ${def.profile.personality}`;
+    text(c, sub, ix, y + 30 * u, fitSize(c, sub, 6, iw, u), '#bba', 'left', u);
+    [['Vida', def.hp, 260, other.hp], ['Veloc.', def.speed, 80, other.speed], ['Tamanho', def.radius, 14, other.radius]].forEach(([name, v, max, ov], j) => {
+      const sy = y + 40 * u + j * 13 * u;
+      text(c, name, ix, sy + 7 * u, 6, '#e8dcc0', 'left', u);
+      const bx = ix + 56 * u, bw = Math.max(20 * u, iw - 112 * u);
+      c.fillStyle = '#2a201a'; c.fillRect(bx, sy, bw, 7 * u);
+      c.fillStyle = col; c.fillRect(bx, sy, bw * Math.min(1, v / max), 7 * u);
+      const diff = v - ov;
+      text(c, `${v}${fi === 1 && diff ? (diff > 0 ? ' +' : ' ') + diff : ''}`, bx + bw + 4 * u, sy + 7 * u, 6, fi === 1 && diff ? (diff > 0 ? '#7ae07a' : '#ff8a8a') : '#fff', 'left', u);
+    });
+    // Mecânica e traços (em pé, embaixo da ficha; deitado, na coluna da esquerda).
+    const lx = x + 10 * u, lw = (tall ? pw : pw / 2) - 20 * u;
+    let ly = y + box + 20 * u;
+    if (def.sig) {
+      text(c, def.sig.name.toUpperCase(), lx, ly, fitSize(c, def.sig.name.toUpperCase(), 7, lw, u), SIG_COLOR[def.sig.kind] || '#fff', 'left', u);
+      ly = para(c, def.sig.desc, lx, ly + 11 * u, 6, lw, '#f4ead0', 'left', u, 9, tall ? 6 : 8);
+    }
+    for (const tr of def.traits.slice(1)) ly = para(c, '· ' + tr, lx, ly, 6, lw, '#d8ccb0', 'left', u, 9, 2);
+    if (!tall) {
+      const tips = [def.tips, matchText(def.element)].filter(Boolean);
+      ly += 2 * u;
+      for (const tp of tips) if (ly < bottomY - 9 * u) ly = para(c, tp, lx, ly, 6, lw, tp === def.tips ? '#ffe066' : '#9ae070', 'left', u, 9, 3);
+    }
+    // Habilidades: em pé, embaixo; deitado, coluna da direita. A descrição usa as linhas que sobrarem.
+    const ax = tall ? lx : x + pw / 2 + 6 * u, aw = (tall ? pw : pw / 2) - 20 * u;
+    let ay = tall ? ly + 6 * u : y + 16 * u;
+    text(c, 'HABILIDADES', ax, ay, 7, '#ffe9b0', 'left', u);
+    ay += 12 * u;
+    const entries = Object.entries(def.controls);
+    const otherIds = new Set(other.abilities.map((a) => a.id));
+    const descLines = Math.max(0, Math.min(3, Math.floor(((bottomY - ay) / entries.length - 12 * u) / (8.5 * u))));
+    for (const [slot, id] of entries) {
+      const ab = def.abilities.find((a) => a.id === id);
+      if (ay > bottomY) break;
+      const tag = fi === 1 && !otherIds.has(id) ? ' [NOVA]' : '';
+      abilityIcon(c, ab.kind, ax, ay - 7 * u, 8 * u, col);
+      const key = (this.touchMode ? TOUCH_LABEL : KEY_LABEL)[slot];
+      text(c, key, ax + 12 * u, ay, 6, '#ffd23a', 'left', u);
+      text(c, ab.name + tag, ax + 58 * u, ay, fitSize(c, ab.name + tag, 6.5, aw - 58 * u, u), tag ? '#e8b8ff' : '#fff', 'left', u);
+      ay = para(c, ab.desc || '', ax + 12 * u, ay + 10 * u, 5.5, aw - 12 * u, '#bba', 'left', u, 8.5, descLines) + 3 * u;
+    }
+    this.button(cx - 75 * u, H - backH - 10 * u, 150 * u, backH, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
   }
 
   renderBestiary(u, W, H) {
+    if (this.phone) { this.renderBestiaryPhone(u, W, H); return; }
     const c = this.c, cx = W / 2;
     text(c, 'MONSTROS', cx, 34 * u, 14, '#ffe9b0', 'center', u);
     // Abas das linhas evolutivas.
@@ -762,15 +909,21 @@ export class UI {
   renderOptions(u, W, H) {
     const c = this.c, cx = W / 2;
     const S = this.settings;
-    text(c, 'OPÇÕES', cx, 40 * u, 14, '#ffe9b0', 'center', u);
-    const pw = Math.min(520 * u, W - 40 * u);
-    const x = cx - pw / 2;
-    let y = 60 * u;
+    // Celular deitado (360 de altura lógica): as opções em duas colunas para sobrar espaço aos controles.
+    const two = this.phone && !this.portrait;
+    text(c, 'OPÇÕES', cx, (this.phone ? 30 : 40) * u, 14, '#ffe9b0', 'center', u);
+    const pw = Math.min((two ? 760 : 520) * u, W - (this.phone ? 24 : 40) * u);
+    const x = cx - pw / 2, colW = two ? (pw - 16 * u) / 2 : pw;
+    const bw = Math.min(170 * u, colW * 0.48), rh = (this.phone ? 28 : 24) * u;
+    const y0 = (this.phone ? 42 : 60) * u;
+    let y = y0, n = 0;
     const set = (k, v) => { S[k] = v; saveSettings(S); this.hooks.applySettings(S); };
     const row = (label, value, onClick) => {
-      text(c, label, x, y + 16 * u, 7, '#f4ead0', 'left', u);
-      this.button(x + pw - 170 * u, y, 170 * u, 24 * u, value, onClick, { size: 7, color: '#46b4ff' });
-      y += 30 * u;
+      const col = two ? n % 2 : 0, rx = x + col * (colW + 16 * u), ry = two ? y0 + Math.floor(n / 2) * (rh + 6 * u) : y;
+      text(c, label, rx, ry + rh / 2 + 4 * u, fitSize(c, label, 7, colW - bw - 8 * u, u), '#f4ead0', 'left', u);
+      this.button(rx + colW - bw, ry, bw, rh, value, onClick, { size: 7, color: '#46b4ff' });
+      n++;
+      y = two ? y0 + Math.ceil(n / 2) * (rh + 6 * u) : y + rh + 6 * u;
     };
     row('Tremor de tela', S.shake ? 'LIGADO' : 'DESLIGADO', () => set('shake', !S.shake));
     row('Números de dano', S.numbers ? 'LIGADO' : 'DESLIGADO', () => set('numbers', !S.numbers));
@@ -791,20 +944,27 @@ export class UI {
       S.sound = v > 0; set('volume', v);
     });
     y += 4 * u;
-    panel(c, x, y, pw, H - y - 50 * u, u);
-    const ctl = [
+    const backH = (this.phone ? 30 : 28) * u, backY = H - backH - 12 * u;
+    // Controles: os do toque no celular/tablet, os do teclado no PC.
+    const ctl = this.touchMode ? [
+      ['Analógico', 'mover'], ['ATQ', 'ataque à distância (segure para carregar)'], ['GOLPE', 'corpo a corpo'], ['Q / E / F', 'poderes especiais'],
+      ['ESQ', 'esquiva (preso? quebra o combo)'], ['Arrastar botão', 'mirar o poder (volte ao botão para cancelar)'], ['1 2 3', `trocar monstro (recarga ${SWITCH.cooldown}s)`], ['EVO', 'evoluir (com a energia cheia)'],
+    ] : [
       ['WASD / setas', 'mover'], ['Mouse', 'mirar'], ['Botão esquerdo', 'ataque à distância'], ['Botão direito', 'corpo a corpo'],
       ['Q / E / F', 'poderes especiais'], ['Espaço / Shift', 'esquiva (preso? quebra o combo: 35 de energia, recarga 14s)'], ['1 2 3 / Tab', `trocar monstro (recarga ${SWITCH.cooldown}s)`],
       ['G', 'evoluir (com a energia cheia)'], ['H', 'ajuda do monstro em campo'], ['P / Esc', 'pausar'], ['I', 'visão da IA'],
     ];
-    let ly = y + 18 * u;
-    for (const [k, v] of ctl) {
-      if (ly > H - 56 * u) break;
-      text(c, k, x + 14 * u, ly, 6, '#ffd23a', 'left', u);
-      text(c, v, x + 170 * u, ly, 6, '#e8dcc0', 'left', u);
-      ly += 13 * u;
+    const lh = (this.phone ? 11 : 13) * u, kw = (this.phone ? 104 : 156) * u;
+    if (backY - 6 * u - y > 30 * u) {
+      panel(c, x, y, pw, backY - 6 * u - y, u);
+      let ly = y + 16 * u;
+      for (const [k, v] of ctl) {
+        if (ly > backY - 12 * u) break;
+        text(c, k, x + 10 * u, ly, fitSize(c, k, 6, kw - 8 * u, u), '#ffd23a', 'left', u);
+        ly = Math.max(ly + lh, para(c, v, x + 10 * u + kw, ly, 6, pw - kw - 20 * u, '#e8dcc0', 'left', u, 9, 2) + (lh - 9 * u));
+      }
     }
-    this.button(cx - 75 * u, H - 40 * u, 150 * u, 28 * u, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
+    this.button(cx - 75 * u, backY, 150 * u, backH, 'VOLTAR', () => this.go('menu'), { back: true, color: '#aa9' });
   }
 
   // Painel do treino (tecla T): bonecos, bonecos que atiram, recargas, evolução e saída.
@@ -845,15 +1005,18 @@ export class UI {
     c.fillStyle = 'rgba(8,4,2,0.86)';
     c.fillRect(0, 0, W, H);
     const m = world.active || (world.playerTeam !== null ? world.fieldOf(world.playerTeam) : null);
-    const pw = Math.min(W - 30 * u, 720 * u), x = cx - pw / 2;
-    let y = 30 * u;
+    // Celular: textos quebrados em linhas (não encolhidos numa só) e letra maior; em pé, habilidades numa coluna.
+    const ph = this.phone, one = ph && this.portrait;
+    const sm = ph ? 6 : 5.5, tiny = ph ? 5.5 : 4.5, lh = 9;
+    const pw = Math.min(W - (ph ? 20 : 30) * u, 720 * u), x = cx - pw / 2;
+    let y = (ph ? 24 : 30) * u;
     text(c, actions.firstTime ? 'COMO JOGAR' : 'AJUDA', cx, y, 13, '#ffe9b0', 'center', u);
     y += 16 * u;
     const how = this.touchMode
       ? 'Analógico move · toque num botão = usa mirando no inimigo mais perto · ARRASTE do botão para mirar (volte ao botão para cancelar) · segure ATQ para carregar · 1/2/3 troca · EVO evolui'
       : 'WASD mover · mouse mirar · clique esquerdo/direito atacam · Q/E/F poderes · Espaço esquiva/quebra combo · 1/2/3 troca · G evolui';
-    text(c, how, cx, y, fitSize(c, how, 5.5, pw, u), '#e8dcc0', 'center', u);
-    y += 14 * u;
+    if (ph) y = para(c, how, cx, y, sm, pw, '#e8dcc0', 'center', u, lh) + 5 * u;
+    else { text(c, how, cx, y, fitSize(c, how, 5.5, pw, u), '#e8dcc0', 'center', u); y += 14 * u; }
     if (m) {
       const def = m.def;
       panel(c, x, y, pw, 1, u, ELEMENT_COLOR[def.element]);
@@ -863,36 +1026,39 @@ export class UI {
         y += 13 * u;
         text(c, def.sig.name.toUpperCase(), x + 8 * u, y, 7, SIG_COLOR[def.sig.kind] || '#fff', 'left', u);
         y += 4 * u;
-        for (const ln of wrap(c, def.sig.desc, 5.5, pw - 16 * u, u)) { y += 9 * u; text(c, ln, x + 8 * u, y, 5.5, '#f4ead0', 'left', u); }
+        for (const ln of wrap(c, def.sig.desc, sm, pw - 16 * u, u)) { y += lh * u; text(c, ln, x + 8 * u, y, sm, '#f4ead0', 'left', u); }
       }
       y += 12 * u;
-      const colW = (pw - 16 * u) / 2;
-      let k = 0, y0 = y;
+      const cols = one ? 1 : 2, colW = (pw - 16 * u) / cols, rowH = (one ? 27 : 30) * u;
+      let k = 0;
+      const y0 = y;
       for (const [slot, id] of Object.entries(def.controls)) {
         const ab = def.abilities.find((a) => a.id === id);
-        const col = k % 2, row = Math.floor(k / 2);
-        const bx = x + 8 * u + col * colW, by = y0 + row * 30 * u;
+        const bx = x + 8 * u + (k % cols) * colW, by = y0 + Math.floor(k / cols) * rowH;
         abilityIcon(c, ab.kind, bx, by - 7 * u, 9 * u, ELEMENT_COLOR[def.element]);
         const kl = (this.touchMode ? TOUCH_LABEL : KEY_LABEL)[slot];
-        text(c, `${kl} · ${ab.name}`, bx + 13 * u, by, fitSize(c, `${kl} · ${ab.name}`, 5.5, colW - 18 * u, u), '#ffd23a', 'left', u);
-        wrap(c, ab.desc || '', 4.5, colW - 18 * u, u).slice(0, 2).forEach((ln, j) => text(c, ln, bx + 13 * u, by + (9 + j * 8) * u, 4.5, '#d8ccb0', 'left', u));
+        text(c, `${kl} · ${ab.name}`, bx + 13 * u, by, fitSize(c, `${kl} · ${ab.name}`, sm, colW - 18 * u, u), '#ffd23a', 'left', u);
+        wrap(c, ab.desc || '', tiny, colW - 18 * u, u).slice(0, 2).forEach((ln, j) => text(c, ln, bx + 13 * u, by + (9 + j * 8) * u, tiny, '#d8ccb0', 'left', u));
         k++;
       }
-      y = y0 + Math.ceil(k / 2) * 30 * u;
-      if (def.tips) { text(c, def.tips, x + 8 * u, y, fitSize(c, def.tips, 5, pw - 16 * u, u), '#ffe066', 'left', u); y += 12 * u; }
+      y = y0 + Math.ceil(k / cols) * rowH;
+      if (def.tips) {
+        if (ph) y = para(c, def.tips, x + 8 * u, y, sm, pw - 16 * u, '#ffe066', 'left', u, lh, 3) + 3 * u;
+        else { text(c, def.tips, x + 8 * u, y, fitSize(c, def.tips, 5, pw - 16 * u, u), '#ffe066', 'left', u); y += 12 * u; }
+      }
     }
     // Como ler a tela.
     y += 4 * u;
     const legend = [['stun', 'atordoado'], ['root', 'preso'], ['burn', 'queimando'], ['wet', 'molhado'], ['slow', 'lento'], ['cloak', 'camuflado']];
     let lx = x + 8 * u;
-    for (const [k2, name] of legend) { statusIcon(c, k2, lx, y - 6 * u, 8 * u); text(c, name, lx + 10 * u, y, 5, '#e8dcc0', 'left', u); lx += 64 * u; if (lx > x + pw - 60 * u) { lx = x + 8 * u; y += 12 * u; } }
+    for (const [k2, name] of legend) { statusIcon(c, k2, lx, y - 6 * u, 8 * u); text(c, name, lx + 10 * u, y, ph ? 5.5 : 5, '#e8dcc0', 'left', u); lx += (ph ? 74 : 64) * u; if (lx > x + pw - (ph ? 70 : 60) * u) { lx = x + 8 * u; y += 12 * u; } }
     y += 14 * u;
     for (const ln of [
       'Barra DOURADA sobre a cabeça = golpe IMPARÁVEL (não é interrompido). Branca = acerte para interromper.',
       'Gotas azuis depois de um golpe forte = janela para contra-atacar. Arcos e setas no chão mostram onde o golpe vai pegar.',
       'Triângulo: Fogo > Planta > Água > Fogo (mais dano contra quem você vence). Troque de monstro para virar o confronto.',
-    ]) { for (const l2 of wrap(c, ln, 5, pw - 16 * u, u)) { text(c, l2, x + 8 * u, y, 5, '#bba', 'left', u); y += 9 * u; } y += 2 * u; }
-    const bw = 200 * u, bh = 28 * u;
+    ]) { for (const l2 of wrap(c, ln, ph ? 5.5 : 5, pw - 16 * u, u)) { text(c, l2, x + 8 * u, y, ph ? 5.5 : 5, '#bba', 'left', u); y += 9 * u; } y += 2 * u; }
+    const bw = 200 * u, bh = (ph ? 30 : 28) * u;
     this.button(cx - bw / 2, Math.min(H - bh - 10 * u, y + 6 * u), bw, bh, actions.firstTime ? 'ENTENDI, LUTAR!' : 'VOLTAR (H)', actions.closeHelp, { color: '#7ad84a' });
     this.drawButtons(u);
   }
@@ -926,16 +1092,16 @@ export class UI {
       this.renderHelp(u, W, H, world, actions);
       return;
     } else if (kind === 'end') {
-      const y = H * 0.66;
-      if (actions.online) {
-        const host = actions.isHost();
-        this.button(cx - bw - 6 * u, y, bw, bh, host ? 'VOLTAR À SALA' : 'AGUARDANDO ANFITRIÃO', actions.backToRoom, { color: '#ff8a3a', disabled: !host, size: 7 });
-        this.button(cx + 6 * u, y, bw, bh, 'SAIR DA SALA', actions.leaveOnline, { color: '#aa9' });
-      } else {
-        this.button(cx - bw * 1.5 - 10 * u, y, bw, bh, 'REVANCHE', actions.rematch, { color: '#ff8a3a' });
-        this.button(cx - bw / 2, y, bw, bh, 'OUTRO TIME/ARENA', actions.reselect, { color: '#7ad84a' });
-        this.button(cx + bw / 2 + 10 * u, y, bw, bh, 'MENU PRINCIPAL', actions.menu, { color: '#aa9' });
-      }
+      // Celular em pé: botões um embaixo do outro (lado a lado passavam da largura da tela).
+      const col = this.phone && this.portrait;
+      const list = actions.online
+        ? [[actions.isHost() ? 'VOLTAR À SALA' : 'AGUARDANDO ANFITRIÃO', actions.backToRoom, { color: '#ff8a3a', disabled: !actions.isHost(), size: 7 }], ['SAIR DA SALA', actions.leaveOnline, { color: '#aa9' }]]
+        : [['REVANCHE', actions.rematch, { color: '#ff8a3a' }], ['OUTRO TIME/ARENA', actions.reselect, { color: '#7ad84a' }], ['MENU PRINCIPAL', actions.menu, { color: '#aa9' }]];
+      const g = (col ? 8 : actions.online ? 12 : 10) * u;
+      list.forEach(([label, fn, opts], k) => {
+        if (col) this.button(cx - bw / 2, H - (list.length - k) * (bh + g) - 8 * u, bw, bh, label, fn, opts);
+        else this.button(cx - (list.length * bw + (list.length - 1) * g) / 2 + k * (bw + g), H * 0.66, bw, bh, label, fn, opts);
+      });
     }
     this.drawButtons(u);
     void world;

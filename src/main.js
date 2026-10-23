@@ -478,7 +478,7 @@ const touch = createTouchControls({
   hold: (slot, v) => { if (world) world.input.held[slot] = v; },
   key: (code) => window.dispatchEvent(new KeyboardEvent('keydown', { code })),
   getWorld: () => world,
-  getLayout: () => ({ top: 64 * (renderer.hudScale || 1) }), // altura dos cartões do topo (px CSS)
+  getLayout: () => ({ top: renderer.hudTop ?? 64 * (renderer.hudScale || 1) }), // altura da faixa dos cartões do topo (px CSS)
 });
 
 // Código da sala sem teclado físico (tablet): um campo invisível abre o teclado da tela; o que for digitado vai
@@ -571,7 +571,7 @@ function drawNotice(c, dt) {
   if (!notice) return;
   notice.t -= dt;
   if (notice.t <= 0) { notice = null; return; }
-  const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
+  const u = ui.scale(canvas.width, canvas.height, hud.dpr);
   c.save();
   c.font = `${8 * u}px "Press Start 2P", monospace`;
   c.textAlign = 'center';
@@ -618,7 +618,7 @@ function frame(now) {
     drawRotateHint(c, dt);
     drawNotice(c, dt);
     if (overlay) {
-      const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
+      const u = ui.scale(canvas.width, canvas.height, hud.dpr);
       ui.time += dt;
       ui.renderOverlay(overlay, u, canvas.width, canvas.height, world, { ...overlayActions, online: true });
     }
@@ -642,7 +642,7 @@ function frame(now) {
     drawRotateHint(c, dt);
     drawNotice(c, dt);
     if (overlay) {
-      const u = Math.max(1, Math.min(canvas.width / 760, canvas.height / 520));
+      const u = ui.scale(canvas.width, canvas.height, hud.dpr);
       ui.time += dt;
       ui.renderOverlay(overlay, u, canvas.width, canvas.height, world, overlayActions);
     }

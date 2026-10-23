@@ -427,9 +427,9 @@ function comboPrompt(c, world, x, y, dpr) {
 }
 
 // Todos-contra-todos: um painel por adversário no alto (nome na cor da vaga, os 3 monstros, eliminação e campeão).
-function ffaPanels(c, world, slots, x0, x1, y, dpr, oy) {
+function ffaPanels(c, world, slots, x0, x1, y, dpr, oy, maxH = oy - 2 * y) {
   const n = slots.length, gap = 5 * dpr;
-  const pw = Math.min(150 * dpr, (x1 - x0 - gap * (n - 1)) / n), ph = Math.min(66 * dpr, oy - 2 * y);
+  const pw = Math.min(150 * dpr, (x1 - x0 - gap * (n - 1)) / n), ph = Math.min(66 * dpr, maxH);
   const startX = x1 - (pw * n + gap * (n - 1));
   slots.forEach((slot, k) => {
     const x = startX + k * (pw + gap);
@@ -501,10 +501,19 @@ export function drawHud(c, r, world, ui) {
   const mateSlots = slots.filter((i) => world.teams[i].side === mySide && i !== myTeam);
   const ffa = !!world.ffa;
   const left = world.teamOf(myTeam), right = world.teamOf(foeSlots[0]);
-  const cw = Math.min(118 * dpr, (aw - 150 * dpr) / (ffa ? 8 : 6) - 4 * dpr);
-  left.forEach((m, k) => card(c, r, world, m, k, ox + k * (cw + 4 * dpr), 6 * dpr, cw, dpr));
-  if (ffa) ffaPanels(c, world, foeSlots, ox + aw / 2 + 74 * dpr, ox + aw, 6 * dpr, dpr, oy);
-  else right.forEach((m, k) => card(c, r, world, m, k, ox + aw - (k + 1) * cw - k * 4 * dpr, 6 * dpr, cw, dpr));
+  // Celular em pé (r.hudTall): cronômetro sozinho no alto; embaixo, uma linha com o seu time e outra com o adversário.
+  const tall = r.hudTall, W = c.canvas.width;
+  if (tall) {
+    const cw = Math.min(140 * dpr, (W - 16 * dpr) / 3), x0 = W / 2 - (cw * 3 + 8 * dpr) / 2;
+    left.forEach((m, k) => card(c, r, world, m, k, x0 + k * (cw + 4 * dpr), 58 * dpr, cw, dpr));
+    if (ffa) ffaPanels(c, world, foeSlots, x0, W - x0, 115 * dpr, dpr, oy, 56 * dpr);
+    else right.forEach((m, k) => card(c, r, world, m, k, x0 + k * (cw + 4 * dpr), 115 * dpr, cw, dpr));
+  } else {
+    const cw = Math.min(118 * dpr, (aw - 150 * dpr) / (ffa ? 8 : 6) - 4 * dpr);
+    left.forEach((m, k) => card(c, r, world, m, k, ox + k * (cw + 4 * dpr), 6 * dpr, cw, dpr));
+    if (ffa) ffaPanels(c, world, foeSlots, ox + aw / 2 + 74 * dpr, ox + aw, 6 * dpr, dpr, oy);
+    else right.forEach((m, k) => card(c, r, world, m, k, ox + aw - (k + 1) * cw - k * 4 * dpr, 6 * dpr, cw, dpr));
+  }
   // 2v2: parceiro e segundo adversário aparecem em miniatura no alto da arena.
   const mini = (slot, x0, align) => {
     const mons = world.teamOf(slot);
@@ -540,7 +549,7 @@ export function drawHud(c, r, world, ui) {
   mateSlots.forEach((sl) => mini(sl, ox + 4 * dpr, 'left'));
   if (!ffa && foeSlots[1] !== undefined) mini(foeSlots[1], ox + aw - 4 * dpr, 'right');
 
-  const mid = ox + aw / 2;
+  const mid = ox + aw / 2, msgY = (tall ? 184 : 62) * dpr;
   // Painel do cronômetro (centro do alto) e a aba de troca logo abaixo.
   panel(c, mid - 68 * dpr, 3 * dpr, 136 * dpr, 39 * dpr, GOLD, dpr, 8);
   panel(c, mid - 58 * dpr, 41 * dpr, 116 * dpr, 14 * dpr, '#3a5a8a', dpr, 4);
@@ -551,13 +560,13 @@ export function drawHud(c, r, world, ui) {
     // Medidor do treino: dano nos bonecos nos últimos 5 s, por segundo e o último golpe.
     const mt = meter(world);
     text(c, `TREINO · dano 5s ${Math.round(mt.sum)} · ${mt.dps.toFixed(1)}/s`, mid, 36 * dpr, 6, '#d8c08a', 'center', dpr);
-    if (mt.last) text(c, `último golpe ${mt.last.toFixed(1)}`, mid, 62 * dpr, 5, '#bba', 'center', dpr);
+    if (mt.last) text(c, `último golpe ${mt.last.toFixed(1)}`, mid, msgY, 5, '#bba', 'center', dpr);
   } else if (ffa) {
     const left4 = world.sideIds().filter((sd) => aliveSide(sd) > 0).length;
     text(c, `${left4} JOGADOR${left4 === 1 ? '' : 'ES'} EM PÉ`, mid, 36 * dpr, 6, '#ffe9b0', 'center', dpr);
   } else text(c, `${aliveSide(mySide)} × ${aliveSide(1 - mySide)}`, mid, 36 * dpr, 6, '#ffe9b0', 'center', dpr);
-  if (world.suddenDeath && !world.over) text(c, 'MORTE SÚBITA · sem cura', mid, 62 * dpr, 5, Math.floor(performance.now() / 400) % 2 ? '#ff6a6a' : '#ffb0b0', 'center', dpr);
-  else if (world.time >= 130 && !world.over && !world.training) text(c, `Morte súbita em ${Math.ceil(150 - world.time)}s`, mid, 62 * dpr, 5, '#ffb070', 'center', dpr);
+  if (world.suddenDeath && !world.over) text(c, 'MORTE SÚBITA · sem cura', mid, msgY, 5, Math.floor(performance.now() / 400) % 2 ? '#ff6a6a' : '#ffb0b0', 'center', dpr);
+  else if (world.time >= 130 && !world.over && !world.training) text(c, `Morte súbita em ${Math.ceil(150 - world.time)}s`, mid, msgY, 5, '#ffb070', 'center', dpr);
   if (world.playerTeam !== null) {
     const ts = world.teams[myTeam];
     const anyBench = world.teamOf(myTeam).some((m) => m.alive && !m.onField);
@@ -568,7 +577,7 @@ export function drawHud(c, r, world, ui) {
     else { s = 'Troca pronta (1/2/3)'; col = '#7ae07a'; }
     text(c, s, mid, 50 * dpr, 5, col, 'center', dpr);
   } else text(c, 'MODO ESPECTADOR', mid, 50 * dpr, 5, '#ffe9b0', 'center', dpr);
-  if (ui.paused || ui.speed !== 1) text(c, `${ui.paused ? 'PAUSADO' : ''}${ui.speed !== 1 ? ` ${ui.speed}x` : ''}`, mid, 62 * dpr, 5, '#ffe066', 'center', dpr);
+  if (ui.paused || ui.speed !== 1) text(c, `${ui.paused ? 'PAUSADO' : ''}${ui.speed !== 1 ? ` ${ui.speed}x` : ''}`, mid, msgY, 5, '#ffe066', 'center', dpr);
 
   // Registro de eventos (canto inferior esquerdo da arena).
   const feed = world.feed.filter((f) => world.time - f.t < 7).slice(-5);
@@ -581,7 +590,7 @@ export function drawHud(c, r, world, ui) {
   }
   c.globalAlpha = 1;
 
-  if (world.playerTeam !== null && !ui.touch) abilityBar(c, world, ox, aw, oy + ah + 8 * dpr, dpr, r);
+  if (world.playerTeam !== null && !ui.touch && !tall) abilityBar(c, world, ox, aw, oy + ah + 8 * dpr, dpr, r);
   // Cantos de baixo, nas margens fora da arena: sala/ping (online) e modo/arena.
   const cwid = Math.min(128 * dpr, ox - 14 * dpr);
   if (cwid >= 84 * dpr && !ui.touch) { // no toque esses cantos ficam sob o analógico e os botões
@@ -612,8 +621,8 @@ export function drawHud(c, r, world, ui) {
     : 'MODO ESPECTADOR · P pausar · I visão da IA';
   const hsz = fit(c, help, 5, aw, dpr);
   // Câmera aproximada: o mapa passa por baixo do rodapé; faixa escura para a linha de ajuda continuar legível.
-  if (!ui.touch && r.view.zoomed) { c.fillStyle = 'rgba(16,10,8,0.8)'; c.fillRect(0, H - 13 * dpr, c.canvas.width, 13 * dpr); }
-  if (!ui.touch) text(c, help, mid, H - 6 * dpr, hsz, '#887', 'center', dpr);
+  if (!ui.touch && !tall && r.view.zoomed) { c.fillStyle = 'rgba(16,10,8,0.8)'; c.fillRect(0, H - 13 * dpr, c.canvas.width, 13 * dpr); }
+  if (!ui.touch && !tall) text(c, help, mid, H - 6 * dpr, hsz, '#887', 'center', dpr);
   else if (ui.net?.room || ui.net?.rtt) {
     // Toque: sala e ping numa linha embaixo, no meio (entre o analógico e os botões).
     const ms = Math.round(ui.net.rtt || 0);
@@ -636,7 +645,8 @@ export function drawHud(c, r, world, ui) {
     let ly = cy - bh / 2 + 46 * dpr;
     for (const m of [...world.roster].sort((p, q) => q.stats.dmgDealt - p.stats.dmgDealt).slice(0, 6)) {
       const s = m.stats;
-      text(c, `${m.name}${m.alive ? '' : ' (KO)'}: ${Math.round(s.dmgDealt)} dano · ${s.dodges} esquivas · ${s.ignites} incêndios · ${s.douses} apagados`, mid, ly, 5, TEAM_COLOR[m.team], 'center', dpr);
+      const line = `${m.name}${m.alive ? '' : ' (KO)'}: ${Math.round(s.dmgDealt)} dano · ${s.dodges} esquivas · ${s.ignites} incêndios · ${s.douses} apagados`;
+      text(c, line, mid, ly, fit(c, line, 5, bw - 12 * dpr, dpr), TEAM_COLOR[m.team], 'center', dpr);
       ly += 12 * dpr;
     }
     text(c, `Duração ${world.endTime.toFixed(0)}s · ${world.arenaDef.name}`, mid, ly + 8 * dpr, 5, '#ccb', 'center', dpr);
