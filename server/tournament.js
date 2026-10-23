@@ -68,6 +68,7 @@ export class Tournament {
     this.round = r;
     this.phase = 'round';
     const R = this.rounds[r];
+    const queue = [];
     R.matches.forEach((mt, k) => {
       const A = this.entrants[mt.a], B = this.entrants[mt.b];
       if (!A || !B) { mt.state = 'bye'; mt.winner = A ? 'a' : B ? 'b' : null; return; }
@@ -86,8 +87,10 @@ export class Tournament {
       });
       for (const p of entries) p.player.watch = null;
       this.matches.set(mt.id, m);
-      m.start();
+      queue.push({ m, human: entries.some((e) => !e.player.bot) });
     });
+    // Montar um mundo custa ~30-45 ms: um por vez, a cada 60 ms (lutas com gente primeiro), em vez de todos juntos.
+    queue.sort((x, y) => y.human - x.human).forEach(({ m }, i) => { if (i === 0) m.start(); else setTimeout(() => { if (this.matches.get(m.id) === m) m.start(); }, (i * 60) / this.ts()); });
     // Sem luta nesta fase (passou direto ou já caiu): assiste a uma das lutas.
     for (const p of this.room.humans()) if (!this.matchOf(p)) this.autoWatch(p);
     this.broadcast();

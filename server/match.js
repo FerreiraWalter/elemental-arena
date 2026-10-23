@@ -11,6 +11,35 @@ import { serialize, makeSyncCtx, SNAP_HZ } from '../src/net/snapshot.js';
 //   hold: segundos parados antes de começar (tela de "VS" do torneio); o mundo é desenhado mas não anda.
 
 const PRESSES = new Set(['primary', 'melee', 'q', 'e', 'f', 'dodge', 'evolve']);
+
+// ───────────── Agendador único de todas as partidas do servidor ─────────────
+// Antes cada partida tinha o próprio setInterval: no torneio (4 lutas ao mesmo tempo, quase todas de robôs) um pico
+// da IA numa luta de robôs atrasava a luta das pessoas, que depois "corria para alcançar" e mandava vários estados de
+// uma vez — o jogador sentia o monstro travar e o comando demorar. Agora um único relógio passa por todas:
+//   1) partidas com jogador humano conectado andam PRIMEIRO e sempre em tempo real;
+//   2) partidas só de robôs usam a sobra de tempo (BOT_BUDGET ms por volta) e podem ficar um pouco atrás do relógio.
+const live = new Set();
+let schedTimer = null;
+let rr = 0; // revezamento entre as partidas de robôs (nenhuma fica sempre por último)
+const BOT_BUDGET = 3; // ms por volta para as partidas só de robôs
+function schedTick() {
+  const now = process.hrtime.bigint();
+  const all = [...live];
+  for (const m of all) if (m.hasHumans()) m.advance(now, Infinity);
+  const bots = all.filter((m) => !m.hasHumans());
+  if (!bots.length) return;
+  // Testes rodam o servidor acelerado (timeScale): o orçamento das lutas de robôs cresce junto.
+  const BUDGET = BOT_BUDGET * Math.max(1, ...bots.map((m) => m.timeScale));
+  const t0 = performance.now();
+  rr = (rr + 1) % bots.length;
+  for (let k = 0; k < bots.length; k++) {
+    const m = bots[(rr + k) % bots.length];
+    m.advance(now, k === 0 ? t0 + BUDGET : Math.max(t0 + BUDGET, performance.now() + 0.5)); // a primeira sempre anda um pouco
+    if (performance.now() - t0 > BUDGET * 2) { for (let j = k + 1; j < bots.length; j++) bots[(rr + j) % bots.length].touch(now); break; }
+  }
+}
+function schedAdd(m) { live.add(m); if (!schedTimer) schedTimer = setInterval(schedTick, 4); }
+function schedRemove(m) { live.delete(m); if (!live.size && schedTimer) { clearInterval(schedTimer); schedTimer = null; } }
 const SNAP_EVERY = Math.round(60 / SNAP_HZ);
 const num = (v, lo, hi, def = 0) => (Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : def);
 
@@ -37,6 +66,8 @@ export class Match {
   players() { return this.entries.map((e) => e.player); }
   seatOf(player) { return this.entries.find((e) => e.player === player)?.seat ?? -1; }
   has(player) { return this.seatOf(player) >= 0; }
+  // Alguém de carne e osso jogando (conectado): a partida tem prioridade no agendador.
+  hasHumans() { return this.entries.some((e) => !e.player.bot && e.player.connected && this.world?.humans.has(e.seat)); }
   playerList() { return this.entries.map((e) => ({ id: e.player.id, name: e.player.name, seat: e.seat, bot: !!e.player.bot })); }
   // Jogadores (vagas humanas conectadas) e espectadores, sem repetir.
   audience() { const set = new Set(this.players().filter((p) => p.connected)); for (const v of this.viewers()) if (v.connected) set.add(v); return [...set]; }
@@ -62,7 +93,7 @@ export class Match {
     this.acc = 0;
     this.last = process.hrtime.bigint();
     this.tickN = 0;
-    this.timer = setInterval(() => this.loop(), 4); // 4 ms: snapshots saem com no máximo ~4 ms de irregularidade
+    schedAdd(this);
     this.pushSnapshot();
   }
 
@@ -73,17 +104,27 @@ export class Match {
     player.send(JSON.stringify(this.fullSnapshot()));
   }
 
-  loop() {
+  // Só acumula o tempo que passou (partida de robôs que ficou sem vez nesta volta do agendador).
+  touch(now) {
+    const dt = (Number(now - this.last) / 1e9) * this.timeScale;
+    this.last = now;
+    if (this.holdLeft > 0) this.holdLeft -= dt;
+    else this.acc = Math.min(this.acc + dt, 3 * this.timeScale);
+  }
+
+  // Avança a simulação até alcançar o relógio (ou até `deadline`, em ms de performance.now()).
+  // Com jogador: no máximo 0,25 s de atraso acumulado; só robôs: até 3 s (ela recupera quando sobra tempo).
+  advance(now, deadline) {
     try {
-      const now = process.hrtime.bigint();
       const dt = (Number(now - this.last) / 1e9) * this.timeScale;
       this.last = now;
       if (this.holdLeft > 0) { this.holdLeft -= dt; if (++this.tickN % 12 === 0) this.pushSnapshot(); return; }
-      this.acc = Math.min(this.acc + dt, 0.25 * this.timeScale);
+      this.acc = Math.min(this.acc + dt, (this.hasHumans() ? 0.25 : 3) * this.timeScale);
       while (this.acc >= DT && !this.world.over) {
         this.world.step(DT);
         this.acc -= DT;
         if (++this.tickN % SNAP_EVERY === 0) this.pushSnapshot();
+        if (performance.now() > deadline) break;
       }
       if (this.world.over) this.finish();
     } catch (e) {
@@ -97,12 +138,15 @@ export class Match {
   // pulamos os snapshots dele e, quando a fila esvazia, mandamos um snapshot COMPLETO e atual.
   // force: o snapshot final da partida vai para todos, mesmo com fila cheia (senão o jogador não vê o fim).
   pushSnapshot(force = false) {
+    // Ninguém de carne e osso vendo (luta de robôs sem espectador): não monta o estado. Os eventos são descartados; o
+    // terreno continua sendo comparado com o último enviado, então quem passar a assistir recebe tudo certo.
+    const aud = this.audience().filter((p) => !p.bot);
+    if (!aud.length && !force) { this.world.drainEvents(); return; }
     const snap = serialize(this.world, this.sync);
     snap.match = this.id; // o cliente descarta snapshot de outra luta (troca de luta no torneio)
     const s = JSON.stringify(snap);
     let full = null;
-    for (const p of this.audience()) {
-      if (p.bot) continue;
+    for (const p of aud) {
       if (!force && p.send.lagging?.()) { p.stale = true; continue; }
       if (p.stale) { full ||= JSON.stringify(this.fullSnapshot()); p.send(full); p.stale = false; continue; }
       p.send(s);
@@ -170,7 +214,7 @@ export class Match {
     if (this.state !== 'playing') return;
     this.pushSnapshot(true);
     this.state = 'over';
-    clearInterval(this.timer); this.timer = null;
+    schedRemove(this);
     const w = this.world;
     const names = {};
     for (const e of this.entries) names[e.seat] = e.player.name;
@@ -183,5 +227,5 @@ export class Match {
     this.onEnd?.(result, this);
   }
 
-  stop() { if (this.timer) clearInterval(this.timer); this.timer = null; if (this.state === 'playing') this.state = 'over'; }
+  stop() { schedRemove(this); if (this.state === 'playing') this.state = 'over'; }
 }

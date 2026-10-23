@@ -51,19 +51,27 @@ export class PathGrid {
   }
 
   // Caminho (lista de pontos no centro dos tiles) de (x0,y0) até (x1,y1); null se não houver.
+  // Desempenho (servidor com várias lutas de IA ao mesmo tempo, ver server/match.js): fila de prioridade em heap
+  // binário (antes: varredura da lista inteira a cada passo, quadrático), passagem de cada tile calculada uma vez por
+  // busca e custos/origens em arrays tipados reaproveitados (antes: Map/Set novos a cada chamada).
   find(x0, y0, x1, y1, swimmer, maxNodes = 2600, waterCost = 0) {
     this.refresh();
     const tr = this.w.terrain;
     const start = tr.at(x0, y0), goal0 = tr.at(x1, y1);
     if (start < 0 || goal0 < 0) return null;
+    const N = COLS * ROWS;
+    if (!this.gBuf) { this.gBuf = new Float64Array(N); this.came = new Int32Array(N); this.seen = new Uint32Array(N); this.done = new Uint32Array(N); this.pass = new Int8Array(N); this.passGen = new Uint32Array(N); this.gen = 0; this.heap = []; }
+    const gen = ++this.gen;
+    const gB = this.gBuf, came = this.came, seen = this.seen, done = this.done, pass = this.pass, passGen = this.passGen;
+    const ok = (j) => { if (j < 0) return false; if (passGen[j] !== gen) { passGen[j] = gen; pass[j] = this.passable(j, swimmer) ? 1 : 0; } return pass[j] === 1; };
     // Se o destino não é passável (ex.: inimigo nadando), mira o tile passável mais próximo dele.
     let goal = goal0;
-    if (!this.passable(goal, swimmer)) {
+    if (!ok(goal)) {
       let best = -1, bd = Infinity;
       const gc = goal0 % COLS, gr = (goal0 / COLS) | 0;
       for (let r = gr - 6; r <= gr + 6; r++) for (let c = gc - 6; c <= gc + 6; c++) {
         const j = tr.idx(c, r);
-        if (j < 0 || !this.passable(j, swimmer)) continue;
+        if (j < 0 || !ok(j)) continue;
         const d = Math.hypot(c - gc, r - gr);
         if (d < bd) { bd = d; best = j; }
       }
@@ -71,39 +79,36 @@ export class PathGrid {
       goal = best;
     }
     const gc = goal % COLS, gr = (goal / COLS) | 0;
-    const g = new Map([[start, 0]]);
-    const came = new Map();
-    const open = [[Math.hypot((start % COLS) - gc, ((start / COLS) | 0) - gr), start]];
-    const closed = new Set();
+    // Heap de pares [f, tile] (menor f no topo).
+    const heap = this.heap; heap.length = 0;
+    const push = (f, j) => { heap.push([f, j]); let i = heap.length - 1; while (i > 0) { const pi = (i - 1) >> 1; if (heap[pi][0] <= heap[i][0]) break; [heap[pi], heap[i]] = [heap[i], heap[pi]]; i = pi; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+    seen[start] = gen; gB[start] = 0; came[start] = -1;
+    push(Math.hypot((start % COLS) - gc, ((start / COLS) | 0) - gr), start);
     let found = false, n = 0;
-    while (open.length && n++ < maxNodes) {
-      // fila de prioridade simples (a grade é pequena: 80×45)
-      let bi = 0;
-      for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k;
-      const [, cur] = open[bi];
-      open[bi] = open[open.length - 1]; open.pop();
+    while (heap.length && n++ < maxNodes) {
+      const cur = pop()[1];
       if (cur === goal) { found = true; break; }
-      if (closed.has(cur)) continue;
-      closed.add(cur);
-      const cc = cur % COLS, cr = (cur / COLS) | 0;
+      if (done[cur] === gen) continue;
+      done[cur] = gen;
+      const cc = cur % COLS, cr = (cur / COLS) | 0, gCur = gB[cur];
       for (const [dx, dy, cost] of N8) {
         const j = tr.idx(cc + dx, cr + dy);
-        if (j < 0 || closed.has(j) || (!this.passable(j, swimmer) && j !== start)) continue;
+        if (j < 0 || done[j] === gen || (!ok(j) && j !== start)) continue;
         if (Math.abs(tr.height[j] - tr.height[cur]) > 0.55) continue;
-        if (dx && dy && (!this.passable(tr.idx(cc + dx, cr), swimmer) || !this.passable(tr.idx(cc, cr + dy), swimmer))) continue;
+        if (dx && dy && (!ok(tr.idx(cc + dx, cr)) || !ok(tr.idx(cc, cr + dy)))) continue;
         // Quem evita água (a direção da IA recusa tiles aquáticos) contorna por pontes em vez de planejar pela água.
         const step = cost * (1 + (props(tr.type[j]).water && !swimmer ? 0.8 + Math.max(0, waterCost) * 6 : 0) + (tr.fire[j] > 0 ? 3 : 0));
-        const ng = g.get(cur) + step;
-        if (ng < (g.get(j) ?? Infinity)) {
-          g.set(j, ng);
-          came.set(j, cur);
-          open.push([ng + Math.hypot(cc + dx - gc, cr + dy - gr), j]);
+        const ng = gCur + step;
+        if (seen[j] !== gen || ng < gB[j]) {
+          seen[j] = gen; gB[j] = ng; came[j] = cur;
+          push(ng + Math.hypot(cc + dx - gc, cr + dy - gr), j);
         }
       }
     }
     if (!found) return null;
     const out = [];
-    for (let c = goal; c !== undefined && c !== start; c = came.get(c)) out.push({ x: tr.cx(c), y: tr.cy(c) });
+    for (let c = goal; c >= 0 && c !== start; c = came[c]) out.push({ x: tr.cx(c), y: tr.cy(c) });
     return out.reverse();
   }
 

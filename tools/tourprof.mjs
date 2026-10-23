@@ -1,0 +1,22 @@
+// Perfil do servidor no torneio de 8 (4 lutas ao mesmo tempo): custo de cada passo, de cada snapshot e picos.
+import { createServer } from '../server/server.js';
+import { NetClient } from '../src/net/client.js';
+import { Match } from '../server/match.js';
+import { World } from '../src/sim/world.js';
+import { Brain } from '../src/ai/brain.js';
+import { Terrain } from '../src/sim/terrain.js';
+import { TeamCoach } from '../src/ai/coach.js';
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const prof = { step: [], snap: [], start: [], full: [], brain: [], terrain: [], proj: [], coach: [] };
+const wrap = (obj, name, bucket) => { const f = obj[name]; obj[name] = function (...a) { const t = performance.now(); const r = f.apply(this, a); prof[bucket].push(performance.now() - t); return r; }; };
+wrap(Match.prototype, 'pushSnapshot', 'snap'); wrap(Match.prototype, 'start', 'start'); wrap(Match.prototype, 'fullSnapshot', 'full'); wrap(World.prototype, 'step', 'step'); wrap(Brain.prototype, 'update', 'brain'); wrap(Terrain.prototype, 'update', 'terrain'); wrap(World.prototype, 'updateProjectiles', 'proj'); wrap(TeamCoach.prototype, 'update', 'coach');
+const srv = await createServer({ port: 0, host: '127.0.0.1' });
+const c = new NetClient(); await c.connect(`ws://127.0.0.1:${srv.port}/ws`);
+let room; c.on('room', (m) => { room = m; });
+c.send({ t: 'create', name: 'P', mode: process.argv[2] || 'tour1' }); while (!room) await wait(20);
+c.send({ t: 'team', team: ['brasalisco', 'hidrocasco', 'brotossauro'] }); for (let i = 0; i < 7; i++) c.send({ t: 'addBot' }); await wait(300);
+c.send({ t: 'start' });
+await wait(+(process.argv[3] || 30) * 1000);
+const st = (a) => { a = [...a].sort((x, y) => x - y); const p = (q) => (a[Math.floor(a.length * q)] || 0).toFixed(2); return `n ${a.length} med ${p(0.5)} p99 ${p(0.99)} máx ${(a.at(-1) || 0).toFixed(1)} ms · total ${a.reduce((s, x) => s + x, 0).toFixed(0)} ms`; };
+for (const k in prof) console.log(k.padEnd(6), st(prof[k]));
+await srv.close(); process.exit(0);
