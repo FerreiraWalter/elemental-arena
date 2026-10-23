@@ -643,7 +643,7 @@ export function drawHud(c, r, world, ui) {
     const rx = c.canvas.width - 8 * dpr - cwid;
     panel(c, rx, cy, cwid, chh, '#3a5a8a', dpr, 4);
     const nSides = new Set(world.teams.map((t) => t.side)).size;
-    const mode = world.tutorial ? 'TUTORIAL' : world.training ? 'TREINO' : ffa ? `TODOS × TODOS (${nSides})` : world.teams.length > 2 ? '2 × 2' : `DUELO ${left.length}×${right.length}`;
+    const mode = world.tourLabel ? world.tourLabel : world.tutorial ? 'TUTORIAL' : world.training ? 'TREINO' : ffa ? `TODOS × TODOS (${nSides})` : world.teams.length > 2 ? '2 × 2' : `DUELO ${left.length}×${right.length}`;
     text(c, mode, rx + cwid - 6 * dpr, cy + 14 * dpr, fit(c, mode, 5.5, cwid - 12 * dpr, dpr), '#ffd86a', 'right', dpr);
     const an = (world.arenaDef?.name || '').toUpperCase();
     text(c, an, rx + cwid - 6 * dpr, cy + 27 * dpr, fit(c, an, 5, cwid - 12 * dpr, dpr), '#8fa0c0', 'right', dpr);

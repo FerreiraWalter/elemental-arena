@@ -4,6 +4,7 @@ import { ROSTER, DEFAULT_TEAM } from './sim/species.js';
 import { ARENAS, ARENA_ORDER } from './arenas/index.js';
 import { Renderer, setPerspective } from './render/renderer.js';
 import { UI, CAMERAS, CAMERA_NAME, saveSettings } from './ui/ui.js';
+import { drawVsIntro } from './ui/tour.js';
 import { NetClient, serverUrls, inviteCode } from './net/client.js';
 import { createMirror } from './net/mirror.js';
 import { NetSmoother } from './net/smooth.js';
@@ -30,7 +31,9 @@ const mouse = { x: 0, y: 0, inside: false };
 let mode = 'loading';
 let world = null;
 let battle = null; // configuração da última partida local
-let overlay = null; // 'pause' | 'end' | 'online'
+let overlay = null; // 'pause' | 'end' | 'online' | 'tourEnd'
+// Torneio: início da luta atual (tela de VS durante a contagem) e o resultado da última luta (tela de fim).
+let vsStart = null, tourEnd = null;
 let overT = 0;
 let acc = 0;
 let last = performance.now();
@@ -85,13 +88,22 @@ function makeNet() {
   n.on('room', (m) => {
     ui.mp.room = m;
     if (online && m.state === 'lobby') { online = false; mode = 'menu'; overlay = null; ui.go('lobby'); }
+    if (!online && m.state === 'lobby' && ui.screen === 'tour') { ui.mp.tour = null; ui.go('lobby'); } // fim do torneio: volta à sala
   });
+  // Torneio: chave e fase atual. Fora de uma luta, a tela é a chave (e a cerimônia do campeão no fim).
+  n.on('tour', (m) => {
+    const prev = ui.mp.tour?.phase;
+    ui.mp.tour = m; ui.mp.tourAt = performance.now(); ui.mp.myName = playerName;
+    if (m.phase !== prev) sfx.play(m.phase === 'champion' ? 'victory' : 'start');
+    if (!online && mode === 'menu' && (ui.screen === 'lobby' || ui.screen === 'tour')) ui.go('tour');
+  });
+  n.on('end', (m) => { if (m.tour) tourEnd = { ...m.tour, at: performance.now(), shownAt: ui.time }; });
   n.on('error', (m) => {
     if (reconnecting) return; // a tentativa de voltar trata o próprio erro
     if (online) notice = { text: m.message, t: 4 }; else ui.mpError(m.message);
   });
   n.on('start', startOnline);
-  n.on('snap', (m) => { if (online) smooth.enqueue(m, performance.now(), world); });
+  n.on('snap', (m) => { if (online && (m.match ?? 0) === (mirror?.match ?? 0)) smooth.enqueue(m, performance.now(), world); }); // torneio: só a luta atual
   n.on('left', () => {});
   n.on('closed', () => {
     if (net !== n) return;
@@ -162,7 +174,12 @@ function startOnline(start) {
   mirror = createMirror(start);
   world = mirror.world;
   world.slotNames = start.players.reduce((a, p) => { a[p.seat] = p.name; return a; }, []);
-  setPerspective(world.teams[start.you].side, world.ffa);
+  // Torneio: espectador não tem vaga (câmera e HUD de espectador); a fase vai no cartão do modo.
+  setPerspective(start.you >= 0 ? world.teams[start.you].side : 0, world.ffa);
+  world.tourLabel = start.tour ? (start.tour.final ? 'FINAL' : start.tour.round) : null;
+  vsStart = start.tour && start.hold > 0 ? { ...start, holdReal: start.hold, at: performance.now() } : null;
+  tourEnd = null;
+  if (start.spectate) notice = { text: `ASSISTINDO AO VIVO · ${touch.active ? 'II' : 'Esc'}: chave e outras lutas`, t: start.hold > 0 ? start.hold + 3 : 3 };
   renderer.reset(world);
   online = true;
   mode = 'battle';
@@ -176,7 +193,7 @@ function startOnline(start) {
 }
 
 function sendInput(now, neutral = false) {
-  if (!online || !net) return;
+  if (!online || !net || world.playerTeam === null) return; // espectador do torneio não manda entradas
   const inp = world.input;
   const msg = neutral
     ? { t: 'input', mx: 0, my: 0, ax: inp.aim.x, ay: inp.aim.y, hp: false, hm: false, presses: [] }
@@ -328,6 +345,13 @@ const overlayActions = {
   tutorialSkip: () => { world.tutorial?.skip(); overlay = null; hud.paused = false; },
   tutorialPlay: () => { ui.team = []; ui.flow = 'local'; toMenu('team'); },
   tutorialTrain: () => { ui.team = []; ui.flow = 'training'; toMenu('team'); },
+  // Torneio: voltar à chave (para de assistir), assistir outra luta, resultado da luta.
+  tourBracket: () => { if (world?.playerTeam === null) net?.send({ t: 'watch', match: null }); online = false; mode = 'menu'; overlay = null; tourEnd = null; vsStart = null; ui.go('tour'); },
+  tourWatch: (id) => { overlay = null; net?.send({ t: 'watch', match: id }); },
+  watching: () => mirror?.match ?? 0,
+  get tour() { return !!ui.mp.tour && ui.mp.room?.state === 'tour'; },
+  get spectating() { return world?.playerTeam === null; },
+  get tourEnd() { return tourEnd; },
   get firstTime() { return helpFirst; },
 };
 
@@ -631,12 +655,23 @@ function frame(now) {
     canvas.style.cursor = world.active && !overlay ? 'none' : 'default';
     const alpha = smooth.pump(now, world, mirror.ctx);
     if (!overlay) { readInput(); sendInput(now); }
-    if (world.over) { overT += dt; if (overT > 1.5 && overlay !== 'end') { overlay = 'end'; ui.focus = 0; } }
+    if (world.over) { overT += dt; if (overT > 1.5 && overlay !== 'end' && overlay !== 'tourEnd') { overlay = tourEnd ? 'tourEnd' : 'end'; ui.focus = 0; } }
+    // Resultado da luta do torneio: depois de 6 s volta sozinho para a chave.
+    if (overlay === 'tourEnd' && tourEnd && performance.now() - tourEnd.at > 6000) overlayActions.tourBracket();
     smooth.lead(now, dt, alpha, world, !!overlay, net?.rtt || 60);
     hud.net = { rtt: net?.rtt || 0, room: session?.code || '' }; // sala e ping no canto da HUD
     renderer.render(world, alpha, dt, hud);
     drawTouchAim(c);
     drawRotateHint(c, dt);
+    if (vsStart) {
+      const u = ui.scale(canvas.width, canvas.height, hud.dpr), el = (performance.now() - vsStart.at) / 1000;
+      ui.time += overlay ? 0 : dt;
+      drawVsIntro(ui, c, u, canvas.width, canvas.height, vsStart, el);
+      // Bipe a cada número da contagem e a largada no LUTEM!
+      const n = Math.ceil(vsStart.holdReal - el);
+      if (n !== vsStart.lastN) { if (n >= 1 && n <= 3) sfx.play('hover'); else if (n <= 0 && vsStart.lastN > 0) sfx.play('start'); vsStart.lastN = n; }
+      if (el > vsStart.holdReal + 1) vsStart = null;
+    }
     drawNotice(c, dt);
     if (overlay) {
       const u = ui.scale(canvas.width, canvas.height, hud.dpr);

@@ -132,6 +132,11 @@ Feedback: iPhone travava ao confirmar o time; HUD grande e arena pequena (notebo
 ## 6k. Distância da câmera (2026-10-23)
 - Bug: a opção "APROXIMADA" era só uma escala mínima de 1,5 e, num monitor grande (fit 1,55 em 1080p), as três opções davam o mesmo zoom. Agora `CAM_VIEW` (renderer.js) fixa quanto do mapa aparece na largura: LONGE 820, MÉDIA 640 (a da Atlântida), PERTO 500 px (×0,62 em tela em pé); limitada pela altura útil. Opções: `CAMERAS`/`CAMERA_NAME` (ui.js) = AUTOMÁTICA, ARENA INTEIRA, LONGE, MÉDIA, PERTO; tecla C troca na partida (salva). Na Atlântida vale o mais perto entre a rolagem e a escolha.
 
+## 6l. Torneio online (2026-10-23)
+- Servidor: a partida saiu da sala para `server/match.js` (`Match`: mundo, relógio, snapshots, entradas, queda/volta, `hold` = contagem do VS sem andar; snapshots levam `match`). `Room` comum usa um `Match`; `room.world` virou getter. Modos `tour1`/`tour2` (8 vagas, sem lados) em `MODES`; `startTour` exige 4+ e par no 2v2; arena `sorteio` em `ARENA_CHOICES`.
+- `server/tournament.js` (`Tournament`): entrantes (jogador ou dupla sorteada), chave de 2/4/8 com byes espalhados, fases draw → round (lutas em paralelo, um `Match` cada) → break → … → champion; empate decidido pela vida. Mensagens `tour` (estado por jogador: `me`, `watch`, `left`), `start` com `tour`/`spectate`/`hold`, `end` com `tour.you` (win/lose/null); `watch` (assistir luta ou voltar à chave); quem fica sem luta é posto para assistir (`autoWatch`, `rewatchAt` 7 s após o resultado). `rematch` no campeão volta à sala. Teste `test/tournament.mjs` (servidor real ×25).
+- Cliente: `src/ui/tour.js` (sala do torneio, chave com sorteio caça-níquel, AO VIVO clicável, linhas douradas, cerimônia com troféu/raios/confete/pódio, tela de VS com contagem, resultado da luta, menu Esc com outras lutas). `main.js`: `vsStart`/`tourEnd`, overlay `tourEnd` (volta sozinho à chave em 6 s), `tourBracket`/`tourWatch`; espelho sem vaga para espectador (`createMirror` com you < 0); snapshot de outra luta é descartado.
+
 ## 7. Próximos passos (ordem)
 1. Confirmar no navegador real (com GPU) a HUD nova em 1280×720 e em janelas menores; o painel de testes desta sessão não renderizava em segundo plano.
 2. Extremos de confronto (ver 6c) — decidir se mexe em mecânica.

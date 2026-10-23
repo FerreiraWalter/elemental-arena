@@ -9,6 +9,7 @@ import { drawProfessor } from '../render/sprites.js';
 import { TUTORIAL_KEY } from '../sim/tutorial.js';
 import { abilityIcon, statusIcon } from '../render/hud.js';
 import { drawTail } from '../render/electricfx.js';
+import { renderTourLobby, renderBracket, renderTourEnd, renderTourMenu, TOUR_MODES } from './tour.js';
 
 // Telas fora da batalha (menu, time, arena, bestiário, opções) e menus sobre a batalha (pausa, fim).
 // Tudo desenhado no canvas no mesmo estilo pixel art; mouse e teclado funcionam em todas as telas.
@@ -314,6 +315,7 @@ export class UI {
     else if (this.screen === 'options') this.renderOptions(u, W, H);
     else if (this.screen === 'mp') this.renderMp(u, W, H);
     else if (this.screen === 'lobby') this.renderLobby(u, W, H);
+    else if (this.screen === 'tour') renderBracket(this, u, W, H);
     if (this.mp.errorT > 0 && this.mp.error) {
       this.mp.errorT -= dt;
       const sz = fitSize(this.c, this.mp.error, 7, W - 30 * u, u);
@@ -588,7 +590,10 @@ export class UI {
     this.button(cx - bw3 * 1.5 - 6 * u, y, bw3, bh, 'SALA 1v1', () => this.hooks.mpCreate('1v1'), { color: '#ff8a3a', disabled: mp.busy });
     this.button(cx - bw3 / 2, y, bw3, bh, 'SALA 2v2', () => this.hooks.mpCreate('2v2'), { color: '#ff8a3a', disabled: mp.busy });
     this.button(cx + bw3 / 2 + 6 * u, y, bw3, bh, 'SALA 1v1v1v1', () => this.hooks.mpCreate('ffa'), { color: '#ff5a8a', disabled: mp.busy });
-    y += bh + (tall ? 36 : 30) * u;
+    y += bh + 6 * u;
+    // Torneio: sala de até 8 (1v1 ou duplas sorteadas no 2v2), chave com quartas, semifinal e final.
+    this.button(cx - bw3 * 1.5 - 6 * u, y, bw3 * 3 + 12 * u, bh, 'TORNEIO · 4 A 8 JOGADORES', () => this.hooks.mpCreate('tour1'), { color: '#ffd23a', disabled: mp.busy, size: 9 });
+    y += bh + (tall ? 30 : 24) * u;
     const how = this.touchMode ? 'OU ENTRAR COM UM CÓDIGO (toque nos quadrados para digitar)' : 'OU ENTRAR COM UM CÓDIGO (4 caracteres, digite no teclado)';
     y = para(c, how, cx, y, sz, maxW, '#e8dcc0', 'center', u) - (sz + 3.5) * u + 12 * u;
     const bx = (tall ? 52 : 44) * u, gp = 8 * u, tot = bx * 4 + gp * 3;
@@ -617,6 +622,7 @@ export class UI {
     const c = this.c, cx = W / 2, mp = this.mp;
     const room = mp.room;
     if (!room) { this.go('mp'); return; }
+    if (TOUR_MODES[room.mode]) { renderTourLobby(this, u, W, H); return; } // sala do torneio (até 8): tela própria
     // Celular em pé (340 de largura lógica): tudo numa coluna, com as vagas uma embaixo da outra.
     const tall = this.phone && this.portrait;
     const isHost = room.host === mp.myId;
@@ -641,7 +647,7 @@ export class UI {
     const arenaName = ARENAS[room.arena].name;
     // Configuração (só o anfitrião muda).
     const bw = tall ? (W - 30 * u) / 2 : 190 * u, bh = (this.phone ? 26 : 24) * u, bgap = (tall ? 5 : 6) * u;
-    this.button(cx - bw - bgap, y, bw, bh, `MODO: ${room.mode === 'ffa' ? '1v1v1v1' : room.mode}`, () => this.hooks.mpSend({ t: 'config', mode: { '1v1': '2v2', '2v2': 'ffa', ffa: '1v1' }[room.mode] || '1v1' }), { disabled: !isHost, color: '#ff8a3a', size: 8 });
+    this.button(cx - bw - bgap, y, bw, bh, `MODO: ${room.mode === 'ffa' ? '1v1v1v1' : room.mode}`, () => this.hooks.mpSend({ t: 'config', mode: { '1v1': '2v2', '2v2': 'ffa', ffa: 'tour1' }[room.mode] || '1v1' }), { disabled: !isHost, color: '#ff8a3a', size: 8 });
     const ai = ARENA_ORDER.indexOf(room.arena);
     this.button(cx + bgap, y, bw, bh, `ARENA: ${arenaName}`, () => this.hooks.mpSend({ t: 'config', arena: ARENA_ORDER[(ai + 1) % ARENA_ORDER.length] }), { disabled: !isHost, color: '#46b4ff', size: 7 });
     y += bh + 6 * u;
@@ -1260,6 +1266,12 @@ export class UI {
       else this.button(cx - bw / 2, y, bw, bh, 'REINICIAR PARTIDA', actions.rematch, { color: '#ff8a3a' });
       y += bh + 10 * u;
       this.button(cx - bw / 2, y, bw, bh, 'MENU PRINCIPAL', actions.menu, { color: '#aa9' });
+    } else if (kind === 'tourEnd') {
+      renderTourEnd(this, u, W, H, actions.tourEnd, actions);
+      return;
+    } else if (kind === 'online' && actions.tour) {
+      renderTourMenu(this, u, W, H, actions, actions.spectating);
+      return;
     } else if (kind === 'online') {
       c.fillStyle = 'rgba(8,4,2,0.55)';
       c.fillRect(0, 0, W, H);
@@ -1292,3 +1304,4 @@ export class UI {
     void world;
   }
 }
+export { text, fitSize, wrap, para, panel, ELEMENT_NAME };

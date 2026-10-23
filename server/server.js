@@ -16,7 +16,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { WebSocketServer } from 'ws';
-import { Room, newCode } from './room.js';
+import { Room, newCode, MODES } from './room.js';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.webp': 'image/webp', '.json': 'application/json', '.css': 'text/css', '.ico': 'image/x-icon' };
@@ -141,7 +141,7 @@ export function createServer({
         if (msg.t === 'create') {
           if (rooms.size >= maxRooms) return fail('busy', 'Servidor lotado no momento. Tente de novo em instantes.');
           target = new Room(newCode((c) => rooms.has(c)), (code) => { rooms.delete(code); log('sala encerrada', code); }, { timeScale });
-          if (msg.mode === '2v2' || msg.mode === 'ffa') target.mode = msg.mode;
+          if (MODES[msg.mode]) target.mode = msg.mode;
           rooms.set(target.code, target);
           log('sala criada', target.code);
         } else {

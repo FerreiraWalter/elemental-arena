@@ -12,6 +12,13 @@ Abra `http://localhost:8140`. O mesmo servidor entrega o jogo e as salas de mult
 - **Jogar sozinho (contra a IA):** Menu → *Jogar contra a IA* → time → arena. Também funciona abrindo o jogo por qualquer servidor estático, mas o multiplayer precisa do `npm start`.
 - **Com amigos:** mesma rede → `http://IP-DO-ANFITRIÃO:8140`; pela internet → veja **[DEPLOY.md](DEPLOY.md)** (Render, Docker/Fly, túnel). Na sala, **Copiar link** gera um convite com o código. Não há contas nem login.
 
+## Torneio online
+Multiplayer → **TORNEIO · 4 A 8 JOGADORES** (ou, na sala, MODO → TORNEIO 1v1 / TORNEIO 2v2). Sala de até 8; robôs completam as vagas.
+- **1v1:** até 4 → semifinal e final; 5 a 8 → quartas, semifinal e final (quem sobra na chave de 8 **passa direto**).
+- **2v2:** as duplas são **sorteadas na hora**; 8 pessoas → semifinal e final (4 → só a final). Número par de jogadores.
+- As lutas de uma fase rodam ao mesmo tempo. Quem não está lutando (passou direto, já caiu ou espera) **assiste ao vivo** — clique numa luta da chave, ou Esc durante a luta para voltar à chave ou trocar de luta.
+- Sorteio animado da chave, tela de **VS** com contagem antes de cada luta, "VOCÊ AVANÇOU!" / "ELIMINADO", e a **cerimônia do campeão** (troféu, pódio, confete). Arena fixa ou SORTEADA (uma diferente por luta).
+
 ## Tutorial
 Menu → **Tutorial** (com o selo *NOVO!* até ser concluído). O **Professor Remendo**, um boneco de treino veterano de beca, óculos e varinha, conduz 8 lições curtas: andar, atirar, golpe de perto, esquiva, poderes Q/E/F, evolução, elementos e troca de monstro, e a prova final contra o **Boneco Mestre** (que revida e tem vida limitada). Enquanto ele fala o jogador fica parado; toque/clique/Enter passa a fala. Cada objetivo aparece num cartão com o progresso, e o botão certo pisca (na barra do PC e nos botões de toque). Esc → **Pular lição**. No fim, um diploma leva para a partida contra a IA ou o Treinamento.
 
