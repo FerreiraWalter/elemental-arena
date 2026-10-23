@@ -2099,6 +2099,7 @@ export class Renderer {
       if (p.kind === 'shuriken' || p.kind === 'kunai' || p.kind === 'fuuma') { SF.drawShuriken(g, p, x, y, t, this.particles); continue; }
       if (p.kind === 'palm') { WF.drawPalm(g, p, x, y, t); continue; }
       if (p.kind === 'vacuum') { WF.drawVacuum(g, p, x, y, this.particles); continue; }
+      if (p.kind === 'windHand') { WF.drawWindHand(g, p, x, y, t, this.particles); continue; }
       if (p.kind === 'ember') {
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
           const d = Math.hypot(dx, dy);
@@ -2356,6 +2357,7 @@ export class Renderer {
       if (p.kind === 'wave') { g.globalAlpha = 0.6; g.drawImage(this.glows.blue, p.x - p.r * 1.6, p.y - p.r * 1.6 - 6, p.r * 3.2, p.r * 3.2); }
       else if (p.kind === 'waterBolt') g.drawImage(this.glows.blue, p.x - 9, p.y - 9, 18, 18);
       else if (p.kind === 'seed' || p.kind === 'thorn' || p.kind === 'roots' || p.kind === 'rock' || p.kind === 'splashSeed' || p.kind === 'splashBubble' || p.kind === 'shuriken' || p.kind === 'kunai' || p.kind === 'fuuma' || p.kind === 'palm') continue;
+      else if (p.kind === 'windHand') continue;
       else if (p.kind === 'vacuum') { g.globalAlpha = 0.5; g.drawImage(this.glows.blue, p.x - 9, p.y - 9, 18, 18); }
       else if (p.kind === 'inferno') { g.globalAlpha = 0.9; g.drawImage(this.glows.fire, p.x - p.r * 2.5, p.y - p.r * 2.5 - 4, p.r * 5, p.r * 5); }
       else g.drawImage(this.glows.fire, p.x - 10, (p.lob ? p.y - p.h : p.y) - 10, 20, 20);

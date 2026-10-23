@@ -18,6 +18,7 @@ export function drawPalm(g, p, x, y, t) {
 
 // Lâmina de vácuo: meia-lua branca virada para a frente, com fio ciano e rastro de linhas de vento.
 export function drawVacuum(g, p, x, y, P) {
+  x = Math.round(x); y = Math.round(y);
   const a = Math.atan2(p.vy, p.vx), R = 6;
   const cx = x - Math.cos(a) * 3, cy = y - Math.sin(a) * 3;
   for (let q = -9; q <= 9; q++) {
@@ -48,4 +49,37 @@ export function drawBrisa(g, m, x, y, top, t) {
     const an = t * 4 + k * Math.PI, bx = x + Math.cos(an) * 8, by = y - top - 3 + Math.sin(an) * 2;
     g.set(bx, by, WIND_COL.core); g.set(bx + 1, by, WIND_COL.hot); g.set(bx, by + 1, WIND_COL.mid); g.set(bx - 1, by, WIND_COL.mid);
   }
+}
+
+// Palma do Vendaval (Q do Anemokahn): uma mão de vento aberta voando com os dedos para a frente. Desenhada em
+// coordenadas da mão (u = para a frente, v = de lado) e girada para a direção do voo: palma oval, quatro dedos, o
+// polegar aberto de lado, miolo branco, borda ciano, contorno azul-escuro e linhas de vento saindo do punho.
+function inHand(u, v, s) {
+  if ((u / (4 * s)) ** 2 + (v / (4.6 * s)) ** 2 <= 1) return 1; // palma
+  const fingers = [[-3.9, 8.6], [-1.3, 10.4], [1.3, 10.6], [3.9, 9]]; // [lado, comprimento]
+  for (const [fv, len] of fingers) if (Math.abs(v - fv * s) <= 0.85 * s && u >= 1.5 * s && u <= len * s) return 2;
+  // Polegar: sai do lado da palma, aberto para fora e um pouco para a frente.
+  const tu = u + 0.5 * s, tv = v + 4.2 * s; // base do polegar
+  const along = tu * 0.6 - tv * 0.8, across = tu * 0.8 + tv * 0.6; // eixo inclinado ~53° para fora
+  if (along >= 0 && along <= 6 * s && Math.abs(across) <= 0.95 * s) return 2;
+  return 0;
+}
+export function drawWindHand(g, p, x, y, t, P) {
+  x = Math.round(x); y = Math.round(y); // o buffer de pixels só aceita posição inteira
+  const a = Math.atan2(p.vy, p.vx), ca = Math.cos(a), sa = Math.sin(a), s = (p.r || 9) / 9 * 1.25;
+  const R = Math.ceil(12 * s);
+  for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+    const u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+    const k = inHand(u, v, s);
+    if (k) {
+      const edge = !inHand(u + 1.2, v, s) || !inHand(u, v + 1.2, s) || !inHand(u, v - 1.2, s) || !inHand(u - 1.2, v, s);
+      g.set(x + dx, y + dy, edge ? WIND_COL.mid : k === 1 && v > 1.5 * s ? WIND_COL.hot : WIND_COL.core);
+    } else if (inHand(u + 1, v, s) || inHand(u - 1, v, s) || inHand(u, v + 1, s) || inHand(u, v - 1, s)) g.set(x + dx, y + dy, WIND_COL.dark); // contorno
+  }
+  // Rastro: linhas de vento ondulando atrás do punho.
+  for (const off of [-4, 0, 4]) for (let k = 6; k <= 16; k++) {
+    const u = -k * s, v = off * s + Math.sin(t * 18 + k * 0.5 + off) * 0.8;
+    g.set(x + u * ca - v * sa, y + u * sa + v * ca, k < 10 ? WIND_COL.mid : WIND_COL.deep);
+  }
+  if (P && Math.random() < 0.6) P.add({ ramp: 'wind', x: x - ca * 8 * s, y: y - sa * 8 * s, vx: -p.vx * 0.08 + (Math.random() - 0.5) * 30, vy: -p.vy * 0.08 + (Math.random() - 0.5) * 30, life: 0.3, add: true });
 }

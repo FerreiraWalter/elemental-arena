@@ -1324,6 +1324,8 @@ export class World {
     } else if (p.kind === 'spark' || p.kind === 'voltOrb') {
       if (o) this.hurtObstacle(o, p.dmg * 0.5);
       Elec.projectileEnd(this, p);
+    } else if (Shadow.KINDS.has(p.kind) || Maestro.KINDS.has(p.kind)) {
+      if (o) this.hurtObstacle(o, p.dmg * 0.5); // shurikens e vento: batem no obstáculo sem molhar nada
     } else {
       if (o) { this.hurtObstacle(o, p.dmg * 0.5); if (o.burning > 0) this.douseObstacle(o, p.owner); }
       this.douseArea(p.x, p.y, 12, 6, p.owner);
@@ -1342,6 +1344,7 @@ export class World {
     else if (p.kind === 'spark' || p.kind === 'voltOrb') Elec.projectileEnd(this, p);
     else if (p.kind === 'tornado' || p.kind === 'feather') Air.projectileEnd(this, p, null);
     else if (Forge.KINDS.has(p.kind)) Forge.projectileEnd(this, p, null, false);
+    else if (Shadow.KINDS.has(p.kind) || Maestro.KINDS.has(p.kind)) return; // shurikens e vento: não molham o chão
     else this.douseArea(p.x, p.y, 12, 6, p.owner);
   }
 

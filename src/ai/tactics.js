@@ -571,15 +571,15 @@ export const TACTICS = {
 
   // ───────────── Vento (Arutchin → Anemokahn): tece combos — marca com E, crítico com Q, jaula com F ─────────────
   airPalm(c) { return palmShot(c, 140); },
-  stormPalm(c) { return palmShot(c, 150); },
+  stormPalm(c) { return palmShot(c, 165); },
   gustSlap(c) { return gustPeel(c, 18); },
   galeClap(c) { return gustPeel(c, 22); },
   vacuumBlade(c) { return vacuumShot(c, 155); },
-  greaterVacuum(c) { return vacuumShot(c, 165); },
+  greaterVacuum(c) { return vacuumShot(c, 180); },
   turbulencePulse(c) { return turbMark(c, 130, 18); },
-  turbulenceBurst(c) { return turbMark(c, 140, 22); },
+  turbulenceBurst(c) { return turbMark(c, 160, 30); },
   cyclonePressure(c) { return cageTry(c, 140); },
-  cycloneCage(c) { return cageTry(c, 150); },
+  cycloneCage(c) { return cageTry(c, 165); },
   windDrift() { return null; },
   stormDrift() { return null; },
 };

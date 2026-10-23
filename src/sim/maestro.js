@@ -21,7 +21,7 @@ export const MAESTRO = {
   repelR: 70, // F: empurra projéteis inimigos até esta distância do ponto
   surge: 1.5, // escudo + disparada das 2 cargas
 };
-export const KINDS = new Set(['palm', 'vacuum']);
+export const KINDS = new Set(['palm', 'vacuum', 'windHand']); // windHand: o Q da evolução (mão de vento gigante)
 export const isMaestro = (m) => m?.def?.sig?.kind === 'maestro';
 const marked = (t, m) => t.turb > 0 && t.turbBy === m.id;
 let nextChain = 1;
@@ -60,7 +60,7 @@ export function palm(w, m, a, o) {
 export function blade(w, m, a, o) {
   const sig = m.def.sig, max = sig.charges ?? 2;
   const surge = (m.brisa || 0) >= max;
-  const shoot = (ang, x, y) => w.spawnProjectile({ kind: 'vacuum', tag: o.tag, owner: m, ang, speed: o.speed, r: 4, range: o.range, dmg: o.dmg, chain: sig.chain ?? 3, x, y });
+  const shoot = (ang, x, y) => w.spawnProjectile({ kind: o.kind || 'vacuum', tag: o.tag, owner: m, ang, speed: o.speed, r: o.r || 4, range: o.range, dmg: o.dmg, chain: sig.chain ?? 3, x, y });
   shoot(a.aim, m.x + Math.cos(a.aim) * (m.r + 3), m.y + Math.sin(a.aim) * (m.r + 3) - 6);
   if (surge) {
     // Sobrecarga dos 4 Ventos: os braços de cima soltam as cargas.
@@ -70,7 +70,7 @@ export function blade(w, m, a, o) {
     m.shieldHp = Math.max(m.shieldHp || 0, S.hp ?? 12);
     m.status.haste = Math.max(m.status.haste, S.t ?? MAESTRO.surge);
     w.emit({ type: 'windSurge', m, x: m.x, y: m.y });
-    if (sig.twin) shoot(a.aim + 0.12, m.x + Math.cos(a.aim) * (m.r + 3), m.y + Math.sin(a.aim) * (m.r + 3) - 14);
+    if (sig.twin) shoot(a.aim + 0.16, m.x + Math.cos(a.aim) * (m.r + 3), m.y + Math.sin(a.aim) * (m.r + 3) - 16); // braços de cima: segunda palma
   }
 }
 
@@ -83,11 +83,12 @@ export function projectileHit(w, p, t) {
     if (p.cdr && m.cd[e] > 0) m.cd[e] = Math.max(0, m.cd[e] - p.cdr);
     return;
   }
-  // Lâmina de vácuo: crítico (e ricochete) só em quem está com Turbulência sua.
+  // Lâmina de vácuo / Palma do Vendaval: crítico (e ricochete) só em quem está com Turbulência sua.
   const sig = m.def.sig;
-  if (!marked(t, m)) { w.damage(t, p.dmg, m, { ...base, kb: 60 }); return; }
+  const hand = p.kind === 'windHand';
+  if (!marked(t, m)) { w.damage(t, p.dmg, m, { ...base, kb: hand ? 75 : 60 }); return; }
   consume(t);
-  w.damage(t, p.dmg * (sig.crit ?? 1.6), m, { ...base, kb: 90, big: true }); // sem atordoar: o controle é a Jaula (F)
+  w.damage(t, p.dmg * (sig.crit ?? 1.6), m, { ...base, kb: hand ? 100 : 90, big: true }); // sem atordoar: o controle é a Jaula (F)
   w.emit({ type: 'vacuumCrit', m: t, src: m, x: t.x, y: t.y });
   if (p.chain <= 0) return;
   const chainId = p.chainId || nextChain++;
@@ -95,7 +96,7 @@ export function projectileHit(w, p, t) {
     .sort((x, y) => Math.hypot(x.x - t.x, x.y - t.y) - Math.hypot(y.x - t.x, y.y - t.y))[0];
   if (!next) return;
   const na = Math.atan2(next.y - t.y, next.x - t.x);
-  w.spawnProjectile({ kind: 'vacuum', tag: p.tag, owner: m, ang: na, speed: p.speed * 1.1, r: 4, range: MAESTRO.chainR + 20, dmg: p.dmg, chain: p.chain - 1, chainId, hitSet: new Set([t.id]), x: t.x + Math.cos(na) * (t.r + 3), y: t.y + Math.sin(na) * (t.r + 3) - 6 });
+  w.spawnProjectile({ kind: p.kind, tag: p.tag, owner: m, ang: na, speed: p.speed * 1.1, r: p.r, range: MAESTRO.chainR + 20, dmg: p.dmg, chain: p.chain - 1, chainId, hitSet: new Set([t.id]), x: t.x + Math.cos(na) * (t.r + 3), y: t.y + Math.sin(na) * (t.r + 3) - 6 });
   w.emit({ type: 'vacuumChain', m: next, src: m, x0: t.x, y0: t.y, x: next.x, y: next.y });
 }
 

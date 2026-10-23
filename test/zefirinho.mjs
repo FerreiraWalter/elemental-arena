@@ -109,7 +109,7 @@ test('F sopra para longe os projéteis inimigos perto do gênio', () => {
   assert(p.dead || p.vx > 0, 'o projétil continuou vindo');
 });
 
-test('Q com 2 cargas de Brisa: escudo de vento + disparada; na evolução sai uma segunda lâmina', () => {
+test('Q com 2 cargas de Brisa: escudo de vento + disparada; na evolução saem duas mãos de vento grandes', () => {
   const { w, A, B } = setup();
   A.brisa = 2;
   cast(w, A, 'vacuumBlade', B); step(w, 0.15);
@@ -118,7 +118,9 @@ test('Q com 2 cargas de Brisa: escudo de vento + disparada; na evolução sai um
   assert(e.A.def.key === 'zefirao', 'não evoluiu');
   e.A.brisa = 2;
   cast(e.w, e.A, 'greaterVacuum', e.B); step(e.w, 0.13);
-  assert(e.w.projectiles.filter((p) => p.kind === 'vacuum').length === 2, 'a evolução deveria soltar duas lâminas');
+  const hands = e.w.projectiles.filter((p) => p.kind === 'windHand');
+  assert(hands.length === 2, 'a evolução deveria soltar duas mãos de vento');
+  assert(hands.every((p) => p.r >= 8), 'a mão de vento deveria ser grande (área de acerto)');
 });
 
 test('Palma de Ar que acerta adianta a recarga do E', () => {
