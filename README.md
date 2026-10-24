@@ -1,6 +1,6 @@
 # Elemental Arena (título provisório)
 
-Duelo de monstros elementais em tempo real, em pixel art. **12 monstros jogáveis**, cada um com forma evoluída, um **tutorial** guiado, 6 arenas, partidas **contra a IA** ou **online (1v1 e 2v2)**. Em cada vaga o time tem 3 monstros, mas só um por jogador luta de cada vez.
+Duelo de monstros elementais em tempo real, em pixel art. **12 monstros jogáveis**, cada um com forma evoluída, um **tutorial** guiado, 7 arenas, partidas **contra a IA** ou **online (1v1 e 2v2)**. Em cada vaga o time tem 3 monstros, mas só um por jogador luta de cada vez.
 
 ## Como rodar
 ```bash
@@ -104,7 +104,7 @@ O fogo pesava por **somar** efeitos: queimadura renovada a cada tiro, poças de 
 Evolução (`EVOLUTION` em `src/config.js`): **cada ataque que acerta enche ~7% da barra** (bônus fixo por acerto + parte do dano), e dano recebido, esquivas e interações com o terreno também contam; com a barra cheia (em mediana ~20 s de luta), aperte **G** (uma por monstro por partida; vida mantém a %; recargas preservadas; a batalha não pausa). A energia persiste no banco; derrotados não evoluem; a IA evolui sozinha.
 
 ## Arenas
-Jardim Selvagem (raízes que irrompem, espinheiros, sebes, ruínas), Abismo das Marés (ilhas, água funda, plataforma alta, correntezas, gêiseres), Floresta Ancestral (árvores, troncos, mata baixa, riacho), Quadra Clássica, **Terra Rachada** (paredes de terra sobem do chão no meio da partida, com rachaduras de aviso) e **Atlântida** (fase que anda: a tsunami persegue da esquerda e alaga a arena até o coliseu, onde o **Kraken** neutro ataca todos; vida e ritmo do Kraken mudam com 1v1, 2v2 e 1v1v1v1). Definições data-driven em `src/arenas/`; eventos roteirizados por tempo em `src/sim/arenaevents.js`.
+Jardim Selvagem (raízes que irrompem, espinheiros, sebes, ruínas), Abismo das Marés (ilhas, água funda, plataforma alta, correntezas, gêiseres), Floresta Ancestral (árvores, troncos, mata baixa, riacho), Quadra Clássica, **Terra Rachada** (paredes de terra sobem do chão no meio da partida, com rachaduras de aviso) e **Atlântida** (fase que anda: a tsunami persegue da esquerda e alaga a arena até o coliseu, onde o **Kraken** neutro ataca todos; vida e ritmo do Kraken mudam com 1v1, 2v2 e 1v1v1v1) e o **Vale ASCII** (um mundo desenhado em caracteres: capinzais de texto escondem quem está dentro até atacar e a **Varredura**, uma linha de luz que atravessa a arena, corrompe quem pega — dano + lentidão, a esquiva passa — e redesenha o mundo, trocando os capinzais de lugar). Definições data-driven em `src/arenas/`; eventos roteirizados por tempo em `src/sim/arenaevents.js`.
 
 ## Arte: final × provisório
 - **Final (do usuário):** os 12 sprites dos monstros (`assets/monsters/*.png`, extraídos por `tools/extract_sprites.py` e `tools/extract_sheet2.py`).

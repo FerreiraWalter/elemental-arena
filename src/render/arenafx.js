@@ -4,15 +4,17 @@
 import { hash2 } from '../core/math.js';
 import { rgba } from './pixel.js';
 import { WORLD_H } from '../config.js';
+import { drawScan } from './asciifx.js';
 
 const EARTH = { top: rgba('#9a7a54'), hi: rgba('#c4a074'), lip: rgba('#7a5a3a'), face: rgba('#5a4030'), brick: rgba('#44301f'), foot: rgba('#2a1c10'), crack: rgba('#1a0f08'), glow: rgba('#ff9f43') };
 const SEA = { foam: rgba('#ffffff'), light: rgba('#bfe9f5'), mid: rgba('#7ac8e8'), deep: rgba('#1f6aa8'), dark: rgba('#14507e') };
 
-export const ARENA_HAZARDS = new Set(['earthWall', 'tsunami', 'kraken']);
+export const ARENA_HAZARDS = new Set(['earthWall', 'tsunami', 'kraken', 'scanline']);
 
 export function drawHazard(r, h, world, t) {
   if (h.kind === 'earthWall') drawEarthWall(r, h, world, t);
   else if (h.kind === 'tsunami') drawTsunami(r, h, world, t);
+  else if (h.kind === 'scanline') drawScan(r, h, world, t);
 }
 
 // Rachaduras pulsando no chão (aviso) e o bloco subindo com tremor e poeira.

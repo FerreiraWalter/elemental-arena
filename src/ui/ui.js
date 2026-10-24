@@ -749,7 +749,7 @@ export class UI {
     const descH = (dLines * (dsz + 3.5) + 8) * u;
     const top = (stack && !tr ? 70 : 44) * u, bottom = btnY - descH - 8 * u;
     const gap = 8 * u;
-    const cols = stack ? 2 : ids.length > 4 ? 3 : 2, rows = Math.ceil(ids.length / cols);
+    const cols = stack ? 2 : ids.length > 6 ? 4 : ids.length > 4 ? 3 : 2, rows = Math.ceil(ids.length / cols);
     const chMax = Math.floor((bottom - top - gap * (rows - 1)) / rows);
     const cwMax = Math.floor((Math.min(W - 24 * u, 1100 * u) - gap * (cols - 1)) / cols);
     // Celular: só nome e subtítulo (maiores); os recursos ficavam com letra de ~2 px e vazavam do cartão.
@@ -768,7 +768,8 @@ export class UI {
       const sel = this.arena === id;
       const hover = this.mouse.x >= x && this.mouse.x <= x + cw && this.mouse.y >= y && this.mouse.y <= y + ch;
       panel(c, x, y, cw, ch, u, sel ? '#ffd23a' : hover ? '#c8b080' : '#5a4636');
-      if (this.previews[id]) { c.imageSmoothingEnabled = false; c.drawImage(this.previews[id], x + (cw - pw) / 2, y + 6 * u, pw, ph); }
+      // Reduzida com suavização (sem ela os traços de 1 px — ex.: o Vale ASCII — somem na amostragem); ampliada, pixel nítido.
+      if (this.previews[id]) { const shrink = pw < this.previews[id].width; c.imageSmoothingEnabled = shrink; if (shrink) c.imageSmoothingQuality = 'high'; c.drawImage(this.previews[id], x + (cw - pw) / 2, y + 6 * u, pw, ph); c.imageSmoothingEnabled = false; }
       else {
         c.fillStyle = 'rgba(10,8,6,0.7)'; c.fillRect(x + (cw - pw) / 2, y + 6 * u, pw, ph);
         text(c, 'CARREGANDO' + '.'.repeat(1 + (Math.floor(this.time * 3) % 3)), x + cw / 2, y + 6 * u + ph / 2, 6, '#bba', 'center', u);
@@ -780,11 +781,13 @@ export class UI {
       if (this.phone) { this.button(x, y, cw, ch, '', () => { this.arena = id; }, { custom: true }); return; }
       // Recursos em linhas curtas (cortadas ao espaço disponível).
       let ly = ty + 22 * u;
+      c.save(); c.beginPath(); c.rect(x + 4 * u, y, cw - 8 * u, ch); c.clip(); // linha longa não vaza para o cartão vizinho
       for (const f of A.features) {
         if (ly > y + ch - 4 * u) break;
         text(c, '· ' + f, x + 8 * u, ly, fitSize(c, '· ' + f, 4.5, cw - 16 * u, u), '#e8dcc0', 'left', u);
         ly += 8.5 * u;
       }
+      c.restore();
       this.button(x, y, cw, ch, '', () => { this.arena = id; }, { custom: true });
     });
     const A = this.arena && ARENAS[this.arena];

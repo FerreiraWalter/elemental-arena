@@ -33,6 +33,7 @@ export const kindOf = (m) => m?.def?.sig?.kind;
 
 // ───────────── Ao usar uma habilidade ─────────────
 export function onCast(w, m, ab) {
+  if (ab.kind !== 'dodge') m._lastCastT = w.time; // atacou há pouco: camuflagem de capinzal/noite não volta na hora
   Shadow.onCast(w, m, ab); // antes de tirar a camuflagem: atacar saindo dela é emboscada
   if (m.status.cloak > 0 && ab.kind !== 'dodge') { m.status.cloak = 0; w.emit({ type: 'uncloak', m, x: m.x, y: m.y }); }
   // Atacar denuncia a posição: quem estava enganado por uma cópia volta a enxergar o verdadeiro.

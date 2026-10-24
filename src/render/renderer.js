@@ -8,6 +8,7 @@ import * as EF from './electricfx.js';
 import * as PF from './psyfx.js';
 import * as SF from './shadowfx.js';
 import * as WF from './windfx.js';
+import { asciiObstacle, drawBrush, drawRain } from './asciifx.js';
 import * as AF from './airfx.js';
 import * as FF from './forgefx.js';
 import * as ARF from './arenafx.js';
@@ -145,6 +146,7 @@ export class Renderer {
   // Sprite de cada obstáculo e o ponto do sprite que fica sobre a posição do obstáculo (âncora).
   obstacleSprite(o, char) {
     const c = (img, ay) => ({ img, ax: img.width / 2, ay: ay ?? img.height / 2 });
+    if (this.world?.arenaDef?.style?.ascii && o.kind !== 'sentry' && o.kind !== 'ancientSentry' && o.kind !== 'thicket') { const img = asciiObstacle(o); return c(img, img.height / 2 + 2); } // Vale ASCII: objetos de texto
     switch (o.kind) {
       case 'kraken': return null; // desenhado à parte (arenafx.drawKraken)
       case 'rock': { const img = rockSprite(o.r, o.id); return c(img, img.height / 2 + 1); }
@@ -780,6 +782,20 @@ export class Renderer {
         case 'windRepel':
           P.burst(e.x, e.y, 6, { ramp: 'wind', speed: 50, life: 0.25, add: true });
           break;
+        // Vale ASCII: aviso da varredura, quem ela corrompeu e os capinzais redesenhados.
+        case 'scanWarn':
+          this.addText({ text: 'VARREDURA!', x: e.x, y: e.down ? 40 : WORLD_H - 30, color: '#7affb0', t: 0, big: true });
+          break;
+        case 'scanHit':
+          this.addText({ text: 'CORROMPIDO', x: e.x, y: e.y - 30, color: '#7affb0', t: 0, big: true });
+          P.burst(e.x, e.y - 8, 16, { ramp: 'ascii', speed: 60, life: 0.5, size: 2 });
+          this.shake = Math.max(this.shake, 3);
+          break;
+        case 'rerender':
+          P.burst(e.x0, e.y0, 18, { ramp: 'ascii', speed: 40, life: 0.6, size: 2 });
+          P.burst(e.x, e.y, 24, { ramp: 'ascii', speed: 30, life: 0.7, size: 2 });
+          this.rings.push({ x: e.x, y: e.y, r: 6, max: e.r, t: 0, color: '#a8c8a0' });
+          break;
         case 'fuumaTurn':
           P.burst(e.x, e.y, 8, { ramp: 'shadow', speed: 40, life: 0.3, add: true });
           break;
@@ -956,6 +972,12 @@ export class Renderer {
     this.fxG.clear();
     this.fxT.clear();
     this.drawTerrainFx(world, t);
+    if (world.arenaDef?.style?.ascii) {
+      // Vale ASCII: chuva de caracteres ao fundo e os capinzais (mais fortes com alguém dentro).
+      drawRain(this.fxG, t, world.seed);
+      const scan = world.hazards.find((h) => h.kind === 'scanline');
+      if (scan) for (const f of scan.fields(world.time)) drawBrush(this.fxG, f, t, world.monsters.some((m) => m.alive && (m.x - f.x) ** 2 + ((m.y - f.y) * 1.25) ** 2 < f.r * f.r));
+    }
     for (const h of world.hazards) { if (ARF.ARENA_HAZARDS.has(h.kind)) ARF.drawHazard(this, h, world, t); else drawHazard(h, this.fxG, this.fxT, t, this.dotCircle.bind(this)); }
     if (world.zones?.length) EF.drawTrails(this.fxG, world.zones.filter((z) => z.kind !== 'psy' && z.kind !== 'coal' && z.kind !== 'night'), t);
     // Clarão do raio do céu no chão (por baixo dos monstros).

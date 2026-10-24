@@ -4,6 +4,7 @@ import { T, props } from '../sim/tiles.js';
 import { COURT, PADS } from '../arenas/quadra.js';
 import { rgba } from './pixel.js';
 import { drawBlock } from './arenafx.js';
+import { asciiPixel, paintGlyphWall } from './asciifx.js';
 
 // Pintura pixel a pixel do chão de cada arena: tipo de tile + paleta da arena + alturas
 // (penhascos com face de rocha, sombras e bordas), pontes, escadas, umidade e fuligem.
@@ -85,6 +86,7 @@ const BRIDGE_MEMO = { i: -1, tr: null, horiz: true, edgeA: false, edgeB: false }
 const BLENDS = new Set([T.SAND, T.GRASS, T.WEEDS, T.MOSS, T.DIRT, T.LEAVES, T.UNDERGROWTH, T.FLOWERS, T.THORNS, T.SCORCHED]);
 
 export function paintTile(world, P, i, x, y) {
+  if (world.arenaDef?.style?.ascii) return asciiPixel(world, i, x, y); // Vale ASCII: o chão é texto
   const tr = world.terrain;
   const seed = world.seed;
   const h = hash2(x, y, seed), n = valueNoise(x / 11, y / 11, seed) * 0.65 + h * 0.35;
@@ -269,6 +271,7 @@ export function paintTile(world, P, i, x, y) {
 export function paintWalls(base, world, list = world.walls) {
   const wood = [rgba('#4a2a12'), rgba('#7a4a22'), rgba('#a5672e')];
   for (const w of list) {
+    if (w.kind === 'glyph') { paintGlyphWall(base, w); continue; } // moldura de texto (Vale ASCII)
     if (w.kind === 'earth') {
       // Bloco de terra que subiu do chão (Terra Rachada): só pinta depois de terminar de subir (antes é animado).
       if (w.dyn && world.time < w.at + w.rise) continue;

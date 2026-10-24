@@ -150,3 +150,18 @@ Feedback: iPhone travava ao confirmar o time; HUD grande e arena pequena (notebo
 
 ## 8. Comandos úteis
 `npm test` · `node test/ffa.mjs` · `node test/collision.mjs` · `node test/maps.mjs` · `node tools/navtest.mjs 25 abismo --where` · `node --expose-gc tools/perf-ffa.mjs 60` · `PORT=8141 node server/server.js` e abrir `/?autostart&ffa&arena=abismo` (FFA local) · `node tools/balance.mjs 3 1`.
+
+## 6n. Arena Vale ASCII (2026-10-24)
+- `src/arenas/ascii.js` (`ascii`, `style.ascii`): chão de areia com mato seco, moldura de paredes `glyph`, pedras/caixotes/arbustos em sym4; perigo único `Scanline` (`src/sim/arenaevents.js`).
+- **Varredura (`Scanline`, constantes `SCAN`):** a cada 26 s (primeira aos 18 s, aviso 2,2 s) uma faixa de 12 px cruza a arena a 110 px/s (pares descem, ímpares sobem); quem toca leva 6 de dano + lento uma vez por passada (esquiva/invulnerável = 'evaded'). Cada passada alterna o arranjo dos 4 **capinzais** (`BRUSH`, raio 46). Dentro do capinzal: `m.inBrush` e `cloak ≥ 0,25` se não atacou há 0,6 s (`m._lastCastT`, marcado em `Sig.onCast`). `threat()` avisa a IA quando a linha está a 40 px. Eventos `scanWarn`/`scanHit`/`rerender` (renderer + sfx).
+- **Desenho (`src/render/asciifx.js`):** fonte 3×5 própria (células 4×6). `asciiPixel` pinta o chão pela célula (`cellOf`: montanhas de glifos claros nas bordas, anel hachurado `\ /`, clareira escura, `~` molhado, `%` queimado, `"` mato); `paintGlyphWall`; obstáculos em texto (`asciiObstacle`: `@ O o` pedras, `[#]` caixotes, `* "` arbustos); `drawBrush`, `drawScan` (setas `v`/`^` + faixa de `=#0=1%`), `drawRain` (chuva de colunas). Partículas: rampa `ascii`.
+- Tela de arenas: 4 colunas no PC quando há 7+ arenas; prévias reduzidas com suavização (sem ela os traços de 1 px do ASCII sumiam no celular deitado) e recursos cortados no cartão.
+- Conferido: maps/collision/navtest, capturas 1280×720, 390×844 e 844×390. Equilíbrio de monstros não muda (o perigo é simétrico). Não testado em aparelho real.
+
+## 6o. Arutchin/Anemokahn: mini rework para o PvP (2026-10-24)
+- Diagnóstico: na IA × IA o gênio já ganhava 56% (base) / 68% (evoluído) porque a IA mira o E e encadeia E→Q sem errar; nas mãos de gente o combo falhava (E de área pequena, Q lento) e ele parecia fraco. O reforço foi em CONFIABILIDADE do combo, não em dano bruto (dano bruto subia a IA para 90–100%).
+- **Ritmo dos 4 Braços** (`sig.palmMark: 3`, `Maestro.projectileHit`): a cada 3 Palmas seguidas no MESMO alvo ele fica com Turbulência (trocar de alvo recomeça; já marcado não acumula). Abre o combo pelo básico, sem depender só do E.
+- Base: hp 108 (106), velocidade 72 (70), Palma 2,8 (2,6) alcance 150 e adianta 0,6 s do E (0,5); Q velocidade 380 (360) alcance 165; E área 24 (18) alcance 135; F área 28 (26), jaula 1,1 s; Brisa: escudo 8 (6) por 1,6 s.
+- Evoluído: velocidade 74 (72; a forma evoluída precisa ter atributo diferente da base — test/evolution.mjs), Palma velocidade 340; Q mão r 10 (9), velocidade 350, alcance 190; E área 34 (30), alcance 165, micro-vácuo 96; F área 44 (42), alcance 170; Brisa: escudo 12 (10) por 1,8 s.
+- Medido (`node test/pairs.mjs 8 zefir`): 71% base / 79% evoluído (antes 56% / 68%). Teste novo em `test/zefirinho.mjs`. Ferramenta da sessão: CUIDADO com regex de stats em species.js — `evoRate` aparece em várias espécies (um ajuste por regex acertou o Araralvo por engano e foi revertido).
+

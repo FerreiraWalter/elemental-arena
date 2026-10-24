@@ -155,6 +155,9 @@ export class Sfx {
       case 'windSurge': [880, 1175, 1568].forEach((f, k) => this.tone({ type: 'triangle', f0: f, dur: 0.1, vol: 0.07, at: k * 0.05, x })); return;
       case 'vacuumCrit': this.hiss({ type: 'highpass', f0: 4000, f1: 1800, dur: 0.12, vol: 0.22, x }); return;
       case 'qReset': if (this.ok('qReset', 0.1)) this.tone({ type: 'sine', f0: 1320, f1: 1760, dur: 0.05, vol: 0.05, x }); return;
+      case 'scanWarn': [440, 0, 440].forEach((f, k) => f && this.tone({ type: 'square', f0: f, dur: 0.08, vol: 0.06, at: k * 0.12 })); return;
+      case 'scanHit': this.tone({ type: 'square', f0: 1800, f1: 120, dur: 0.18, vol: 0.12, x }); this.hiss({ type: 'highpass', f0: 5000, f1: 2000, dur: 0.15, vol: 0.12, x }); return;
+      case 'rerender': if (this.ok('rerender', 0.3)) this.tone({ type: 'square', f0: 660, f1: 990, dur: 0.06, vol: 0.05, x }); return;
       case 'fuumaTurn': this.hiss({ type: 'bandpass', f0: 1400, f1: 2600, q: 3, dur: 0.15, vol: 0.08, x }); return;
       case 'fuumaCatch': this.tone({ type: 'square', f0: 1320, f1: 990, dur: 0.05, vol: 0.06, x }); return;
       case 'shadowCast': this.hiss({ type: 'bandpass', f0: 600, f1: 2400, dur: 0.18, vol: 0.12, x }); return;

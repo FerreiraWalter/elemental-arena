@@ -7,7 +7,8 @@
 //    outros marcados por perto (cada um também consome a marca). O E num alvo já marcado vira MICRO-VÁCUO: espalha a
 //    marca em todos em volta e puxa para o centro. O F num marcado consome a marca e vira JAULA DE VENTO (prende e
 //    levanta); sem marca, só deixa lento. O F também empurra para longe os projéteis inimigos perto do ponto.
-//  · O golpe básico (Palma de Ar) que acerta adianta a recarga do E.
+//  · O golpe básico (Palma de Ar) que acerta adianta a recarga do E. RITMO DOS 4 BRAÇOS: a cada `sig.palmMark` (3) Palmas
+//    seguidas no MESMO alvo, ele fica com Turbulência — o combo abre também por quem acerta o básico, sem depender só do E.
 // Apertar botões a esmo gasta as cargas e acerta Q sem marca (dano baixo); a ordem certa controla a arena.
 
 import { applySlow } from './electric.js';
@@ -81,6 +82,13 @@ export function projectileHit(w, p, t) {
     w.damage(t, p.dmg, m, { ...base, kb: 35 });
     const e = m.def.controls.e;
     if (p.cdr && m.cd[e] > 0) m.cd[e] = Math.max(0, m.cd[e] - p.cdr);
+    // Ritmo: a contagem é por alvo (trocar de alvo recomeça) e já marcado não acumula.
+    const need = m.def.sig.palmMark;
+    if (need && t.alive && !marked(t, m)) {
+      m._palmN = m._palmT === t.id ? (m._palmN || 0) + 1 : 1;
+      m._palmT = t.id;
+      if (m._palmN >= need) { m._palmN = 0; mark(w, t, m); }
+    }
     return;
   }
   // Lâmina de vácuo / Palma do Vendaval: crítico (e ricochete) só em quem está com Turbulência sua.

@@ -131,6 +131,22 @@ test('Palma de Ar que acerta adianta a recarga do E', () => {
   assert(A.cd.turbulencePulse < 1.6, `E não adiantou (${A.cd.turbulencePulse.toFixed(2)})`);
 });
 
+test('Ritmo dos 4 Braços: a 3ª Palma no mesmo alvo marca Turbulência (trocar de alvo recomeça)', () => {
+  const { w, A, foes } = setup({ two: true, gap: 70 });
+  const [B, C] = foes;
+  const palm = (t) => { const hp = t.hp; A.cd.airPalm = 0; cast(w, A, 'airPalm', t); until(w, () => t.hp < hp, 1); idle(w, A); };
+  palm(B); palm(B);
+  assert(!(B.turb > 0), 'marcou antes da 3ª');
+  palm(C); palm(B);
+  assert(!(B.turb > 0), 'trocar de alvo deveria recomeçar a contagem');
+  palm(B); palm(B);
+  assert(B.turb > 0 && B.turbBy === A.id, '3 Palmas seguidas não marcaram');
+  const seen = watch(w), hp = B.hp;
+  A.brisa = 0;
+  cast(w, A, 'vacuumBlade', B); until(w, () => B.hp < hp, 1);
+  assert(seen.some((e) => e.type === 'vacuumCrit'), 'o Q depois do Ritmo deveria ser crítico');
+});
+
 test('Online: a marca de Turbulência e as cargas de Brisa vão no snapshot', () => {
   const { w, A, B } = setup();
   cast(w, A, 'turbulencePulse', B); idle(w, A);

@@ -9,7 +9,7 @@
 // reconstruídas por sync() (paredes) e pelos obstáculos (vida).
 import { clamp } from '../core/math.js';
 import { T } from './tiles.js';
-import { EVOLUTION, TILE, COLS, ROWS, WORLD_W } from '../config.js';
+import { EVOLUTION, TILE, COLS, ROWS, WORLD_W, WORLD_H as WORLD_H_PX } from '../config.js';
 
 const ease = (u) => { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); };
 
@@ -245,4 +245,86 @@ export function krakenDown(w, o) {
     w.gainEnergy(m, EVOLUTION.threshold * 0.6);
     w.say(`${m.name} DERROTOU O KRAKEN! (+vida e energia)`, '#c890ff');
   } else w.say('O KRAKEN AFUNDOU!', '#c890ff');
+}
+
+// ───────────── Vale ASCII: VARREDURA e capinzais ─────────────
+// De tempos em tempos uma linha de luz atravessa a arena inteira (de cima para baixo, depois de baixo para cima).
+// Quem é pego leva dano e fica CORROMPIDO (lento); a esquiva no tempo certo passa por ela. Por onde a linha passa, o
+// mundo é "redesenhado": os capinzais (campos de texto onde quem está dentro some para o inimigo) trocam de lugar.
+// Tudo sai do tempo da partida (w.time): o cliente calcula a mesma posição da linha e o mesmo arranjo dos campos.
+const SCAN = { first: 18, period: 26, warn: 2.2, speed: 110, band: 12, dmg: 6, slow: [1.5, 0.35], hide: 0.6 };
+export const BRUSH_R = 46;
+// Dois arranjos espelhados (4 campos cada); a linha alterna um ↔ outro por onde passa.
+export const BRUSH = [
+  [[300, 150], [724, 150], [300, 426], [724, 426]],
+  [[196, 288], [828, 288], [512, 112], [512, 464]],
+];
+export class Scanline {
+  constructor() {
+    this.kind = 'scanline';
+    this.x = WORLD_W / 2; this.y = 0;
+    this.phase = 'idle'; this.t = SCAN.first - SCAN.warn;
+    this.hit = new Map(); // monstro → última varredura que o pegou
+    this.dur = WORLD_H_PX / SCAN.speed;
+  }
+  // Varredura k: começa em first + k·period; as pares descem, as ímpares sobem.
+  sweepAt(time) {
+    const k = Math.floor((time - SCAN.first + SCAN.warn) / SCAN.period);
+    if (k < 0) return { k: -1, e: -Infinity };
+    return { k, e: time - (SCAN.first + k * SCAN.period) }; // e < 0: aviso; 0..dur: ativa
+  }
+  lineY(k, e) { const y = e * SCAN.speed; return k % 2 === 0 ? y : WORLD_H_PX - y; }
+  // Arranjo do campo `j` no instante `time`: quantas varreduras já passaram por cima dele.
+  layoutOf(j, time) {
+    const cy = BRUSH[0][j][1], cy2 = BRUSH[1][j][1];
+    let n = 0;
+    const last = Math.floor((time - SCAN.first) / SCAN.period);
+    for (let k = 0; k <= last; k++) {
+      const e = time - (SCAN.first + k * SCAN.period), y = this.lineY(k, Math.min(e, this.dur));
+      const yc = n % 2 ? cy2 : cy; // o campo está onde o arranjo atual o colocou
+      const passed = k % 2 === 0 ? y >= yc : y <= yc;
+      if (passed) n++;
+    }
+    return n % 2;
+  }
+  fields(time) { return BRUSH[0].map((_, j) => { const L = this.layoutOf(j, time); const [x, y] = BRUSH[L][j]; return { x, y, r: BRUSH_R, j, L }; }); }
+
+  update(w) {
+    const { k, e } = this.sweepAt(w.time);
+    if (k < 0 || e > this.dur) { this.phase = 'idle'; this.t = k < 0 ? SCAN.first - SCAN.warn - w.time : (SCAN.first + (k + 1) * SCAN.period - SCAN.warn) - w.time; }
+    else if (e < 0) { if (this.phase !== 'warn') w.emit({ type: 'scanWarn', down: k % 2 === 0, x: WORLD_W / 2, y: k % 2 === 0 ? 10 : WORLD_H_PX - 10 }); this.phase = 'warn'; this.t = -e; }
+    else {
+      this.phase = 'active'; this.t = e;
+      const y = this.lineY(k, e);
+      this.y = y;
+      for (const m of w.monsters) {
+        if (!m.alive || !m.onField || this.hit.get(m) === k) continue;
+        if (Math.abs(m.y - y) > SCAN.band / 2 + m.r * 0.6) continue;
+        this.hit.set(m, k);
+        if (m.status.invuln > 0) { w.emit({ type: 'evaded', m, x: m.x, y: m.y }); continue; }
+        w.damage(m, SCAN.dmg, null, { tag: 'varredura', element: 'neutral', slow: SCAN.slow, x: m.x, y: m.y });
+        w.emit({ type: 'scanHit', m, x: m.x, y: m.y });
+      }
+      // Campos que a linha acabou de atravessar trocam de lugar.
+      const prevF = this._fields || this.fields(w.time - 1 / 60);
+      const now = this.fields(w.time);
+      now.forEach((f, j) => { if (f.L !== prevF[j].L) w.emit({ type: 'rerender', x: f.x, y: f.y, x0: prevF[j].x, y0: prevF[j].y, r: BRUSH_R }); });
+      this._fields = now;
+    }
+    // Capinzal: quem está dentro (e não atacou há pouco) some para o inimigo.
+    const fs = this.fields(w.time);
+    for (const m of w.monsters) {
+      if (!m.alive || !m.onField) continue;
+      const inside = fs.some((f) => (m.x - f.x) ** 2 + ((m.y - f.y) * 1.25) ** 2 < (f.r - 4) ** 2);
+      m.inBrush = inside;
+      if (inside && w.time - (m._lastCastT ?? -9) > SCAN.hide && !m.action) m.status.cloak = Math.max(m.status.cloak, 0.25);
+    }
+  }
+  // IA: a linha ativa perto é uma ameaça (esquivar no tempo certo ou sair do caminho).
+  threat(m) {
+    if (this.phase !== 'active') return null;
+    const dy = m.y - this.y;
+    if (Math.abs(dy) > 40) return null;
+    return { kind: 'zone', key: 'scan', x: m.x, y: this.y, r: 26, time: Math.abs(dy) / SCAN.speed };
+  }
 }
